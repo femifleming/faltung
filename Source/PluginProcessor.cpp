@@ -275,8 +275,8 @@ static bool readAudio (const juce::File& f, juce::AudioBuffer<float>& buf, doubl
     juce::AudioFormatManager fm; fm.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (f));
     if (r == nullptr || r->lengthInSamples <= 0) return false;
-    const int len = (int) juce::jmin<juce::int64> (r->lengthInSamples, (juce::int64) (r->sampleRate * 600.0));
-    buf.setSize ((int) juce::jmin<unsigned int> (2, r->numChannels), len);
+    const int len = (int) std::min ((juce::int64) r->lengthInSamples, (juce::int64) (r->sampleRate * 600.0));
+    buf.setSize ((int) std::min (2u, (unsigned int) r->numChannels), len);
     r->read (&buf, 0, len, 0, true, true);
     sr = r->sampleRate;
     if (markers != nullptr)

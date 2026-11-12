@@ -1057,7 +1057,7 @@ public:
         juce::AudioFormatManager fm; fm.registerBasicFormats();
         std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (f));
         if (r == nullptr || r->lengthInSamples < 64) return;
-        const int len = (int) juce::jmin<juce::int64> (r->lengthInSamples, (juce::int64) (r->sampleRate * 60.0));
+        const int len = (int) std::min ((juce::int64) r->lengthInSamples, (juce::int64) (r->sampleRate * 60.0));
         juce::AudioBuffer<float> b (1, len); r->read (&b, 0, len, 0, true, false);
         const int n = 64; std::vector<float> lv ((size_t) n); float mx = 1.0e-6f;
         for (int i = 0; i < n; ++i) { lv[(size_t) i] = b.getRMSLevel (0, i * len / n, juce::jmax (1, len / n)); mx = juce::jmax (mx, lv[(size_t) i]); }
