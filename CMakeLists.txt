@@ -97,7 +97,7 @@ if(ECR_BUILD_TESTS)
     target_include_directories(ECRTest PRIVATE Source third_party/font5x7)
     target_compile_definitions(ECRTest PRIVATE ${ECR_DEFS} JucePlugin_Name="ConvoSolution" JucePlugin_VersionString="${PROJECT_VERSION}"
         JucePlugin_Build_Standalone=1 JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1 ECR_TEST_BUILD=1
-        JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_PLUGINHOST_LV2=1 JUCE_PLUGINHOST_VST=$<BOOL:${ECR_BUILD_VST2}>)
+        JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_PLUGINHOST_LV2=1 JUCE_PLUGINHOST_VST=$<AND:$<BOOL:${ECR_BUILD_VST2}>,$<NOT:$<PLATFORM_ID:Windows>>>)   # JUCE's VST2 host code needs the original SDK on MSVC
     target_include_directories(ECRTest PRIVATE third_party/vst2-fst)
     target_link_libraries(ECRTest PRIVATE ECRData ecr_pffft juce::juce_audio_utils juce::juce_dsp
         juce::juce_recommended_config_flags)
