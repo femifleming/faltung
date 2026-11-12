@@ -1,0 +1,6 @@
+build/
+build-*/
+build_cfg.log
+.DS_Store
+__pycache__/
+*.wav
