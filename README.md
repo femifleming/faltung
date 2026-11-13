@@ -1,4 +1,6 @@
-# ConvoSolution
+<p align="center"><img src="docs/icon.png" width="128" alt="convosolution icon"></p>
+
+# convosolution
 
 A dual convolution reverb plug-in that looks like a web page from 1996.
 
