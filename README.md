@@ -64,3 +64,7 @@ downloads. Sources and licences: `Resources/IR-CREDITS.txt`.
 Code: AGPL-3.0 (it links JUCE 9). Third-party: PFFFT (FFTPACK licence), FST
 headers (GPL-3), Liberation fonts (OFL), 5x7 pixel font from EX-GF; impulse
 responses CC BY 4.0 (OpenAIR) and CC BY-SA 4.0 (HybridReverb2 database).
+
+## Request log
+
+Everything that was asked for while this was designed and built is in [REQUESTS.md](REQUESTS.md).
