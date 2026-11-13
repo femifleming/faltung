@@ -1,4 +1,6 @@
-# Partials
+<p align="center"><img src="docs/icon.png" width="128" alt="partials icon"></p>
+
+# partials
 
 An additive / subtractive synthesizer you can see. Every note is built from up to 516 sine partials that are shaped (two filters, blur, pluck, phaser, prism, harmonizer, EQ) before they become sound, and the window shows them as you play. It can also take a sound apart and play it back at any speed and pitch, or play a picture.
 
