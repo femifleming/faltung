@@ -24,3 +24,5 @@ Every request typed while this was being designed and built with Claude Code, in
 
 > yes do that. Add a log of everything I have asked to all GitHub pages of vsts and instruments ive asked you to help me design. And push that.  Make sure they all work linux Mac and windows. And the vsts also have desktop versions that work on all of those platforms.
 
+
+1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)

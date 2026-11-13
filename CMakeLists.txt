@@ -36,6 +36,7 @@ juce_add_plugin(Partials
     PLUGIN_CODE Prtl
     FORMATS ${PT_FORMATS}
     PRODUCT_NAME "Partials"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon/icon_1024.png"
     DESCRIPTION "Additive / subtractive synthesizer with image resynthesis"
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
