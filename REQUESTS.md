@@ -57,3 +57,5 @@ Every request typed while this was being designed and built with Claude Code, in
 
 > ~/Documents/Analysis\ and\ recreation\ of\ key\ features\ in\ selected\ Autechre\ tracks\ from\ 1998-2005.pdf i also like autechre and mark fell, gabor lazar, kindohm and second woman music, are there any effects, midi instumeunts, or sequencing things you migth add to make that kind of music? read the dis i have attached. also in the midi sequencer/sampler mode make it so that i can multitrack the 8 tracks over usb audio so i can grab stems. it would be 8 stero tracks, this is heavy on cpu, i know from modwerk but see if we can make it work. for the sequencer mode and sequencer mode only, have the 16 step lignts be bright and steppy instead of smooth, they can be smooth in the other mode, but here i need to see where thigns are in the seqeuence, so not smooth lights as it steps thru.
 
+
+1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)

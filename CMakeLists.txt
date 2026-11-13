@@ -68,6 +68,7 @@ juce_add_plugin(ConvoSolution
     PLUGIN_CODE CvSl
     FORMATS ${ECR_FORMATS}
     PRODUCT_NAME "ConvoSolution"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon/icon_1024.png"
     DESCRIPTION "Dual true-stereo convolution reverb with LFO modulation"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
