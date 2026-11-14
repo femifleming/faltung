@@ -1,0 +1,109 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-15 }
+          - { name: Linux, os: ubuntu-22.04 }
+          - { name: Windows, os: windows-2022 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxi-dev \
+            libgl1-mesa-dev libcurl4-openssl-dev xvfb fonts-dejavu-core
+
+      - name: macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Configure (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --target Partials_All PartialsTest --parallel 4
+
+      - name: Tests (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          T=build/PartialsTest_artefacts/Release/PartialsTest
+          A=build/Partials_artefacts/Release
+          $T
+          $T --shot window.png 0
+          test -d $A/VST3/Partials.vst3 && test -d $A/VST/Partials.vst && test -d $A/Standalone/Partials.app
+          lipo -archs $A/VST3/Partials.vst3/Contents/MacOS/Partials
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R $A/AU/Partials.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -v aumu Prtl Frkp | tail -3
+          auval -v aumu Prtl Frkp | grep -q "AU VALIDATION SUCCEEDED"
+
+      - name: Tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          T=build/PartialsTest_artefacts/Release/PartialsTest
+          A=build/Partials_artefacts/Release
+          xvfb-run -a $T
+          xvfb-run -a $T --shot window.png 0
+          test -d $A/VST3/Partials.vst3 && test -f $A/VST/libPartials.so && test -f $A/Standalone/Partials && test -f $A/LV2/Partials.lv2/manifest.ttl
+
+      - name: Tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $T = "build\PartialsTest_artefacts\Release\PartialsTest.exe"
+          $A = "build\Partials_artefacts\Release"
+          & $T; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $T --shot window.png 0; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$A\VST3\Partials.vst3")) { exit 1 }
+          if (-not (Test-Path "$A\VST\Partials.dll")) { exit 1 }
+          if (-not (Test-Path "$A\Standalone\Partials.exe")) { exit 1 }
+
+      - name: Package (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist/Partials
+          cp -R build/Partials_artefacts/Release/* dist/Partials/
+          rm -f dist/Partials/*.a
+          cp docs/manual/manual.pdf dist/Partials/ || true
+          cd dist && tar -czf Partials-${{ matrix.name }}.tar.gz Partials
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist\Partials | Out-Null
+          Copy-Item -Recurse build\Partials_artefacts\Release\VST3, build\Partials_artefacts\Release\VST, build\Partials_artefacts\Release\Standalone dist\Partials\
+          Copy-Item docs\manual\manual.pdf dist\Partials\
+          Compress-Archive -Path dist\Partials -DestinationPath dist\Partials-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Partials-${{ matrix.name }}
+          path: |
+            dist/Partials-*.tar.gz
+            dist/Partials-*.zip
+            window.png
