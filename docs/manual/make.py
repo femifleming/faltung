@@ -142,13 +142,13 @@ TIPS = {
          "Drum crush: ratio 10, attack 0.3 ms, makeup up, mix 40%."],
 }
 WB_RECIPES = [
- ("dmz wobble", "osc a saw, lp24 cutoff ~200 hz, resonance 0.35, wobble sine, wob > cutoff +4.5 oct, retrigger on. Change <i>wobble rate</i> between notes (automate it) — 1/8 for the main line, 1/16 and 1/8 t for variations."),
+ ("classic wobble", "osc a saw, lp24 cutoff ~200 hz, resonance 0.35, wobble sine, wob > cutoff +4.5 oct, retrigger on. Change <i>wobble rate</i> between notes (automate it) — 1/8 for the main line, 1/16 and 1/8 t for variations."),
  ("the yoy", "formant mix 100%, wobble shape <b>yoy</b>, wob > vowel +100%. Add env > pitch −5 st with decay 180 ms for the downward slur."),
  ("wow", "wobble shape <b>wow</b> at 1/4, wob > vowel +85% and wob > cutoff +2.5 oct: each cycle opens fast and closes like a mouth."),
  ("sub pressure", "sub 100% sine at −1 octave, osc a sine at low level, no wobble. Keep the main oscillators above the sub with osc a +1 octave if they muddy it."),
  ("reese", "osc a saw, unison 6–7, detune 40–50%, spread 80%; osc b saw −1 octave unison 4. Distortion <b>smooth</b>, a little comb, ott 60%. Slow wob > cutoff or nothing."),
  ("fm growl", "both oscillators sine, osc b +1 octave at level 0, fm 40%, wob > fm 30% at 1/16, fold distortion, formant mix 30%, ott 60–80%."),
- ("neuro stack", "start from <b>billain growl</b>; route wobble to vowel, comb and drive together; then resample wb1 into kt2 loop and cut it up."),
+ ("neuro stack", "start from <b>neuro growl</b>; route wobble to vowel, comb and drive together; then resample wb1 into kt2 loop and cut it up."),
 ]
 
 # ------------------------------------------------------------------------------------------------
@@ -411,8 +411,8 @@ add('''<section class="page" id="recipes"><h2>recipes</h2>
 <h3>the dub chain</h3><p>kt1 → rm3 on its own output → <b>dl4</b> (3/16, feedback 60%, age 0.4, send automated) → <b>rv5</b> air with gate. Main mix → <b>gl8</b>.</p>
 <h3>cut-up from your own loop</h3><p>Resample a bar of kt1 (or anything) and drop it into <b>kt2</b>; onsets mode, 16 slices; load preset <b>cut-up</b>; put <b>mc3</b> after it in click mode.</p>
 <h3>groove transplant</h3><p>Put <b>sw6</b> on a loop with the feel you want, <i>learn groove</i> for four bars, save the preset with your set, then put the same sw6 settings on straight tracks.</p>
-<h3>a dmz bassline</h3><p><b>wb1</b> preset <b>dmz sub wob</b>, notes G0–D1 at 140 bpm. Automate <i>wobble rate</i>: 1/8 for two notes, 1/16 for one, 1/8 t for the last. Halfstep kick and snare from bd1 and cp6.</p>
-<h3>neuro</h3><p><b>wb1</b> preset <b>billain growl</b> or <b>noisa reese</b>; resample several notes, cut them in kt2 with 32 slices, then gl8 with ratio 10 in parallel.</p>
+<h3>a 2000s dubstep bassline</h3><p><b>wb1</b> preset <b>sub wob</b>, notes G0–D1 at 140 bpm. Automate <i>wobble rate</i>: 1/8 for two notes, 1/16 for one, 1/8 t for the last. Halfstep kick and snare from bd1 and cp6.</p>
+<h3>neuro</h3><p><b>wb1</b> preset <b>neuro growl</b> or <b>reese</b>; resample several notes, cut them in kt2 with 32 slices, then gl8 with ratio 10 in parallel.</p>
 
 <h2 id="tech">technical notes</h2>
 <ul><li>Sample rates 44.1–192 khz; all processing in 32-bit float. Stereo throughout; kt1 has 9 stereo outputs.</li>

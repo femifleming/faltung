@@ -14,3 +14,4 @@ What was asked for, in order, as typed.
 10. "bundle partials into faltung, make sure it works on mac windows and linux and push to my github, and add the homebrew tap. makr sure both manuals are on the github as well." (Partials moved in with its history; CI for macOS / Windows / Linux; casks faltung and partials.)
 
 Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.md).
+11. "in WB1, dont put the actual artist names in the preset names." (wb1 presets renamed by sound: sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl.)
