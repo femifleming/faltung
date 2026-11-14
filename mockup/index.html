@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>faltung — ui mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root { --mono: 'IBM Plex Mono', Menlo, monospace; --sans: Inter, Helvetica, Arial, sans-serif; }
+  body { margin: 0; background: #e9ecec; font-family: var(--sans); color: #1c2a33; }
+  .wrap { padding: 40px; display: flex; flex-direction: column; gap: 56px; align-items: flex-start; }
+  .cap { font: 11px var(--mono); color: #55636b; margin: 0 0 10px; }
+  .win { position: relative; overflow: hidden; box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 18px 40px -20px rgba(0,0,0,.35); }
+  .mono { font-family: var(--mono); }
+  .chip { width: 14px; height: 9px; transform: skewX(-30deg); box-sizing: border-box; }
+  .row2 { display: flex; gap: 40px; flex-wrap: wrap; }
+  /* slider: thin rule, skewed fill, white edge */
+  .sl { display: grid; grid-template-columns: 56px minmax(0,1fr) 62px; gap: 10px; align-items: center; height: 22px; font: 11px var(--mono); }
+  .sl .track { position: relative; height: 9px; }
+  .sl .track::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: currentColor; opacity: .35; }
+  .sl .fill { position: absolute; left: 0; top: 0; height: 9px; transform: skewX(-30deg); }
+  .sl .edge { position: absolute; top: -1px; width: 2px; height: 11px; background: #fff; }
+  .sl .v { text-align: right; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============ OVERVIEW ============ -->
+<section>
+  <p class="cap">00 · bundle overview (installer / about screen)</p>
+  <div class="win" style="width:1200px;height:800px;background:#fbfcfc;">
+    <svg width="1200" height="800" viewBox="0 0 1200 800" aria-hidden="true" style="position:absolute;left:0;top:0">
+      <g fill="#9fd3ec">
+        <polygon points="420,800 560,800 760,560 560,320 420,320 620,560" opacity=".30"/>
+        <polygon points="520,720 660,720 860,480 660,240 520,240 720,480" opacity=".38"/>
+        <polygon points="620,640 760,640 960,400 760,160 620,160 820,400" opacity=".30"/>
+        <polygon points="720,560 860,560 1060,320 860,80 720,80 920,320" opacity=".42"/>
+        <polygon points="820,480 960,480 1160,240 960,0 820,0 1020,240" opacity=".30"/>
+        <polygon points="920,400 1060,400 1260,160 1060,-80 920,-80 1120,160" opacity=".36"/>
+      </g>
+      <g fill="none" stroke="#7cc2e4" opacity=".7">
+        <polyline points="470,800 670,560 470,320"/><polyline points="670,640 870,400 670,160"/><polyline points="870,480 1070,240 870,0"/>
+      </g>
+      <g transform="translate(96,420)">
+        <polygon points="0,30 52,0 104,30 52,60" fill="#ffe15a"/>
+        <polygon points="0,30 52,60 52,112 0,82" fill="#f2c100"/>
+        <polygon points="52,60 104,30 104,82 52,112" fill="#d8a800"/>
+        <text x="52" y="35" text-anchor="middle" font-family="Inter,Helvetica" font-size="13" font-weight="600" fill="#2a2100">faltung</text>
+      </g>
+    </svg>
+    <div style="position:absolute;left:64px;top:56px;max-width:520px">
+      <div style="font-size:30px;font-weight:500;letter-spacing:-.5px">faltung</div>
+      <div style="font-size:14px;color:#2f6f93;margin-top:6px">drums and processes for minimal / microhouse, 2000–2015</div>
+      <div style="font-size:12px;line-height:1.6;color:#4a5a63;margin-top:16px;max-width:420px">eight plug-ins. four sound sources, four processes. one colour field each, thin-line geometry, lowercase type. the shapes are the controls.</div>
+    </div>
+    <div class="mono" style="position:absolute;left:64px;top:580px;font-size:10px;line-height:1.7;color:#4a5a63">
+      vst3 · au · standalone<br>mac · win · linux<br>64-bit float · oversampled nonlinearities
+    </div>
+    <div class="mono" style="position:absolute;left:640px;top:470px;width:520px;background:rgba(251,252,252,.86);padding:14px 16px;font-size:11px">
+      <div id="tracklist" style="display:grid;grid-template-columns:20px 74px 36px 64px minmax(0,1fr);gap:4px 10px;align-items:center"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KT1 KIT ============ -->
+<section>
+  <p class="cap">01 · kt1 kit — 8-voice drum synth + microtime sequencer (click a folded strip to select a voice)</p>
+  <div class="win" id="kt1" style="width:1000px;height:620px;background:#c9b53b;color:#23200a">
+    <svg width="560" height="330" viewBox="0 0 560 330" style="position:absolute;left:28px;top:34px" font-family="Inter,Helvetica" font-size="15" fill="#1e2a20">
+      <g class="v" data-v="0"><polygon points="20,150 110,150 150,100 60,100" fill="#5e8f6a"/><polygon points="60,100 150,100 150,40 60,40" fill="#4f7d5b"/><text x="58" y="135" transform="rotate(-38 70 130)">bd1</text></g>
+      <g class="v" data-v="1"><polygon points="150,100 240,100 240,40 150,40" fill="#8dbb7a"/><polygon points="150,40 240,40 280,0 190,0" fill="#a7cd8f"/><text x="170" y="78">sd2</text></g>
+      <g class="v" data-v="2"><polygon points="200,140 300,140 300,90 200,90" fill="#8ec3e6"/><polygon points="300,140 340,110 340,60 300,90" fill="#6fa9d1"/><polygon points="200,90 300,90 340,60 240,60" fill="#b6dcf2"/><text x="226" y="122">rm3</text></g>
+      <g class="v" data-v="3"><polygon points="120,200 220,200 220,140 120,140" fill="#6e80c8"/><polygon points="120,200 220,200 260,170 160,170" fill="#5a6cb4" opacity=".6"/><text x="146" y="178" fill="#f4f6ff">hh4</text></g>
+      <g class="v" data-v="4"><polygon points="300,250 400,250 440,210 340,210" fill="#ee8e6e"/><text x="350" y="236">oh5</text></g>
+      <g class="v" data-v="5"><polygon points="400,250 480,250 480,190 400,190" fill="#97adc4"/><polygon points="400,190 480,190 520,150 440,150" fill="#b4c7d8"/><text x="420" y="228">cp6</text></g>
+      <g class="v" data-v="6"><polygon points="440,150 520,150 520,90 440,90" fill="#f6c590"/><polygon points="440,90 520,90 540,70 460,70" fill="#fbdcb4"/><text x="458" y="126">pc7</text></g>
+      <g class="v" data-v="7"><polygon points="320,310 440,310 480,270 360,270" fill="#cfe6f0"/><polygon points="320,310 360,270 360,250 320,290" fill="#a9cfe0"/><text x="380" y="296">cl8</text></g>
+    </svg>
+    <div style="position:absolute;right:36px;top:34px;width:150px;height:104px;background:#d8c64e;box-sizing:border-box;padding:14px 16px;display:flex;flex-direction:column;gap:2px">
+      <div style="font-size:17px;font-weight:500">kt1</div><div style="font-size:15px">kit</div>
+      <div class="mono" style="font-size:10px;margin-top:auto">faltung</div>
+    </div>
+    <div style="position:absolute;right:36px;top:166px;width:300px" class="mono">
+      <div style="display:flex;justify-content:space-between;border-bottom:1px solid #23200a;padding-bottom:6px;margin-bottom:8px;font-size:11px">
+        <span id="kt1name" style="font-weight:500"></span><span id="kt1model"></span>
+      </div>
+      <div id="kt1params"></div>
+    </div>
+    <div style="position:absolute;left:36px;right:36px;bottom:34px">
+      <div id="kt1grid" style="display:flex;flex-direction:column;gap:5px"></div>
+      <div class="mono" style="display:flex;gap:22px;margin-top:12px;font-size:10px">
+        <span>124.00 bpm</span><span>swing 57%</span><span>micro ±12 ms</span><span>len 16 / 15 / 12 / 16</span><span>pattern a3</span><span style="margin-left:auto">out 1–8 · 16 ch</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="row2">
+<!-- ============ KK2 KICK ============ -->
+<section>
+  <p class="cap">02 · kk2 kick — tok / thud / click kick designer</p>
+  <div class="win" style="width:760px;height:480px;background:#b88a26;color:#2a1e04">
+    <div style="position:absolute;left:40px;top:34px">
+      <div style="font-size:26px;font-weight:500;color:#fff;letter-spacing:.5px">FALTUNG</div>
+      <div style="font-size:13px;letter-spacing:1px;margin-top:2px">KK2 KICK</div>
+    </div>
+    <svg width="760" height="480" viewBox="0 0 760 480" aria-hidden="true" style="position:absolute;left:0;top:0" fill="none">
+      <g stroke="#e3bf5f" stroke-width="1">
+        <!-- body: pitch envelope as a folded polyhedron -->
+        <polyline points="70,330 150,110 330,170 520,150 640,240 600,330 330,360 70,330"/>
+        <polyline points="150,110 250,300 330,170"/>
+        <polyline points="250,300 520,150"/>
+        <polyline points="250,300 330,360"/>
+        <polyline points="520,150 600,330"/>
+        <polyline points="110,220 430,130 640,240"/>
+        <polyline points="430,130 470,290 600,330"/>
+        <polyline points="330,170 470,290"/>
+        <!-- amp decay ghost -->
+        <polyline points="560,92 700,180 690,300 600,330"/>
+        <polyline points="520,150 560,92"/>
+      </g>
+      <!-- selected stage: click transient -->
+      <polygon points="186,190 246,192 248,262 190,260" stroke="#fff" stroke-width="2"/>
+      <polygon points="420,262 480,248 476,296 418,300" stroke="#fff" stroke-width="2"/>
+      <g stroke="#fff" stroke-width="2"><polygon points="582,230 618,218 640,236 604,248"/><polyline points="604,248 604,262 640,250 640,236"/><polyline points="582,230 582,244 604,262"/></g>
+    </svg>
+    <div class="mono" style="position:absolute;left:40px;right:40px;bottom:30px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 28px" id="kk2params"></div>
+    <div class="mono" style="position:absolute;right:40px;top:40px;font-size:10px;text-align:right;line-height:1.7">
+      model: tok<br>click ▢ body ▢ tail ▢<br>48.0 hz · 312 ms
+    </div>
+  </div>
+</section>
+
+<!-- ============ DL4 DUB ============ -->
+<section>
+  <p class="cap">04 · dl4 dub — tape / bbd echo, filter inside the feedback loop</p>
+  <div class="win" style="width:760px;height:480px;background:#fbfbf8;color:#1d1d1d">
+    <svg width="760" height="480" viewBox="0 0 760 480" aria-hidden="true" style="position:absolute;left:0;top:0" fill="none" stroke-linecap="round">
+      <!-- repeats as concentric arcs, decaying -->
+      <g stroke="#e06a2e"><path d="M-40 70 Q 300 -60 640 40" stroke-width="6" opacity=".9"/><path d="M-40 92 Q 300 -36 640 62" stroke-width="3" opacity=".7"/><path d="M-40 110 Q 300 -16 640 80" stroke-width="1.5" opacity=".5"/></g>
+      <g stroke="#e9a0a8"><path d="M520 -20 Q 700 60 780 220" stroke-width="5"/><path d="M500 -20 Q 680 70 780 250" stroke-width="2.5" opacity=".7"/><path d="M480 -20 Q 660 82 780 280" stroke-width="1.2" opacity=".5"/></g>
+      <!-- the signal: diagonal bundle -->
+      <g stroke-width="5">
+        <path d="M-20 360 L 780 150" stroke="#2f7fd1"/>
+        <path d="M-20 376 L 780 166" stroke="#e06a2e" stroke-width="3"/>
+        <path d="M-20 388 L 780 178" stroke="#8f6bb8" stroke-width="2"/>
+        <path d="M-20 398 L 780 188" stroke="#c9c2a8" stroke-width="7" opacity=".6"/>
+      </g>
+      <g stroke="#2f7fd1" stroke-width="1.5"><path d="M-20 300 L 780 90" stroke-dasharray="2 6"/><path d="M-20 420 L 780 210" stroke-dasharray="1 9"/></g>
+      <!-- taps -->
+      <g fill="#1d1d1d" stroke="none"><circle cx="140" cy="323" r="4"/><circle cx="290" cy="284" r="4"/><circle cx="440" cy="245" r="4"/><circle cx="590" cy="205" r="3"/><circle cx="700" cy="176" r="2"/></g>
+      <g stroke="#1d1d1d" stroke-width="1"><path d="M140 323 v 40"/><path d="M290 284 v 54"/><path d="M440 245 v 68"/><path d="M590 205 v 82"/><path d="M700 176 v 96"/></g>
+      <!-- hatching -->
+      <g stroke="#1d1d1d" stroke-width=".8" opacity=".55"><path d="M380 300 l8 -14"/><path d="M386 302 l8 -14"/><path d="M392 304 l8 -14"/><path d="M398 306 l8 -14"/><path d="M404 308 l8 -14"/></g>
+      <rect x="236" y="300" width="70" height="36" fill="#8fbf6a" opacity=".55" stroke="none" transform="skewX(-20)"/>
+      <rect x="560" y="236" width="44" height="26" fill="#f6c590" opacity=".7" stroke="none"/>
+    </svg>
+    <div style="position:absolute;left:410px;top:332px;display:flex;align-items:flex-start;gap:6px">
+      <div style="width:1px;height:28px;background:#1d1d1d"></div>
+      <div style="font-size:15px;letter-spacing:.2px">dl4dub</div>
+    </div>
+    <div class="mono" style="position:absolute;left:40px;top:40px;font-size:10px;line-height:1.75">
+      <div style="font-weight:500">taps 1–5</div>
+      <div>3/16 d · 3/8 · 9/16 · 3/4 · 15/16</div>
+    </div>
+    <div class="mono" id="dl4params" style="position:absolute;left:40px;right:40px;bottom:26px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 28px"></div>
+  </div>
+</section>
+</div>
+
+<p class="cap" style="max-width:820px;line-height:1.7">
+not drawn yet, same system: mc3 micro (salmon, cut-up slices as folded strips), rv5 room (pale blue, chevron stacks = early reflections), sw6 swing (acid green, wireframe groove polyhedron with a foil-white "hot" face), fl7 filter (slate blue, three isometric bands), gl8 glue (grey-teal, stdio tracklist meters).
+</p>
+</div>
+
+<script>
+// overview tracklist
+const plugs = [
+  ['#c9b53b','01 : 00 : 03','kt1','kit','8-voice drum synth + microtime sequencer'],
+  ['#b88a26','01 : 04 : 17','kk2','kick','tok / thud / click kick designer'],
+  ['#ee8e6e','01 : 09 : 40','mc3','micro','micro-sample cut-up, clicks from anything'],
+  ['#fff;border:1px solid #2f7fd1','01 : 15 : 22','dl4','dub','tape / bbd echo, filter in the loop'],
+  ['#a9d3ea','01 : 21 : 08','rv5','room','small rooms, plates, gated air'],
+  ['#79e04a','01 : 26 : 51','sw6','swing','groove extraction + transient shuffle'],
+  ['#6f7fc9','01 : 31 : 30','fl7','filter','3-band isolator + resonant sweep'],
+  ['#8fa9b5','01 : 37 : 04','gl8','glue','bus compressor + tape saturation'],
+];
+const tl = document.getElementById('tracklist');
+tl.innerHTML = '<div style="color:#6a7a83">·</div><div style="color:#6a7a83">time</div><div style="color:#6a7a83">id</div><div style="color:#6a7a83">name</div><div style="color:#6a7a83">function</div>' +
+  plugs.map(([c,t,id,n,f]) => `<div class="chip" style="background:${c}"></div><div>${t}</div><div style="font-weight:500">${id}</div><div>${n}</div><div>${f}</div>`).join('');
+
+// sliders
+function sliders(el, list, fill, ink) {
+  el.innerHTML = list.map(([name,v,val]) =>
+    `<div class="sl" style="color:${ink}"><span>${name}</span><div class="track"><div class="fill" style="width:${v*100}%;background:${fill}"></div><div class="edge" style="left:${v*100}%"></div></div><span class="v">${val}</span></div>`).join('');
+}
+
+// kt1
+const voices = [
+  ['bd1','#5e8f6a','x...x...x...x...','100%','analog 2', [['tune',.3,'52 hz'],['decay',.55,'310 ms'],['click',.4,'0.40'],['body',.8,'0.80'],['noise',.05,'0.05'],['pitch',.6,'+18 st'],['pan',.5,'c'],['micro',.5,'0 ms']]],
+  ['sd2','#8dbb7a','....x.......x..x','92%','fm snare',[['tune',.5,'188 hz'],['decay',.35,'140 ms'],['click',.6,'0.60'],['body',.45,'0.45'],['noise',.66,'0.66'],['pitch',.3,'+5 st'],['pan',.55,'r 6'],['micro',.58,'+3 ms']]],
+  ['rm3','#8ec3e6','..x..x.x..x...x.','87%','modal 4', [['tune',.46,'412 hz'],['decay',.22,'38 ms'],['click',.68,'0.68'],['body',.41,'0.41'],['noise',.12,'0.12'],['pitch',.3,'+7 st'],['pan',.44,'l 12'],['micro',.62,'+6 ms']]],
+  ['hh4','#6e80c8','x.xxx.xxx.xxx.xx','74%','metal 6', [['tune',.7,'8.2 khz'],['decay',.12,'24 ms'],['click',.3,'0.30'],['body',.2,'0.20'],['noise',.5,'0.50'],['pitch',.1,'0 st'],['pan',.6,'r 20'],['micro',.42,'-4 ms']]],
+  ['oh5','#ee8e6e','..x...x...x...x.','100%','metal 6', [['tune',.66,'7.4 khz'],['decay',.5,'260 ms'],['click',.2,'0.20'],['body',.3,'0.30'],['noise',.6,'0.60'],['pitch',.1,'0 st'],['pan',.4,'l 20'],['micro',.55,'+2 ms']]],
+  ['cp6','#97adc4','....x.........x.','60%','clap 4x', [['tune',.4,'1.1 khz'],['decay',.3,'90 ms'],['click',.5,'0.50'],['body',.2,'0.20'],['noise',.8,'0.80'],['pitch',0,'0 st'],['pan',.5,'c'],['micro',.66,'+8 ms']]],
+  ['pc7','#f6c590','.x..x..x.x...x..','45%','tuned perc',[['tune',.35,'220 hz'],['decay',.3,'70 ms'],['click',.55,'0.55'],['body',.6,'0.60'],['noise',.1,'0.10'],['pitch',.2,'+3 st'],['pan',.3,'l 30'],['micro',.45,'-2 ms']]],
+  ['cl8','#cfe6f0','x.x.x.x.x.x.x.x.','33%','micro click',[['tune',.9,'11 khz'],['decay',.04,'3 ms'],['click',.9,'0.90'],['body',.05,'0.05'],['noise',.2,'0.20'],['pitch',0,'0 st'],['pan',.7,'r 40'],['micro',.5,'0 ms']]],
+];
+const micro = [0,2,-1,3,0,-2,1,4,0,2,-1,3,0,-3,2,1];
+let sel = 2;
+function drawKt1() {
+  const v = voices[sel];
+  document.getElementById('kt1name').textContent = v[0] + ' · ' + {0:'kick',1:'snare',2:'rim / tok',3:'closed hat',4:'open hat',5:'clap',6:'perc',7:'click'}[sel];
+  document.getElementById('kt1model').textContent = 'model: ' + v[4];
+  sliders(document.getElementById('kt1params'), v[5], v[1], '#23200a');
+  const g = document.getElementById('kt1grid');
+  const cols = 'grid-template-columns:36px repeat(16,minmax(0,1fr)) 64px;gap:4px;display:grid;align-items:center';
+  let h = `<div class="mono" style="${cols};font-size:9px;color:#4b4415"><span></span>${Array.from({length:16},(_,i)=>`<span>${String(i+1).padStart(2,'0')}</span>`).join('')}<span style="text-align:right">prob</span></div>`;
+  voices.forEach(([id,col,pat,prob],vi) => {
+    const me = vi === sel;
+    h += `<div style="${cols};height:17px"><span class="mono" style="font-size:10px;font-weight:${me?600:400}">${id}</span>` +
+      pat.split('').map((c,i) => { const on = c==='x';
+        return `<div style="height:13px;box-sizing:border-box;transform:translateX(${on?micro[(i+vi)%16]:0}px) skewX(-30deg);background:${on?col:'transparent'};border:1px solid ${on?(me?'#fff':col):'rgba(35,32,10,.25)'};opacity:${on&&(i+vi)%5===3?.55:1}"></div>`; }).join('') +
+      `<span class="mono" style="font-size:10px;text-align:right">${prob}</span></div>`;
+  });
+  g.innerHTML = h;
+  document.querySelectorAll('#kt1 .v').forEach(el => {
+    const on = +el.dataset.v === sel;
+    el.querySelectorAll('polygon').forEach(p => { p.setAttribute('stroke', on ? '#fff' : 'none'); p.setAttribute('stroke-width', 2); });
+  });
+}
+document.querySelectorAll('#kt1 .v').forEach(el => { el.style.cursor = 'pointer'; el.addEventListener('click', () => { sel = +el.dataset.v; drawKt1(); }); });
+drawKt1();
+
+sliders(document.getElementById('kk2params'), [['pitch',.32,'48 hz'],['sweep',.6,'+24 st'],['bend',.25,'18 ms'],['decay',.55,'312 ms'],['click',.7,'0.70'],['tok',.45,'0.45'],['drive',.3,'0.30'],['sub',.5,'0.50']], '#fff', '#2a1e04');
+sliders(document.getElementById('dl4params'), [['time',.375,'3/16 d'],['fdbk',.72,'0.72'],['age',.4,'0.40'],['wow',.2,'0.20'],['hp',.3,'240 hz'],['lp',.6,'3.2 khz'],['spread',.5,'0.50'],['freeze',0,'off']], '#2f7fd1', '#1d1d1d');
+</script>
+</body>
+</html>
