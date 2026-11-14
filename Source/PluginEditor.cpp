@@ -1,4 +1,4 @@
-// Partials: the window. Part of the faltung series (stdio line): a pale blue-white field, slanted bars,
+// Partials: the window. Part of the faltung series (stdio line, dark mode): a deep blue-slate field, slanted bars,
 // lowercase Inter / IBM Plex Mono, the partials drawn as Oval-style coloured lines, the yellow cube.
 #include "PluginProcessor.h"
 #include "BinaryData.h"
@@ -7,9 +7,10 @@ using namespace pt;
 
 namespace
 {
-const juce::Colour cBg (0xffeef4f7), cFg (0xff1d1c15), cDim (0xff55636b), cLine (0xffcddbe2), cTrack (0xffb4c6cf), cHot (0xffe06a2e),
-                   cFill (0xff4b9cc8), cChev (0xff9fd3ec);
-const juce::Colour cOval[4] = { juce::Colour (0xff2f7fd1), juce::Colour (0xffe06a2e), juce::Colour (0xffd9828c), juce::Colour (0xff8f6bb8) };
+// dark mode of the faltung stdio line: deep blue-slate field, light ink, brighter blues
+const juce::Colour cBg (0xff1b2731), cFg (0xffe9eef0), cDim (0xff9aabb4), cLine (0xff2c3b46), cTrack (0xff3a4b57), cHot (0xffef7a3c),
+                   cFill (0xff5aaad8), cChev (0xff9fd3ec);
+const juce::Colour cOval[4] = { juce::Colour (0xff58a2ec), juce::Colour (0xffef7a3c), juce::Colour (0xffeba3ab), juce::Colour (0xffa98ad6) };
 juce::Typeface::Ptr face (const char* d, int n) { return juce::Typeface::createSystemTypefaceFor (d, (size_t) n); }
 juce::Font fnt (float h, bool bold = false)
 {
@@ -339,7 +340,7 @@ public:
         {
             g.fillAll (cBg);
             if (img.isValid()) g.drawImageAt (img, 0, 0);
-            chevrons (g, getLocalBounds().toFloat(), 4, 0.16f);
+            chevrons (g, getLocalBounds().toFloat(), 4, 0.07f);
             g.setFont (mono (10.0f));
             for (float hz : { 100.0f, 1000.0f, 10000.0f })
             {
@@ -532,7 +533,7 @@ public:
                 if (x == 8) { line.startNewSubPath ((float) x, y); fill.startNewSubPath ((float) x, baseY); fill.lineTo ((float) x, y); } else { line.lineTo ((float) x, y); fill.lineTo ((float) x, y); }
             }
             fill.lineTo ((float) getWidth() - 8.0f, baseY); fill.closeSubPath();
-            g.setColour (cFill.withAlpha (0.22f)); g.fillPath (fill);
+            g.setColour (cFill.withAlpha (0.25f)); g.fillPath (fill);
             g.setColour (cOval[0]); g.strokePath (line, juce::PathStrokeType (2.0f));
             const EnvDef* env = isEnv() ? &ed.proc.edit (ed.part).tg[ed.selIndex].env : nullptr;
             g.setFont (fnt (9.5f));
