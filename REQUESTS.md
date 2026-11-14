@@ -26,3 +26,5 @@ Every request typed while this was being designed and built with Claude Code, in
 
 
 1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)
+
+1. "change the partials vst that you made for me a while back to be in this same aesthetic series." (Restyled into the faltung series, stdio line: pale field, yellow cube, slanted bars, Inter / IBM Plex Mono, partials as Oval-style coloured lines; manual restyled to match.)

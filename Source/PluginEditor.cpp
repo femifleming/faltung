@@ -1,21 +1,57 @@
-// Partials: the window. Dark, plain rows of thin bars, the partial display on the right, editors along the bottom.
+// Partials: the window. Part of the faltung series (stdio line): a pale blue-white field, slanted bars,
+// lowercase Inter / IBM Plex Mono, the partials drawn as Oval-style coloured lines, the yellow cube.
 #include "PluginProcessor.h"
+#include "BinaryData.h"
 
 using namespace pt;
 
 namespace
 {
-const juce::Colour cBg (0xff121214), cFg (0xffe9e7e1), cDim (0xff8d8d90), cLine (0xff2b2b2e), cTrack (0xff333337), cHot (0xffff6a4d);
+const juce::Colour cBg (0xffeef4f7), cFg (0xff1d1c15), cDim (0xff55636b), cLine (0xffcddbe2), cTrack (0xffb4c6cf), cHot (0xffe06a2e),
+                   cFill (0xff4b9cc8), cChev (0xff9fd3ec);
+const juce::Colour cOval[4] = { juce::Colour (0xff2f7fd1), juce::Colour (0xffe06a2e), juce::Colour (0xffd9828c), juce::Colour (0xff8f6bb8) };
+juce::Typeface::Ptr face (const char* d, int n) { return juce::Typeface::createSystemTypefaceFor (d, (size_t) n); }
 juce::Font fnt (float h, bool bold = false)
 {
-   #if JUCE_MAC
-    const juce::String face ("Helvetica Neue");
-   #elif JUCE_WINDOWS
-    const juce::String face ("Segoe UI");
-   #else
-    const juce::String face (juce::Font::getDefaultSansSerifFontName());
-   #endif
-    return juce::Font (juce::FontOptions (face, h, bold ? juce::Font::bold : juce::Font::plain));
+    static auto r = face (BinaryData::InterRegular_ttf, BinaryData::InterRegular_ttfSize);
+    static auto m = face (BinaryData::InterMedium_ttf, BinaryData::InterMedium_ttfSize);
+    return juce::Font (juce::FontOptions (bold ? m : r).withHeight (h));
+}
+juce::Font mono (float h, bool bold = false)
+{
+    static auto r = face (BinaryData::IBMPlexMonoRegular_ttf, BinaryData::IBMPlexMonoRegular_ttfSize);
+    static auto m = face (BinaryData::IBMPlexMonoMedium_ttf, BinaryData::IBMPlexMonoMedium_ttfSize);
+    return juce::Font (juce::FontOptions (bold ? m : r).withHeight (h));
+}
+/** the faltung parallelogram */
+juce::Path skew (juce::Rectangle<float> r, float k = 0.55f)
+{
+    const float d = r.getHeight() * k; juce::Path p;
+    p.startNewSubPath (r.getX() + d, r.getY()); p.lineTo (r.getRight() + d, r.getY()); p.lineTo (r.getRight(), r.getBottom()); p.lineTo (r.getX(), r.getBottom()); p.closeSubPath();
+    return p;
+}
+void chevrons (juce::Graphics& g, juce::Rectangle<float> b, int n, float alpha)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        const float w = b.getWidth() * 0.16f, h = b.getHeight() * 0.9f, d = h * 0.42f;
+        const float x = b.getX() + b.getWidth() * 0.12f + (float) i * b.getWidth() * 0.13f, y = b.getY() + b.getHeight() * 0.05f;
+        juce::Path c; c.startNewSubPath (x, y + h); c.lineTo (x + w, y + h); c.lineTo (x + w + d, y + h * 0.5f); c.lineTo (x + w, y); c.lineTo (x, y); c.lineTo (x + d, y + h * 0.5f); c.closeSubPath();
+        g.setColour (cChev.withAlpha (alpha * (i % 2 ? 1.0f : 0.75f))); g.fillPath (c);
+    }
+}
+void cube (juce::Graphics& g, float x, float y, float s, const juce::String& txt)
+{
+    auto P = [&] (float a, float b) { return juce::Point<float> (x + a * s, y + b * s); };
+    juce::Path t, l, r;
+    t.startNewSubPath (P (0, 30)); t.lineTo (P (52, 0)); t.lineTo (P (104, 30)); t.lineTo (P (52, 60)); t.closeSubPath();
+    l.startNewSubPath (P (0, 30)); l.lineTo (P (52, 60)); l.lineTo (P (52, 112)); l.lineTo (P (0, 82)); l.closeSubPath();
+    r.startNewSubPath (P (52, 60)); r.lineTo (P (104, 30)); r.lineTo (P (104, 82)); r.lineTo (P (52, 112)); r.closeSubPath();
+    g.setColour (juce::Colour (0xffffe15a)); g.fillPath (t);
+    g.setColour (juce::Colour (0xfff2c100)); g.fillPath (l);
+    g.setColour (juce::Colour (0xffd8a800)); g.fillPath (r);
+    g.setColour (juce::Colour (0xff2a2100)); g.setFont (fnt (13.0f * s * 1.6f, true));
+    g.drawText (txt, juce::Rectangle<float> (x + 18 * s, y + 20 * s, 68 * s, 20 * s), juce::Justification::centred);
 }
 juce::String U (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); }
 const char* kDown = " \xe2\x96\xbe";
@@ -68,26 +104,31 @@ struct Row : juce::Component
     {
         const float v = get ? get() : 0.0f; shown = v;
         const int h = getHeight(), w = getWidth();
-        g.setFont (fnt (11.0f)); g.setColour (cDim);
-        g.drawText (label, 0, 0, labelW, h, juce::Justification::centredLeft);
+        g.setFont (fnt (11.0f)); g.setColour (cFg.withAlpha (0.82f));
+        g.drawText (label.toLowerCase(), 0, 0, labelW, h, juce::Justification::centredLeft);
         juce::String txt = fmt ? fmt (v) : juce::String (v, 2);
-        g.setColour (cFg);
+        g.setColour (cFg); g.setFont (mono (10.0f));
         if (kind == F || kind == I)
         {
+            // thin rule · slanted fill · ink edge (the faltung slider)
             const int bx = labelW, bw = juce::jmax (4, w - labelW - valueW - 6), cy = h / 2;
-            g.setColour (cTrack); g.fillRect (bx, cy - 1, bw, 3);
+            g.setColour (cFg.withAlpha (0.3f)); g.fillRect ((float) bx, (float) cy, (float) bw, 1.0f);
             const float n = clamp01 ((v - lo) / (hi - lo)), zero = lo < 0 ? clamp01 (-lo / (hi - lo)) : 0.0f;
-            g.setColour (cFg);
             const float x0 = (float) bx + juce::jmin (n, zero) * (float) bw, x1 = (float) bx + juce::jmax (n, zero) * (float) bw;
-            g.fillRect (x0, (float) cy - 1.0f, x1 - x0, 3.0f);
-            g.fillRect ((float) bx + n * (float) bw - 1.0f, (float) cy - 5.0f, 2.0f, 11.0f);
-            g.drawText (txt, w - valueW, 0, valueW, h, juce::Justification::centredRight);
+            if (x1 - x0 > 0.5f) { g.setColour (cFill.withAlpha (gesture ? 1.0f : 0.85f)); g.fillPath (skew ({ x0, (float) cy - 3.5f, x1 - x0, 7.0f })); }
+            g.setColour (cFg); g.fillRect ((float) bx + n * (float) bw - 1.0f, (float) cy - 5.0f, 2.0f, 11.0f);
+            g.drawText (txt.toLowerCase(), w - valueW, 0, valueW, h, juce::Justification::centredRight);
         }
-        else if (kind == C) g.drawText (txt + U (kDown), labelW, 0, w - labelW, h, juce::Justification::centredRight);
+        else if (kind == C)
+        {
+            g.drawText (txt.toLowerCase(), labelW, 0, w - labelW, h, juce::Justification::centredRight);
+            g.setColour (cFg.withAlpha (0.3f)); g.fillRect ((float) labelW + 4.0f, (float) h - 2.0f, (float) (w - labelW - 4), 1.0f);
+        }
         else
         {
-            g.setColour (v > 0.5f ? cFg : cDim);
-            g.drawText (v > 0.5f ? U ("\xe2\x97\x8f") : U ("\xe2\x97\x8b"), labelW, 0, w - labelW, h, juce::Justification::centredRight);
+            const auto r = juce::Rectangle<float> ((float) w - 20.0f, (float) h * 0.5f - 4.5f, 14.0f, 9.0f);
+            if (v > 0.5f) { g.setColour (cFill); g.fillPath (skew (r)); }
+            g.setColour (cFg); g.strokePath (skew (r), juce::PathStrokeType (1.0f));
         }
     }
     void change (float v)
@@ -146,9 +187,9 @@ struct Section : juce::Component
     int wanted() const { return 22 + rows.size() * 16; }
     void paint (juce::Graphics& g) override
     {
-        g.setColour (cFg); g.setFont (fnt (10.0f, true).withExtraKerningFactor (0.08f));
-        g.drawText (title, 0, 0, getWidth(), 14, juce::Justification::centredLeft);
-        g.fillRect (0, 16, getWidth(), 1);
+        g.setColour (cFg); g.setFont (mono (10.5f, true));
+        g.drawText (title.toLowerCase(), 0, 0, getWidth(), 14, juce::Justification::centredLeft);
+        g.setColour (cFill.withAlpha (0.7f)); g.fillRect (0, 16, getWidth(), 1);
     }
     void resized() override
     {
@@ -163,10 +204,12 @@ struct Btn : juce::Component
     void paint (juce::Graphics& g) override
     {
         const bool on = isOn && isOn();
-        if (on) { g.setColour (cFg); g.fillRect (getLocalBounds()); }
-        else if (boxed) { g.setColour (cFg); g.drawRect (getLocalBounds(), 1); }
-        g.setColour (on ? cBg : cFg); g.setFont (fnt (10.5f).withExtraKerningFactor (0.06f));
-        g.drawText (text, getLocalBounds(), juce::Justification::centred);
+        const auto r = getLocalBounds().toFloat().reduced (5.0f, 1.0f).withX (2.0f).withWidth ((float) getWidth() - 4.0f - (float) getHeight() * 0.35f);
+        auto shape = skew (r, 0.35f);
+        if (on) { g.setColour (cFill); g.fillPath (shape); }
+        else if (boxed) { g.setColour (cFg); g.strokePath (shape, juce::PathStrokeType (1.0f)); }
+        g.setColour (cFg); g.setFont (mono (10.5f, on));
+        g.drawText (text.toLowerCase(), getLocalBounds(), juce::Justification::centred);
     }
     void mouseDown (const juce::MouseEvent& e) override { if (e.mods.isPopupMenu() && rightClick) rightClick(); else if (click) click(); repaint(); }
 };
@@ -286,7 +329,7 @@ public:
                         const float y = yOf (frame.freq[n]);
                         if (y < 0 || y >= (float) h) continue;
                         const float b = clamp01 ((20.0f * std::log10 (a) + 66.0f) / 60.0f);
-                        g.setColour ((b > 0.93f ? cHot : cFg).withAlpha (juce::jmin (1.0f, b * 1.1f)));
+                        g.setColour ((b > 0.93f ? cFg : cOval[(n / 6) % 4]).withAlpha (juce::jmin (1.0f, b * 1.1f)));
                         g.fillRect ((float) (w - 2), y - 0.6f, 2.0f, n < 24 ? 1.5f : 1.0f);
                     }
             }
@@ -296,15 +339,16 @@ public:
         {
             g.fillAll (cBg);
             if (img.isValid()) g.drawImageAt (img, 0, 0);
-            g.setFont (fnt (10.0f));
+            chevrons (g, getLocalBounds().toFloat(), 4, 0.16f);
+            g.setFont (mono (10.0f));
             for (float hz : { 100.0f, 1000.0f, 10000.0f })
             {
                 const float y = yOf (hz);
                 g.setColour (cLine); g.fillRect (0.0f, y, (float) getWidth(), 1.0f);
                 g.setColour (cDim.withAlpha (0.7f)); g.drawText (hz >= 1000 ? juce::String ((int) hz / 1000) + "k" : juce::String ((int) hz), 6, (int) y - 13, 40, 12, juce::Justification::left);
             }
-            g.setColour (cDim); g.setFont (fnt (10.0f).withExtraKerningFactor (0.08f));
-            g.drawText (juce::String ("PARTIALS ") + U ("\xc2\xb7 ") + (hzScale ? "Hz" : "oct"), getWidth() - 130, getHeight() - 20, 120, 12, juce::Justification::right);
+            g.setColour (cDim); g.setFont (mono (10.0f));
+            g.drawText (juce::String ("partials ") + U ("\xc2\xb7 ") + (hzScale ? "hz" : "oct"), getWidth() - 130, getHeight() - 20, 120, 12, juce::Justification::right);
             if (hover >= 0) g.drawText (hzStr (hover), getWidth() - 130, 8, 120, 12, juce::Justification::right);
         }
         void mouseMove (const juce::MouseEvent& e) override
@@ -399,12 +443,13 @@ public:
             for (int i = 0; i < (int) items.size(); ++i)
             {
                 const auto& it = items[(size_t) i]; const int y = i * 17;
-                if (it.kind == 0) { g.setColour (cDim); g.setFont (fnt (9.5f, true).withExtraKerningFactor (0.1f)); g.drawText (it.name, 0, y + 3, getWidth(), 14, juce::Justification::left); continue; }
+                if (it.kind == 0) { g.setColour (cFg); g.setFont (mono (10.0f, true)); g.drawText (it.name.toLowerCase(), 0, y + 3, getWidth(), 14, juce::Justification::left); continue; }
                 const bool sel = (it.kind == 2) == ed.selShape && it.index == ed.selIndex;
                 const bool active = it.kind == 1 ? d.tg[it.index].active() : false;
-                g.setFont (fnt (11.0f, sel)); g.setColour (sel ? cFg : cDim);
-                g.drawText (it.name, 0, y, getWidth() - 14, 17, juce::Justification::centredLeft);
-                if (active) { g.setColour (cFg); g.fillEllipse ((float) getWidth() - 10.0f, (float) y + 6.0f, 5.0f, 5.0f); }
+                if (sel) { g.setColour (cFill.withAlpha (0.85f)); g.fillPath (skew ({ 0.0f, (float) y + 2.0f, (float) getWidth() - 22.0f, 13.0f }, 0.35f)); }
+                g.setFont (fnt (11.0f, sel)); g.setColour (sel ? cFg : cFg.withAlpha (0.7f));
+                g.drawText (it.name.toLowerCase(), 6, y, getWidth() - 20, 17, juce::Justification::centredLeft);
+                if (active) { g.setColour (cFg); g.fillPath (skew ({ (float) getWidth() - 14.0f, (float) y + 5.0f, 8.0f, 6.0f })); }
             }
         }
         void mouseDown (const juce::MouseEvent& e) override
@@ -487,8 +532,8 @@ public:
                 if (x == 8) { line.startNewSubPath ((float) x, y); fill.startNewSubPath ((float) x, baseY); fill.lineTo ((float) x, y); } else { line.lineTo ((float) x, y); fill.lineTo ((float) x, y); }
             }
             fill.lineTo ((float) getWidth() - 8.0f, baseY); fill.closeSubPath();
-            g.setColour (cFg.withAlpha (0.13f)); g.fillPath (fill);
-            g.setColour (cFg); g.strokePath (line, juce::PathStrokeType (1.5f));
+            g.setColour (cFill.withAlpha (0.22f)); g.fillPath (fill);
+            g.setColour (cOval[0]); g.strokePath (line, juce::PathStrokeType (2.0f));
             const EnvDef* env = isEnv() ? &ed.proc.edit (ed.part).tg[ed.selIndex].env : nullptr;
             g.setFont (fnt (9.5f));
             for (int i = 0; i < (int) c->pts.size(); ++i)
@@ -639,7 +684,21 @@ public:
                 g.drawText ("drop a sound or a picture here", getLocalBounds(), juce::Justification::centred);
                 shown.reset(); return;
             }
-            if (img != shown || plane != shownPlane) { cache = img->toPicture (plane); shown = img; shownPlane = plane; }
+            if (img != shown || plane != shownPlane)
+            {
+                // the analysis picture, re-inked: pale field → blue → ink, like the rest of the window
+                cache = img->toPicture (plane).convertedToFormat (juce::Image::ARGB);
+                juce::Image::BitmapData bd (cache, juce::Image::BitmapData::readWrite);
+                for (int y = 0; y < cache.getHeight(); ++y)
+                    for (int x = 0; x < cache.getWidth(); ++x)
+                    {
+                        const auto c = bd.getPixelColour (x, y);
+                        const float b = c.getBrightness();
+                        const juce::Colour hue = c.getSaturation() > 0.2f ? cHot : cOval[0];
+                        bd.setPixelColour (x, y, b < 0.5f ? cBg.interpolatedWith (hue, b * 2.0f) : hue.interpolatedWith (cFg, (b - 0.5f) * 1.4f));
+                    }
+                shown = img; shownPlane = plane;
+            }
             g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
             g.drawImage (cache, getLocalBounds().toFloat());
             const float w = (float) getWidth(), h = (float) getHeight();
@@ -672,9 +731,9 @@ public:
         juce::String title; int count = 0; std::function<int (int)> get; std::function<juce::String (int)> name; std::function<void (int, int)> swap;
         void paint (juce::Graphics& g) override
         {
-            g.setColour (cFg); g.setFont (fnt (10.0f, true).withExtraKerningFactor (0.08f)); g.drawText (title, 0, 0, getWidth(), 14, juce::Justification::left); g.fillRect (0, 16, getWidth(), 1);
+            g.setColour (cFg); g.setFont (mono (10.5f, true)); g.drawText (title.toLowerCase(), 0, 0, getWidth(), 14, juce::Justification::left); g.setColour (cFill.withAlpha (0.7f)); g.fillRect (0, 16, getWidth(), 1);
             g.setFont (fnt (11.0f));
-            for (int i = 0; i < count; ++i) { g.setColour (cDim); g.drawText (juce::String (i + 1), 0, 21 + i * 16, 16, 16, juce::Justification::left); g.setColour (cFg); g.drawText (name (get (i)), 20, 21 + i * 16, getWidth() - 20, 16, juce::Justification::left); }
+            for (int i = 0; i < count; ++i) { g.setColour (cDim); g.drawText (juce::String (i + 1), 0, 21 + i * 16, 16, 16, juce::Justification::left); g.setColour (cFg); g.drawText (name (get (i)).toLowerCase(), 20, 21 + i * 16, getWidth() - 20, 16, juce::Justification::left); }
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
@@ -733,12 +792,13 @@ public:
             g.fillAll (cBg);
             g.setColour (cFg); g.fillRect (0, 44, BW, 1); g.fillRect (0, 580, BW, 1);
             g.setColour (cLine); for (int i = 1; i <= 5; ++i) g.fillRect (i * 196, 45, 1, 535);
-            g.setFont (fnt (17.0f)); g.setColour (cFg); g.drawText ("Partials", 20, 0, 100, 44, juce::Justification::centredLeft);
+            cube (g, 16.0f, 6.0f, 0.29f, "");
+            g.setFont (fnt (17.0f, true)); g.setColour (cFg); g.drawText ("partials", 52, 0, 90, 44, juce::Justification::centredLeft);
             // meter and counters
             const float l = clamp01 (ed.proc.meterL.load()), r = clamp01 (ed.proc.meterR.load());
             g.setColour (cTrack); g.fillRect (1340, 18, 80, 3); g.fillRect (1340, 24, 80, 3);
-            g.setColour (l > 0.98f ? cHot : cFg); g.fillRect (1340.0f, 18.0f, 80.0f * std::sqrt (l), 3.0f);
-            g.setColour (r > 0.98f ? cHot : cFg); g.fillRect (1340.0f, 24.0f, 80.0f * std::sqrt (r), 3.0f);
+            g.setColour (l > 0.98f ? cHot : cFill); g.fillPath (skew ({ 1340.0f, 17.0f, 80.0f * std::sqrt (l), 4.0f }));
+            g.setColour (r > 0.98f ? cHot : cFill); g.fillPath (skew ({ 1340.0f, 24.0f, 80.0f * std::sqrt (r), 4.0f }));
         }
     };
     Backdrop backdrop { *this };
@@ -869,7 +929,7 @@ public:
             r->labelW = 30; pageEnv.addAndMakeVisible (r); r->setBounds (x, 6, 46, 16); return r;
         };
         tog ("snap", &snap, 950); tog ("slide", &slide, 1006); tog ("lock", &freeze, 1062);
-        button (pageEnv, "options", [this] { curveOptions (nullptr); })->setBounds (1090, 4, 56, 20);
+        button (pageEnv, "options", [this] { curveOptions (nullptr); })->setBounds (1100, 4, 62, 20);
 
         envSec = section (pageEnv, "ENVELOPE");
         auto envPt = [this] (int i) -> Pt* { auto& c = td().env.c; return (int) c.pts.size() > i ? &c.pts[(size_t) i] : nullptr; };
@@ -1005,7 +1065,7 @@ public:
         artMenu->setVisible (art); artOn->setVisible (art); smoothRow->setVisible (art);
         envSec->setVisible (art && selIndex < TG::FirstMapping); lfoSec->setVisible (art && selIndex < TG::FirstMapping);
         proc.engine.vizPart.store (part);
-        selTitle.setText (selShape ? shapeDefs[selIndex].name : targetInfo[selIndex].name, juce::dontSendNotification);
+        selTitle.setText (juce::String (selShape ? shapeDefs[selIndex].name : targetInfo[selIndex].name).toLowerCase(), juce::dontSendNotification);
     }
     void setPart (int p) { part = p; layoutPages(); root.repaint(); }
 

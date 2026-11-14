@@ -49,11 +49,14 @@ juce_add_plugin(Partials
     LV2URI "urn:freakiepie:partials"
     COPY_PLUGIN_AFTER_BUILD ${PARTIALS_COPY_AFTER_BUILD})
 
+juce_add_binary_data(PartialsFonts SOURCES
+    Resources/fonts/Inter-Regular.ttf Resources/fonts/Inter-Medium.ttf
+    Resources/fonts/IBMPlexMono-Regular.ttf Resources/fonts/IBMPlexMono-Medium.ttf)
 target_sources(Partials PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
 set(PT_DEFS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0 JUCE_MODAL_LOOPS_PERMITTED=0 _USE_MATH_DEFINES=1)
 target_compile_definitions(Partials PUBLIC ${PT_DEFS})
 target_link_libraries(Partials
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE PartialsFonts juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
 
 juce_add_console_app(PartialsTest PRODUCT_NAME "PartialsTest")
@@ -62,4 +65,4 @@ target_compile_definitions(PartialsTest PRIVATE ${PT_DEFS} JucePlugin_Name="Part
     JucePlugin_IsSynth=1 JucePlugin_WantsMidiInput=1 JucePlugin_ProducesMidiOutput=0 JucePlugin_IsMidiEffect=0
     JucePlugin_ManufacturerCode=0x46726b70 JucePlugin_PluginCode=0x5072746c JucePlugin_VersionString="1.0.0"
     JucePlugin_Manufacturer="FreakiePie" JucePlugin_Desc="Partials" JucePlugin_VersionCode=0x10000 PARTIALS_TEST=1)
-target_link_libraries(PartialsTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+target_link_libraries(PartialsTest PRIVATE PartialsFonts juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)

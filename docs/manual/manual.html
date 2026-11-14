@@ -1,133 +1,139 @@
 <!doctype html><meta charset="utf-8"><title>Partials manual</title><style>
+@font-face{font-family:Inter;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/Inter-Regular.ttf");font-weight:400}
+@font-face{font-family:Inter;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/Inter-Medium.ttf");font-weight:600}
+@font-face{font-family:Plex;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/IBMPlexMono-Regular.ttf");font-weight:400}
+@font-face{font-family:Plex;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/IBMPlexMono-Medium.ttf");font-weight:600}
 *{box-sizing:border-box;margin:0;padding:0}
 @page{size:A4;margin:14mm 13mm}
-html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#121214}
-body{background:#121214;color:#e9e7e1;font:10.5pt/1.45 "Helvetica Neue",Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto;padding:28px 22px}
-header{border-bottom:1px solid #e9e7e1;padding-bottom:14px;margin-bottom:18px}header .t{font-size:34pt;font-weight:500}header .s{color:#8d8d90;font-size:12pt}
-h1{font-size:10pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;border-bottom:1px solid #e9e7e1;padding-bottom:4px;margin:30px 0 12px;break-after:avoid}
-h2{font-size:10.5pt;font-weight:700;margin:16px 0 6px;break-after:avoid}
-p{margin:0 0 10px;color:#d0cec8}b{color:#fff;font-weight:600}
-figure{break-inside:avoid;margin:0}figure.wide{margin:8px 0 14px}figure.wide img{width:100%;display:block;border:1px solid #2b2b2e}
-figcaption{color:#8d8d90;font-size:8.6pt;line-height:1.35;margin-top:4px}figcaption b{color:#e9e7e1}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#eef4f7}
+body{background:#eef4f7;color:#1d1c15;font:10pt/1.5 Inter,Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto;padding:28px 22px}
+header{position:relative;border-bottom:1px solid #1d1c15;padding:0 0 14px 64px;margin-bottom:18px;min-height:56px}
+header:before{content:"";position:absolute;left:0;top:2px;width:48px;height:52px;background:no-repeat center/contain url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 112'><polygon points='0,30 52,0 104,30 52,60' fill='%23ffe15a'/><polygon points='0,30 52,60 52,112 0,82' fill='%23f2c100'/><polygon points='52,60 104,30 104,82 52,112' fill='%23d8a800'/></svg>")}
+header .t{font-size:30pt;font-weight:600;text-transform:lowercase}header .s{color:#2f6f93;font-size:11.5pt;text-transform:lowercase}
+h1{font:600 10.5pt Plex;text-transform:lowercase;border-bottom:1px solid #4b9cc8;padding-bottom:4px;margin:30px 0 12px;break-after:avoid}
+h2{font:600 9.8pt Plex;text-transform:lowercase;margin:16px 0 6px;break-after:avoid}
+p{margin:0 0 10px;color:#2b2f30}b{color:#1d1c15;font-weight:600}
+figure{break-inside:avoid;margin:0}figure.wide{margin:8px 0 14px}figure.wide img{width:100%;display:block;border:1px solid #cddbe2}
+figcaption{color:#55636b;font-size:8.4pt;line-height:1.35;margin-top:4px}figcaption b{color:#1d1c15}
 .grid{display:grid;gap:12px 14px;margin:8px 0 14px}.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:repeat(3,1fr)}.c4{grid-template-columns:repeat(4,1fr)}
-.im{position:relative;border:1px solid #2b2b2e}.im img{width:100%;display:block}
-.ax,.ay{position:absolute;font-style:normal;font-size:6.5pt;color:#6e6e72;letter-spacing:.06em}.ax{right:4px;bottom:2px}.ay{left:4px;top:2px}
-table{width:100%;border-collapse:collapse;margin:6px 0 14px}td{vertical-align:top;padding:4px 0;border-bottom:1px solid #2b2b2e;color:#d0cec8;font-size:9.6pt}
-td:first-child{width:30%;color:#fff;padding-right:14px}tr{break-inside:avoid}
+.im{position:relative;border:1px solid #cddbe2}.im img{width:100%;display:block}
+.ax,.ay{position:absolute;font:6.5pt Plex;font-style:normal;color:#55636b}.ax{right:4px;bottom:2px}.ay{left:4px;top:2px}
+table{width:100%;border-collapse:collapse;margin:6px 0 14px}td{vertical-align:top;padding:3px 0;border-bottom:1px solid #cddbe2;color:#2b2f30;font-size:9.2pt}
+td:first-child{width:30%;font:600 8.6pt Plex;color:#1d1c15;padding-right:14px;text-transform:lowercase}tr{break-inside:avoid}
 </style><header><div class="t">Partials</div><div class="s">An additive synthesizer you can see. Manual.</div></header>
 <p>Partials builds every note out of up to 516 sine waves, called partials. Almost everything in the top half of the window changes those partials before they are turned into sound: how loud each one is, where it sits in pitch, and how that changes over time. The display on the right shows them as you play.</p>
 <p><b>How to read the pictures in this manual.</b> Every dark picture was made by the synth itself. Time runs left to right, pitch runs bottom to top, and each horizontal line is one partial. In most of them one note is held while one control is moved from one end to the other, so you can see what that control does. Brightness is tilted a little towards the top so high partials stay visible.</p>
 <figure class="wide"><img src="img/tab0.png"><figcaption>The whole window. Top: preset, parts A and B, mix, main LFO amount, volume. Middle: the controls in five columns and the partial display. Bottom: four pages (ENV, IMG, FX, ADV).</figcaption></figure>
 <h1>Getting around</h1>
-<table><tr><td>A bar</td><td>Drag sideways or up and down. Hold Shift for fine steps. Double-click to reset. The mouse wheel also works.</td></tr><tr><td>A value with &#9662;</td><td>A menu. Click it.</td></tr><tr><td>&#9679; / &#9675;</td><td>A switch. Click it.</td></tr><tr><td>Right-click a bar</td><td>Reset, copy the value to the other part, open its articulator (envelope, LFO, mappings) in the ENV page, or quick-map it to X, Y or Z.</td></tr><tr><td>Partial display</td><td>Shows the newest note of the part you are looking at. Click it to switch between an octave scale and a Hz scale. Hover to read a frequency.</td></tr><tr><td>A and B</td><td>Two complete synths. The A / B buttons choose which one the controls show. "A on" / "B on" switch them on. "mix" balances them. "link" makes every edit apply to both.</td></tr><tr><td>Preset menu</td><td>Built-in presets, your saved ones (in Music / Partials / Presets), save, open, and copy / paste of a whole preset or one part.</td></tr><tr><td>Window size</td><td>Drag the bottom-right corner. Everything scales.</td></tr></table>
+<table><tr><td>A bar</td><td>Drag sideways or up and down. Hold Shift for fine steps. Double-click to reset. The mouse wheel also works.</td></tr><tr><td>A value with &#9662;</td><td>A menu. Click it.</td></tr><tr><td>slanted box</td><td>A switch: filled = on. Click it.</td></tr><tr><td>Right-click a bar</td><td>Reset, copy the value to the other part, open its articulator (envelope, LFO, mappings) in the ENV page, or quick-map it to X, Y or Z.</td></tr><tr><td>Partial display</td><td>Shows the newest note of the part you are looking at. Click it to switch between an octave scale and a Hz scale. Hover to read a frequency.</td></tr><tr><td>A and B</td><td>Two complete synths. The A / B buttons choose which one the controls show. "A on" / "B on" switch them on. "mix" balances them. "link" makes every edit apply to both.</td></tr><tr><td>Preset menu</td><td>Built-in presets, your saved ones (in Music / Partials / Presets), save, open, and copy / paste of a whole preset or one part.</td></tr><tr><td>Window size</td><td>Drag the bottom-right corner. Everything scales.</td></tr></table>
 <h1>Timbre</h1>
 <figure class="wide"><img src="img/main.png"><figcaption>The five columns of controls and the partial display.</figcaption></figure>
 <p>The two small pictures at the top left are timbre 1 and timbre 2: the starting waveforms. Timbre 1 starts as a saw (every partial, each one quieter than the last), timbre 2 as a square (every other partial). Click a picture to draw its partials in the ENV page. Right-click it for saw, square, triangle, sine, random, or to analyze a single-cycle wave file. You can also drop a wave file on it.</p>
 <div class="grid c3 sc">
-<figure><div class="im"><img src="fig/w_saw.png"></div><figcaption><b>Timbre 1.</b> The default saw.</figcaption></figure>
-<figure><div class="im"><img src="fig/w_square.png"></div><figcaption><b>Timbre 2.</b> The default square.</figcaption></figure>
-<figure><div class="im"><img src="fig/w_phase_rand.png"></div><figcaption><b>rand fully left.</b> Same partials, each with a random phase: same tone, different wave.</figcaption></figure>
+<figure><div class="im"><img src="figl/w_saw.png"></div><figcaption><b>Timbre 1.</b> The default saw.</figcaption></figure>
+<figure><div class="im"><img src="figl/w_square.png"></div><figcaption><b>Timbre 2.</b> The default square.</figcaption></figure>
+<figure><div class="im"><img src="figl/w_phase_rand.png"></div><figcaption><b>rand fully left.</b> Same partials, each with a random phase: same tone, different wave.</figcaption></figure>
 </div>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/timbre_mix.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>mix</b> 0% to 100%. Fades from timbre 1 to timbre 2: every second partial disappears.</figcaption></figure>
-<figure><div class="im"><img src="fig/clip_high.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>clip, mode High threshold</b> 100% down to 10%. A ceiling comes down on the loudest partials, so the low ones are pushed down first.</figcaption></figure>
-<figure><div class="im"><img src="fig/clip_low.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>clip, mode Soft low threshold</b> 100% down to 0%. The opposite: only partials above the threshold survive, so the sound opens from the bottom up.</figcaption></figure>
-<figure><div class="im"><img src="fig/prot.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>prot</b> 0% to 100%, with a high-pass filter removing the low end. Protection brings the fundamental back.</figcaption></figure>
-<figure><div class="im"><img src="fig/subs_around.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>sub 1, sub 2, sub 3 (Around)</b> Switched on one after another. Sub 1 is an octave below the note; 2 and 3 are its 3rd and 5th harmonics.</figcaption></figure>
-<figure><div class="im"><img src="fig/subs_below.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>sub 1, sub 2, sub 3 (Below)</b> Switched on one after another: one, two and three octaves below the note.</figcaption></figure>
+<figure><div class="im"><img src="figl/timbre_mix.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>mix</b> 0% to 100%. Fades from timbre 1 to timbre 2: every second partial disappears.</figcaption></figure>
+<figure><div class="im"><img src="figl/clip_high.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>clip, mode High threshold</b> 100% down to 10%. A ceiling comes down on the loudest partials, so the low ones are pushed down first.</figcaption></figure>
+<figure><div class="im"><img src="figl/clip_low.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>clip, mode Soft low threshold</b> 100% down to 0%. The opposite: only partials above the threshold survive, so the sound opens from the bottom up.</figcaption></figure>
+<figure><div class="im"><img src="figl/prot.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>prot</b> 0% to 100%, with a high-pass filter removing the low end. Protection brings the fundamental back.</figcaption></figure>
+<figure><div class="im"><img src="figl/subs_around.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>sub 1, sub 2, sub 3 (Around)</b> Switched on one after another. Sub 1 is an octave below the note; 2 and 3 are its 3rd and 5th harmonics.</figcaption></figure>
+<figure><div class="im"><img src="figl/subs_below.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>sub 1, sub 2, sub 3 (Below)</b> Switched on one after another: one, two and three octaves below the note.</figcaption></figure>
 </div>
 <table><tr><td>Blend menu</td><td>How the two timbres combine: Fade, Subtract, Multiply, Maximum, Minimum, or Pluck (timbre 2 appears as the pluck dies away).</td></tr><tr><td>phase</td><td>Where in the wave each note starts, 0 to 360&deg;.</td></tr><tr><td>rand</td><td>Left: each partial gets its own random phase. Right: the whole wave starts at a random point on each note.</td></tr><tr><td>env / vol</td><td>Volume before the partials become sound (env) and after (vol).</td></tr><tr><td>gain, gain mode</td><td>Auto-gain. Evens out the level when shaping removes or adds a lot. Absolute aims at a fixed level, Relative at the level before shaping.</td></tr><tr><td>fx dry</td><td>How much of this part skips the effects. 0% is all through the effects, 100% all dry. Negative values flip the dry signal.</td></tr><tr><td>VELOCITY</td><td>What key velocity does: volume, skipping part of the attack, attack speed, release length.</td></tr></table>
 <h1>Pitch, glide, unison</h1>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/detune.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>detune x</b> 1.000 to 2.000. The fundamental stays put while every partial above it spreads away. The note turns bell-like.</figcaption></figure>
-<figure><div class="im"><img src="fig/octmode.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Distribution: oct</b> Partials are spaced in equal musical steps instead of harmonics; detune x goes 1 to 6 and widens the steps.</figcaption></figure>
-<figure><div class="im"><img src="fig/vibrato.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>vibrato</b> 0 to 100 cents at 4 Hz.</figcaption></figure>
-<figure><div class="im"><img src="fig/unison.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>UNISON pitch, order 7</b> 0% to 100%. Seven copies of the note drift apart in pitch; each line fans out into a band.</figcaption></figure>
-<figure><div class="im"><img src="fig/porta.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>portamento</b> Three separate notes. Each new note slides in from the previous one.</figcaption></figure>
-<figure><div class="im"><img src="fig/legato.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>legato</b> One held note; two overlapping notes bend it up and it returns when they are released.</figcaption></figure>
-<figure><div class="im"><img src="fig/strum.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>STRUM time</b> A five-note chord pressed at once. The notes start one after another.</figcaption></figure>
+<figure><div class="im"><img src="figl/detune.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>detune x</b> 1.000 to 2.000. The fundamental stays put while every partial above it spreads away. The note turns bell-like.</figcaption></figure>
+<figure><div class="im"><img src="figl/octmode.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Distribution: oct</b> Partials are spaced in equal musical steps instead of harmonics; detune x goes 1 to 6 and widens the steps.</figcaption></figure>
+<figure><div class="im"><img src="figl/vibrato.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>vibrato</b> 0 to 100 cents at 4 Hz.</figcaption></figure>
+<figure><div class="im"><img src="figl/unison.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>UNISON pitch, order 7</b> 0% to 100%. Seven copies of the note drift apart in pitch; each line fans out into a band.</figcaption></figure>
+<figure><div class="im"><img src="figl/porta.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>portamento</b> Three separate notes. Each new note slides in from the previous one.</figcaption></figure>
+<figure><div class="im"><img src="figl/legato.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>legato</b> One held note; two overlapping notes bend it up and it returns when they are released.</figcaption></figure>
+<figure><div class="im"><img src="figl/strum.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>STRUM time</b> A five-note chord pressed at once. The notes start one after another.</figcaption></figure>
 </div>
 <table><tr><td>freq x, freq /</td><td>Multiply and divide the pitch. 1/2 is an octave down, 2/1 an octave up.</td></tr><tr><td>pitch</td><td>Fine pitch, two octaves either way. "env" scales the pitch envelope.</td></tr><tr><td>GLIDE time</td><td>Left of centre: milliseconds (up to 1.5 s). Right: steps of the host tempo. "limit": legato only bends within this distance; portamento never slides further than this.</td></tr><tr><td>logarithmic / variable time / velocity</td><td>Curved slide; longer slides for bigger jumps; harder notes slide faster.</td></tr><tr><td>UNISON order</td><td>1 to 9 copies. "pan" spreads them left and right, "phase" at 100% (blur) gives each copy random phases, lower values space them evenly, "alt" flips every second copy in the right channel for extra width.</td></tr><tr><td>Unison type</td><td>Classic (wide), Uniform (even), Blurred (drifting), Random, Hz (same spread in Hz for every partial).</td></tr><tr><td>STRUM tension</td><td>Left: the notes speed up through the chord. Right: they slow down. The menu sets the direction: Up, Down, Alt, Random.</td></tr></table>
 <h1>Filters</h1>
 <p>Two filters. They work on the partials, so they add nothing of their own: a partial is simply made louder or quieter. Each picture below holds one note while <b>freq</b> is swept from high to low.</p>
 <div class="grid c3">
-<figure><div class="im"><img src="fig/filt_crude_lp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Crude low pass</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/filt_classic_lp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic low pass</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/filt_hp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic high pass</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/filt_bp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic band pass</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/filt_stop.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Band stop</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/filt_phaser.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Phaser</b> A row of notches.</figcaption></figure>
+<figure><div class="im"><img src="figl/filt_crude_lp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Crude low pass</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/filt_classic_lp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic low pass</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/filt_hp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic high pass</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/filt_bp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic band pass</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/filt_stop.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Band stop</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/filt_phaser.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Phaser</b> A row of notches.</figcaption></figure>
 </div>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/filt_width.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>width</b> 100% to 0%, cutoff fixed. Wide is a gentle slope, narrow a sharp edge.</figcaption></figure>
-<figure><div class="im"><img src="fig/filt_kb.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>kb at 100%</b> Four notes an octave apart. The cutoff follows the note, so every note keeps the same number of partials.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_amount.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>res</b> 0% to 100%. A bump grows at the cutoff.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_offset.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>offset</b> -2400 to +2400 cents. The bump moves away from the cutoff, below it and above it.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_osc.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>osc</b> Adds a sine at the resonance. Here it follows the cutoff down.</figcaption></figure>
+<figure><div class="im"><img src="figl/filt_width.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>width</b> 100% to 0%, cutoff fixed. Wide is a gentle slope, narrow a sharp edge.</figcaption></figure>
+<figure><div class="im"><img src="figl/filt_kb.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>kb at 100%</b> Four notes an octave apart. The cutoff follows the note, so every note keeps the same number of partials.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_amount.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>res</b> 0% to 100%. A bump grows at the cutoff.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_offset.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>offset</b> -2400 to +2400 cents. The bump moves away from the cutoff, below it and above it.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_osc.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>osc</b> Adds a sine at the resonance. Here it follows the cutoff down.</figcaption></figure>
 </div>
 <h2>Resonance types</h2>
 <p>Same sweep each time, res at 80%.</p>
 <div class="grid c4">
-<figure><div class="im"><img src="fig/res_lowpass.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Low pass</b> A peak, then a dip.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_classic.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic</b> One narrow peak.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_cuberdon.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Cuberdon</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/res_pedestal.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Pedestal</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/res_sedge.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Sedge hat</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/res_wide.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Wide bump</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/res_double.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Double cone</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/res_well.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Well</b> A cut with a peak either side.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_wormhole.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Wormhole</b> The same, tighter.</figcaption></figure>
-<figure><div class="im"><img src="fig/res_noise.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Noise</b> Partials near the cutoff flicker.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_lowpass.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Low pass</b> A peak, then a dip.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_classic.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic</b> One narrow peak.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_cuberdon.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Cuberdon</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/res_pedestal.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Pedestal</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/res_sedge.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Sedge hat</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/res_wide.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Wide bump</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/res_double.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Double cone</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/res_well.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Well</b> A cut with a peak either side.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_wormhole.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Wormhole</b> The same, tighter.</figcaption></figure>
+<figure><div class="im"><img src="figl/res_noise.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Noise</b> Partials near the cutoff flicker.</figcaption></figure>
 </div>
 <table><tr><td>env</td><td>How far the filter-frequency envelope moves the cutoff, either way. Nothing happens until that envelope is switched on (right-click freq, Edit articulator).</td></tr><tr><td>r.width</td><td>Width of the resonance bump. "adaptive res" keeps it sounding the same up and down the keyboard.</td></tr><tr><td>scale, res scale</td><td>Whether filter and resonance are measured in octaves or in Hz.</td></tr><tr><td>adaptive env</td><td>Shortens the filter envelope for high notes.</td></tr><tr><td>FILTERS 1 &amp; 2 mix</td><td>Right: filter 1 feeds filter 2 (series). Centre: filter 1 only. Left: both side by side, ending with filter 2 only.</td></tr><tr><td>eq</td><td>How much of the Global EQ graph is applied. Draw it in the ENV page (Shaping, Global EQ).</td></tr><tr><td>Custom shape 1 / 2</td><td>Draw your own filter or resonance curve in the ENV page.</td></tr></table>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/eq.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>eq</b> 0% to 100% with a dip and a peak drawn in Global EQ. The EQ stays at fixed pitches whatever note you play.</figcaption></figure>
+<figure><div class="im"><img src="figl/eq.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>eq</b> 0% to 100% with a dip and a peak drawn in Global EQ. The EQ stays at fixed pitches whatever note you play.</figcaption></figure>
 </div>
 <h1>Blur and pluck</h1>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/blur_harm.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>BLUR harm</b> 0% to 100% on a square. Level spills from each partial into the empty ones next to it.</figcaption></figure>
-<figure><div class="im"><img src="fig/blur_time.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>BLUR attack and decay</b> A moving phaser, with time blur switched on part-way through. Changes are smeared in time.</figcaption></figure>
-<figure><div class="im"><img src="fig/pluck.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PLUCK time 45%</b> Three notes. High partials die first, like a plucked string.</figcaption></figure>
-<figure><div class="im"><img src="fig/pluck_time.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PLUCK time</b> The same note at 20%, 45% and 70%.</figcaption></figure>
+<figure><div class="im"><img src="figl/blur_harm.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>BLUR harm</b> 0% to 100% on a square. Level spills from each partial into the empty ones next to it.</figcaption></figure>
+<figure><div class="im"><img src="figl/blur_time.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>BLUR attack and decay</b> A moving phaser, with time blur switched on part-way through. Changes are smeared in time.</figcaption></figure>
+<figure><div class="im"><img src="figl/pluck.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PLUCK time 45%</b> Three notes. High partials die first, like a plucked string.</figcaption></figure>
+<figure><div class="im"><img src="figl/pluck_time.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PLUCK time</b> The same note at 20%, 45% and 70%.</figcaption></figure>
 </div>
 <table><tr><td>top, bottom</td><td>Top tension limits how far blur spreads upwards. Bottom sets how loud the blurred partials are.</td></tr><tr><td>blur decay</td><td>Gives the pluck a slower, softer tail.</td></tr><tr><td>Pluck shape</td><td>In the ENV page: which partials die fastest.</td></tr></table>
 <h1>Phaser</h1>
 <p>A moving pattern of notches. Each picture is one held note with the phaser sweeping.</p>
 <div class="grid c3">
-<figure><div class="im"><img src="fig/ph_classic.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_triangle.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Triangle</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_eggs.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Eggs</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_deep.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Deep</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_deeper.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Deeper</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_condom.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Condom</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_twins.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Twins</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_cascade.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Cascade</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/ph_box.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Box</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_classic.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Classic</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_triangle.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Triangle</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_eggs.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Eggs</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_deep.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Deep</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_deeper.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Deeper</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_condom.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Condom</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_twins.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Twins</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_cascade.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Cascade</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/ph_box.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Box</b> </figcaption></figure>
 </div>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/ph_width.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>width</b> 0% to 100%, not moving. The notches go from close together to far apart.</figcaption></figure>
-<figure><div class="im"><img src="fig/ph_offset.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>offset</b> 0% to 100%, not moving. Slides the pattern by hand.</figcaption></figure>
+<figure><div class="im"><img src="figl/ph_width.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>width</b> 0% to 100%, not moving. The notches go from close together to far apart.</figcaption></figure>
+<figure><div class="im"><img src="figl/ph_offset.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>offset</b> 0% to 100%, not moving. Slides the pattern by hand.</figcaption></figure>
 </div>
 <table><tr><td>speed</td><td>Centre is still. Right sweeps up, left sweeps down; further out is faster. Shown as the number of steps one sweep takes.</td></tr><tr><td>kb</td><td>Shifts the pattern with the note.</td></tr><tr><td>scale</td><td>Notches spaced in octaves, in Hz, or by harmonic number.</td></tr><tr><td>width lfo</td><td>Lets a slow LFO move the width.</td></tr><tr><td>freq / custom</td><td>Freq bends the pitch of the partials with the Phaser shape graph; custom uses that graph as the notch shape.</td></tr></table>
 <h1>Prism and harmonizer</h1>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/prism_add.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PRISM amount, Add</b> -100% to +100%. Partials between the octaves are pushed off their places; the middle of the picture is 0%.</figcaption></figure>
-<figure><div class="im"><img src="fig/prism_mul.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PRISM amount, Multiply</b> The same, but the shift grows towards the top.</figcaption></figure>
-<figure><div class="im"><img src="fig/hz_shift_plus.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>HARMONIZER shift step, +</b> Step 1 to 8. Copies of the sound are laid on at multiples of the step; watch which partials brighten.</figcaption></figure>
-<figure><div class="im"><img src="fig/hz_shift_x.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>HARMONIZER shift step, x</b> Step 1 to 8 in multiply mode. The copies spread out faster.</figcaption></figure>
-<figure><div class="im"><img src="fig/hz_gap.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>HARMONIZER gap step</b> Step 1 to 8. Only every n-th partial is copied and the ones between are turned down.</figcaption></figure>
+<figure><div class="im"><img src="figl/prism_add.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PRISM amount, Add</b> -100% to +100%. Partials between the octaves are pushed off their places; the middle of the picture is 0%.</figcaption></figure>
+<figure><div class="im"><img src="figl/prism_mul.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>PRISM amount, Multiply</b> The same, but the shift grows towards the top.</figcaption></figure>
+<figure><div class="im"><img src="figl/hz_shift_plus.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>HARMONIZER shift step, +</b> Step 1 to 8. Copies of the sound are laid on at multiples of the step; watch which partials brighten.</figcaption></figure>
+<figure><div class="im"><img src="figl/hz_shift_x.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>HARMONIZER shift step, x</b> Step 1 to 8 in multiply mode. The copies spread out faster.</figcaption></figure>
+<figure><div class="im"><img src="figl/hz_gap.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>HARMONIZER gap step</b> Step 1 to 8. Only every n-th partial is copied and the ones between are turned down.</figcaption></figure>
 </div>
 <table><tr><td>by level</td><td>Prism moves loud partials more (On) or quiet ones more (Inverted).</td></tr><tr><td>amount, width, strength</td><td>How much harmonizer, how high up it reaches, how strong the copies are.</td></tr><tr><td>offset</td><td>Moves the shift or gap pattern up in octaves.</td></tr></table>
 <h1>The ENV page</h1>
 <figure class="wide"><img src="img/page0.png"><figcaption>Left: the list of targets. Middle: the line editor. Right: envelope and LFO settings for the chosen target.</figcaption></figure>
 <p>This is where things move. Pick a target on the left, pick a <b>part</b> (Envelope, LFO, or one of the mappings), switch it <b>on</b>, and draw.</p>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/env_volume.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Volume, Envelope</b> Slow attack, decay to a lower level, release after the key is let go.</figcaption></figure>
-<figure><div class="im"><img src="fig/env_filter.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Filter 1 frequency, Envelope</b> Two notes. The cutoff jumps up and falls back each time.</figcaption></figure>
-<figure><div class="im"><img src="fig/lfo_filter.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Filter 1 frequency, LFO</b> The cutoff moves up and down on its own.</figcaption></figure>
-<figure><div class="im"><img src="fig/lfo_pitch.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Pitch, LFO with tension 100%</b> A square LFO: the pitch jumps between two notes.</figcaption></figure>
-<figure><div class="im"><img src="fig/map_key.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Filter 1 frequency, Keyboard mapping</b> Four notes. A rising line makes higher notes brighter.</figcaption></figure>
-<figure><div class="im"><img src="fig/arp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Volume envelope with arpeggiator breaks</b> A held four-note chord. Each marked point passes the sound to the next note up.</figcaption></figure>
+<figure><div class="im"><img src="figl/env_volume.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Volume, Envelope</b> Slow attack, decay to a lower level, release after the key is let go.</figcaption></figure>
+<figure><div class="im"><img src="figl/env_filter.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Filter 1 frequency, Envelope</b> Two notes. The cutoff jumps up and falls back each time.</figcaption></figure>
+<figure><div class="im"><img src="figl/lfo_filter.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Filter 1 frequency, LFO</b> The cutoff moves up and down on its own.</figcaption></figure>
+<figure><div class="im"><img src="figl/lfo_pitch.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Pitch, LFO with tension 100%</b> A square LFO: the pitch jumps between two notes.</figcaption></figure>
+<figure><div class="im"><img src="figl/map_key.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Filter 1 frequency, Keyboard mapping</b> Four notes. A rising line makes higher notes brighter.</figcaption></figure>
+<figure><div class="im"><img src="figl/arp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Volume envelope with arpeggiator breaks</b> A held four-note chord. Each marked point passes the sound to the next note up.</figcaption></figure>
 </div>
 <h2>The three kinds of target</h2>
 <table><tr><td>Articulation</td><td>Things that can move during a note: volume, panning, filter frequency, pitch, phaser, prism and so on. Each has an envelope, an LFO and nine mappings.</td></tr><tr><td>Mapping</td><td>Things set per note: envelope attack / decay / release scales, LFO speed and amount, unison phase, predelay. Mappings only.</td></tr><tr><td>Shaping</td><td>One graph each: the partials of timbre 1 and 2, their phases, EQs, custom filter and resonance shapes, pluck shape, masks that keep an effect away from part of the range.</td></tr></table>
@@ -141,10 +147,10 @@ td:first-child{width:30%;color:#fff;padding-right:14px}tr{break-inside:avoid}
 <figure class="wide"><img src="img/page1.png"><figcaption>A picture loaded as sound. The red line is the start position; a white line shows where the newest note is playing.</figcaption></figure>
 <p>Drop a sound file or a picture on the window. A <b>sound</b> is taken apart into partials and can then be played at any speed and pitch (resynthesis). A <b>picture</b> is played directly: left to right is time, bottom to top is partial 1 to 516, brightness is level.</p>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/img_source.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>The picture</b> A random cloud (options, Generate random cloud).</figcaption></figure>
-<figure><div class="im"><img src="fig/img_cloud.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Played</b> The same picture as sound, at speed 200%.</figcaption></figure>
-<figure><div class="im"><img src="fig/img_speed.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>speed</b> +200% then -200% with ping pong looping: forwards, then backwards.</figcaption></figure>
-<figure><div class="im"><img src="fig/img_formant.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>formant</b> -600 to +600 cents with speed 0. The picture slides up through the partials while the pitch stays put.</figcaption></figure>
+<figure><div class="im"><img src="figl/img_source.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>The picture</b> A random cloud (options, Generate random cloud).</figcaption></figure>
+<figure><div class="im"><img src="figl/img_cloud.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Played</b> The same picture as sound, at speed 200%.</figcaption></figure>
+<figure><div class="im"><img src="figl/img_speed.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>speed</b> +200% then -200% with ping pong looping: forwards, then backwards.</figcaption></figure>
+<figure><div class="im"><img src="figl/img_formant.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>formant</b> -600 to +600 cents with speed 0. The picture slides up through the partials while the pitch stays put.</figcaption></figure>
 </div>
 <table><tr><td>Click in the image</td><td>Sets the start position (time). Shift-drag selects a stretch. Ctrl-drag or Cmd-drag sets the loop region.</td></tr><tr><td>speed, coarse</td><td>Playback speed, backwards when negative; coarse multiplies it up to x64 or down to almost stopped.</td></tr><tr><td>smooth</td><td>How gently a moved start position is followed. Right of centre, big jumps are instant.</td></tr><tr><td>looping</td><td>One-shot, Loop, Ping pong.</td></tr><tr><td>sharp</td><td>For sounds: puts the partials back in step at each attack so transients stay crisp.</td></tr><tr><td>LEVEL scale, mix</td><td>Loudness of the picture; at mix 0% the picture is ignored and you hear the plain timbre.</td></tr><tr><td>FREQUENCY scale, mode</td><td>How strongly, and how, the frequency plane bends the partials: by octaves, Hz, wide Hz, or as unison detune.</td></tr><tr><td>curve</td><td>How one column blends into the next: Block, Cap, Bell, Linear, Cubic, Rise, Fall.</td></tr><tr><td>plane</td><td>Look at the level picture (Gain), the pitch-bend picture (Freq), or both.</td></tr><tr><td>options</td><td>Analyze audio, open picture, high precision analysis (516 bands, tuned to the sound, instead of 255), convert to image synthesis, save as PNG, loop region, map slices to keys, time envelopes, random cloud, degrade, crossfade, crop, invert, flip.</td></tr></table>
 <h1>The FX page</h1>
@@ -152,35 +158,35 @@ td:first-child{width:30%;color:#fff;padding-right:14px}tr{break-inside:avoid}
 <h2>Distortion</h2>
 <p>A sine wave through each type at amount 60%.</p>
 <div class="grid c4 sc">
-<figure><div class="im"><img src="fig/dist_off.png"></div><figcaption><b>Off.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_classic.png"></div><figcaption><b>Classic.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_hill.png"></div><figcaption><b>Hill.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_flathat.png"></div><figcaption><b>Flat hat.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_cube.png"></div><figcaption><b>Cube.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_log.png"></div><figcaption><b>Log.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_softsat.png"></div><figcaption><b>Softsat.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_rubber.png"></div><figcaption><b>Rubber.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_ribbon.png"></div><figcaption><b>Ribbon.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_sincrush.png"></div><figcaption><b>Sincrush.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_bitcrush.png"></div><figcaption><b>Bitcrush.</b> </figcaption></figure>
-<figure><div class="im"><img src="fig/dist_bitjam.png"></div><figcaption><b>Bitjam.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_off.png"></div><figcaption><b>Off.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_classic.png"></div><figcaption><b>Classic.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_hill.png"></div><figcaption><b>Hill.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_flathat.png"></div><figcaption><b>Flat hat.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_cube.png"></div><figcaption><b>Cube.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_log.png"></div><figcaption><b>Log.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_softsat.png"></div><figcaption><b>Softsat.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_rubber.png"></div><figcaption><b>Rubber.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_ribbon.png"></div><figcaption><b>Ribbon.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_sincrush.png"></div><figcaption><b>Sincrush.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_bitcrush.png"></div><figcaption><b>Bitcrush.</b> </figcaption></figure>
+<figure><div class="im"><img src="figl/dist_bitjam.png"></div><figcaption><b>Bitjam.</b> </figcaption></figure>
 </div>
 <table><tr><td>asym</td><td>Up: lopsided. Down: lopsided in opposite directions left and right.</td></tr><tr><td>mix</td><td>50% is distorted only, 0% an even blend, 100% clean. Negative flips it.</td></tr><tr><td>high cut</td><td>Softens the result.</td></tr></table>
 <h2>Chorus, delay, reverb, compression</h2>
 <div class="grid c3">
-<figure><div class="im"><img src="fig/fx_chorus.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Chorus, order 5</b> Each partial is smeared into a slowly moving band.</figcaption></figure>
-<figure><div class="im"><img src="fig/fx_delay.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Delay</b> A short note and its echoes.</figcaption></figure>
-<figure><div class="im"><img src="fig/fx_delay_damp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Delay with fb damping</b> Each echo is filtered again, so they get duller.</figcaption></figure>
-<figure><div class="im"><img src="fig/fx_reverb.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Reverb, Flat</b> A short note and its tail.</figcaption></figure>
-<figure><div class="im"><img src="fig/fx_reverb_warm.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Reverb, Warmer</b> The low end rings longest.</figcaption></figure>
-<figure><div class="im"><img src="fig/fx_reverb_bright.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Reverb, Brighter</b> The low end dies first.</figcaption></figure>
+<figure><div class="im"><img src="figl/fx_chorus.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Chorus, order 5</b> Each partial is smeared into a slowly moving band.</figcaption></figure>
+<figure><div class="im"><img src="figl/fx_delay.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Delay</b> A short note and its echoes.</figcaption></figure>
+<figure><div class="im"><img src="figl/fx_delay_damp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Delay with fb damping</b> Each echo is filtered again, so they get duller.</figcaption></figure>
+<figure><div class="im"><img src="figl/fx_reverb.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Reverb, Flat</b> A short note and its tail.</figcaption></figure>
+<figure><div class="im"><img src="figl/fx_reverb_warm.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Reverb, Warmer</b> The low end rings longest.</figcaption></figure>
+<figure><div class="im"><img src="figl/fx_reverb_bright.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>Reverb, Brighter</b> The low end dies first.</figcaption></figure>
 </div>
 <table><tr><td>Chorus</td><td>order = number of voices (0 is off). The presets menu fills in classic settings. mix: centre dry, right chorus, left flipped chorus.</td></tr><tr><td>Delay time</td><td>Right of centre: steps of the tempo. Left: milliseconds. Modes: Normal, Inverted (left and right swap each echo), Ping pong.</td></tr><tr><td>Reverb</td><td>Presets, color, input low and high cut, predelay, room size, diffusion, decay, damping, wet.</td></tr><tr><td>Compression</td><td>Limiting holds the peaks. Warming, Heating and Burning squeeze three bands and lift the low end more each time. low / mid / high set the band levels.</td></tr><tr><td>LEVELS pre / post</td><td>Volume into and out of the effects.</td></tr></table>
 <h1>The ADV page</h1>
 <figure class="wide"><img src="img/page3.png"><figcaption>Settings for the current part, global settings, and the two orders.</figcaption></figure>
 <div class="grid c2">
-<figure><div class="im"><img src="fig/ramp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>ramp, right (relative)</b> The first half second of a note. Partials come in from the bottom up.</figcaption></figure>
-<figure><div class="im"><img src="fig/ramp_abs.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>ramp, left (absolute)</b> All partials fade in together.</figcaption></figure>
+<figure><div class="im"><img src="figl/ramp.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>ramp, right (relative)</b> The first half second of a note. Partials come in from the bottom up.</figcaption></figure>
+<figure><div class="im"><img src="figl/ramp_abs.png"><i class="ax">time &rarr;</i><i class="ay">pitch &uarr;</i></div><figcaption><b>ramp, left (absolute)</b> All partials fade in together.</figcaption></figure>
 </div>
 <table><tr><td>predelay</td><td>Waits before the note starts. Left: milliseconds. Right: tempo steps.</td></tr><tr><td>poly rel</td><td>Below 100%, a new note shortens the release tails still sounding.</td></tr><tr><td>declick</td><td>A very short fade at the start and end of notes.</td></tr><tr><td>UNIT ORDER</td><td>The order the shaping stages run in. Click an entry to move it later, right-click to move it earlier. Example: put HARM PROT after HARM CLIP to keep the fundamental safe from clipping.</td></tr><tr><td>EFFECTS ORDER</td><td>The same for the five effects.</td></tr><tr><td>randomness</td><td>Whether random values are new per note, per part, per unison copy, or never change.</td></tr><tr><td>A/B as stereo sides</td><td>Load the same stereo sound into A and B: A carries the middle, B the sides, and the A/B mix sets the width.</td></tr><tr><td>partials</td><td>Fewer partials uses less processor and loses the top end.</td></tr><tr><td>precision</td><td>How often the shaping is recalculated: Average about every 5 ms, High 2.7 ms, Perfect 1.3 ms. "HQ when rendering" uses Perfect for offline bounces.</td></tr><tr><td>VOICES mono</td><td>Off; a repeated note cuts itself (Kill same); any new note cuts all (Kill all); or sends them into release (Release all).</td></tr></table>
 <h1>Good to know</h1>

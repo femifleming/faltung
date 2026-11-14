@@ -25,7 +25,7 @@ h1('Getting around')
 table([
  ('A bar', 'Drag sideways or up and down. Hold Shift for fine steps. Double-click to reset. The mouse wheel also works.'),
  ('A value with &#9662;', 'A menu. Click it.'),
- ('&#9679; / &#9675;', 'A switch. Click it.'),
+ ('slanted box', 'A switch: filled = on. Click it.'),
  ('Right-click a bar', 'Reset, copy the value to the other part, open its articulator (envelope, LFO, mappings) in the ENV page, or quick-map it to X, Y or Z.'),
  ('Partial display', 'Shows the newest note of the part you are looking at. Click it to switch between an octave scale and a Hz scale. Hover to read a frequency.'),
  ('A and B', 'Two complete synths. The A / B buttons choose which one the controls show. "A on" / "B on" switch them on. "mix" balances them. "link" makes every edit apply to both.'),
@@ -231,22 +231,43 @@ table([
 ])
 
 css = '''
+@font-face{font-family:Inter;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/Inter-Regular.ttf");font-weight:400}
+@font-face{font-family:Inter;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/Inter-Medium.ttf");font-weight:600}
+@font-face{font-family:Plex;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/IBMPlexMono-Regular.ttf");font-weight:400}
+@font-face{font-family:Plex;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/IBMPlexMono-Medium.ttf");font-weight:600}
 *{box-sizing:border-box;margin:0;padding:0}
 @page{size:A4;margin:14mm 13mm}
-html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#121214}
-body{background:#121214;color:#e9e7e1;font:10.5pt/1.45 "Helvetica Neue",Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto;padding:28px 22px}
-header{border-bottom:1px solid #e9e7e1;padding-bottom:14px;margin-bottom:18px}header .t{font-size:34pt;font-weight:500}header .s{color:#8d8d90;font-size:12pt}
-h1{font-size:10pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;border-bottom:1px solid #e9e7e1;padding-bottom:4px;margin:30px 0 12px;break-after:avoid}
-h2{font-size:10.5pt;font-weight:700;margin:16px 0 6px;break-after:avoid}
-p{margin:0 0 10px;color:#d0cec8}b{color:#fff;font-weight:600}
-figure{break-inside:avoid;margin:0}figure.wide{margin:8px 0 14px}figure.wide img{width:100%;display:block;border:1px solid #2b2b2e}
-figcaption{color:#8d8d90;font-size:8.6pt;line-height:1.35;margin-top:4px}figcaption b{color:#e9e7e1}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#eef4f7}
+body{background:#eef4f7;color:#1d1c15;font:10pt/1.5 Inter,Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto;padding:28px 22px}
+header{position:relative;border-bottom:1px solid #1d1c15;padding:0 0 14px 64px;margin-bottom:18px;min-height:56px}
+header:before{content:"";position:absolute;left:0;top:2px;width:48px;height:52px;background:no-repeat center/contain url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 112'><polygon points='0,30 52,0 104,30 52,60' fill='%23ffe15a'/><polygon points='0,30 52,60 52,112 0,82' fill='%23f2c100'/><polygon points='52,60 104,30 104,82 52,112' fill='%23d8a800'/></svg>")}
+header .t{font-size:30pt;font-weight:600;text-transform:lowercase}header .s{color:#2f6f93;font-size:11.5pt;text-transform:lowercase}
+h1{font:600 10.5pt Plex;text-transform:lowercase;border-bottom:1px solid #4b9cc8;padding-bottom:4px;margin:30px 0 12px;break-after:avoid}
+h2{font:600 9.8pt Plex;text-transform:lowercase;margin:16px 0 6px;break-after:avoid}
+p{margin:0 0 10px;color:#2b2f30}b{color:#1d1c15;font-weight:600}
+figure{break-inside:avoid;margin:0}figure.wide{margin:8px 0 14px}figure.wide img{width:100%;display:block;border:1px solid #cddbe2}
+figcaption{color:#55636b;font-size:8.4pt;line-height:1.35;margin-top:4px}figcaption b{color:#1d1c15}
 .grid{display:grid;gap:12px 14px;margin:8px 0 14px}.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:repeat(3,1fr)}.c4{grid-template-columns:repeat(4,1fr)}
-.im{position:relative;border:1px solid #2b2b2e}.im img{width:100%;display:block}
-.ax,.ay{position:absolute;font-style:normal;font-size:6.5pt;color:#6e6e72;letter-spacing:.06em}.ax{right:4px;bottom:2px}.ay{left:4px;top:2px}
-table{width:100%;border-collapse:collapse;margin:6px 0 14px}td{vertical-align:top;padding:4px 0;border-bottom:1px solid #2b2b2e;color:#d0cec8;font-size:9.6pt}
-td:first-child{width:30%;color:#fff;padding-right:14px}tr{break-inside:avoid}
+.im{position:relative;border:1px solid #cddbe2}.im img{width:100%;display:block}
+.ax,.ay{position:absolute;font:6.5pt Plex;font-style:normal;color:#55636b}.ax{right:4px;bottom:2px}.ay{left:4px;top:2px}
+table{width:100%;border-collapse:collapse;margin:6px 0 14px}td{vertical-align:top;padding:3px 0;border-bottom:1px solid #cddbe2;color:#2b2f30;font-size:9.2pt}
+td:first-child{width:30%;font:600 8.6pt Plex;color:#1d1c15;padding-right:14px;text-transform:lowercase}tr{break-inside:avoid}
 '''
+# analysis figures re-inked for the light page: dark → pale field, mid → blue, bright → ink
+from PIL import Image
+FL = os.path.join(HERE, 'figl'); os.makedirs(FL, exist_ok=True)
+def reink(v):
+    t = v / 255.0
+    bg, bl, ink = (238, 244, 247), (47, 127, 209), (29, 28, 21)
+    if t < 0.5: k = t * 2; return tuple(int(bg[i] + (bl[i] - bg[i]) * k) for i in range(3))
+    k = min(1.0, (t - 0.5) * 1.6); return tuple(int(bl[i] + (ink[i] - bl[i]) * k) for i in range(3))
+LUT = [reink(v) for v in range(256)]
+for f in os.listdir(os.path.join(HERE, 'fig')):
+    src, dst = os.path.join(HERE, 'fig', f), os.path.join(FL, f)
+    if not f.endswith('.png') or (os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src)): continue
+    g = Image.open(src).convert('L')
+    out_img = Image.new('RGB', g.size); out_img.putdata([LUT[v] for v in g.getdata()]); out_img.save(dst)
+out = [l.replace('src="fig/', 'src="figl/') for l in out]
 html = f'<!doctype html><meta charset="utf-8"><title>Partials manual</title><style>{css}</style>' + '\n'.join(out)
 open(os.path.join(HERE, 'manual.html'), 'w').write(html)
 missing = [l for l in out if 'src="' in l and not os.path.exists(os.path.join(HERE, l.split('src="')[1].split('"')[0]))]
