@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
-# macOS: one universal build for Apple silicon and Intel
-set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
+# Part of the faltung bundle: JUCE and the VST2 headers live at the top of the repo.
+# Builds on its own too: cmake -S partials -B build-partials
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS")
 project(Partials VERSION 1.0.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
@@ -9,10 +9,13 @@ option(PARTIALS_COPY_AFTER_BUILD "Install into the user plug-in folders after bu
 
 option(PARTIALS_BUILD_VST2 "Also build the VST2-compatible plug-in (uses the FST headers)" ON)
 
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/JUCE/CMakeLists.txt")
-    message(FATAL_ERROR "JUCE is missing - run: git submodule update --init")
+set(BUNDLE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+if(NOT COMMAND juce_add_plugin)
+    if(NOT EXISTS "${BUNDLE_ROOT}/JUCE/CMakeLists.txt")
+        message(FATAL_ERROR "JUCE is missing - run: git submodule update --init")
+    endif()
+    add_subdirectory("${BUNDLE_ROOT}/JUCE" "${CMAKE_BINARY_DIR}/JUCE")
 endif()
-add_subdirectory(JUCE)
 
 # AU + VST3 + app on macOS, VST3 + app on Windows, VST3 + LV2 + app on Linux; VST2 everywhere
 if(APPLE)
@@ -24,7 +27,9 @@ else()
 endif()
 if(PARTIALS_BUILD_VST2)
     # FST: clean-room, GPL-licensed headers for the VST2 plug-in interface
-    juce_set_vst2_sdk_path("${CMAKE_CURRENT_SOURCE_DIR}/third_party/vst2-fst")
+    if(NOT TARGET juce_vst2_sdk)
+        juce_set_vst2_sdk_path("${BUNDLE_ROOT}/third_party/vst2-fst")
+    endif()
     list(APPEND PT_FORMATS VST)
 endif()
 

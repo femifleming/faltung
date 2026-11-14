@@ -19,6 +19,9 @@ option(FALTUNG_BUILD_TESTS "Build the offline test tool" ON)
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/JUCE/CMakeLists.txt")
     message(FATAL_ERROR "JUCE is missing - run: git submodule update --init")
 endif()
+if(MSVC)
+    add_compile_options(/utf-8)   # sources contain UTF-8 text (· – …)
+endif()
 add_subdirectory(JUCE)
 
 if(APPLE)
@@ -104,6 +107,10 @@ faltung_plugin(fl7 14 Ffl7 effect  "filter")
 faltung_plugin(gl8 15 Fgl8 effect  "glue")
 faltung_plugin(wb1 16 Fwb1 module  "dubstep + neuro bass synth")
 add_custom_target(faltung_all DEPENDS ${FAL_ALL_TARGETS})
+
+# Partials (additive / image resynthesis synth) lives in partials/ and builds with the bundle
+add_subdirectory(partials)
+add_dependencies(faltung_all Partials_All)
 
 if(FALTUNG_BUILD_TESTS)
     juce_add_console_app(faltungTest PRODUCT_NAME "faltungTest")
