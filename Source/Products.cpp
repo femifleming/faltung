@@ -29,6 +29,7 @@ const ProductInfo& info (Pid p)
         { Pid::sw6, "sw6", "swing",  "moves the audio onto a groove",                Kind::Effect,  Style::Fell,  0xff79e04a, 0xffb7f39a, VType::Kick,  760, 480 },
         { Pid::fl7, "fl7", "filter", "3-band isolator + resonant sweep",             Kind::Effect,  Style::Snd,   0xff8593d4, 0xffcfe6f0, VType::Kick,  760, 480 },
         { Pid::gl8, "gl8", "glue",   "bus compressor + tape saturation",             Kind::Effect,  Style::Stdio, 0xffdfe9ed, 0xff8fa9b5, VType::Kick,  760, 480 },
+        { Pid::wb1, "wb1", "wub",    "dubstep + neuro bass synth",                   Kind::Synth,   Style::Fell,  0xff2f4a52, 0xff7fd3c8, VType::Kick, 1100, 760 },
     };
     return t[(int) p];
 }
@@ -163,6 +164,102 @@ void voiceParams (L& l, VType t, const juce::String& pre, const juce::String& na
     l.f (pre + "vel", namePre + "velocity", NR (0.0f, 1.0f), d.vel, pct);
 }
 
+juce::String waveText (float v)
+{
+    static const char* n[5] = { "sine", "tri", "saw", "square", "hard" };
+    const int i = std::min (3, (int) v); const float t = v - (float) i;
+    if (t < 0.02f) return n[i];
+    if (t > 0.98f) return n[i + 1];
+    return juce::String (n[i]) + ">" + n[i + 1] + " " + juce::String (juce::roundToInt (t * 100)) + "%";
+}
+juce::String vowelText (float v)
+{
+    static const char* n[5] = { "a", "e", "i", "o", "u" };
+    const int i = std::min (3, (int) v); const float t = v - (float) i;
+    if (t < 0.05f) return n[i];
+    if (t > 0.95f) return n[i + 1];
+    return juce::String (n[i]) + "-" + n[i + 1];
+}
+auto stText = [] (float v) { return (v > 0 ? "+" : "") + juce::String (v, std::abs (v - std::round (v)) < 0.01f ? 0 : 1) + " st"; };
+auto octText = [] (float v) { return (v > 0 ? "+" : "") + juce::String (v, 1) + " oct"; };
+auto msText = [] (float v) { return v >= 1000.0f ? juce::String (v / 1000.0f, 2) + " s" : juce::String (juce::roundToInt (v)) + " ms"; };
+auto bip = [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v * 100)) + "%"; };
+
+void bassOsc (L& l, const juce::String& x, float shape, float level, int uni)
+{
+    const juce::String n = x.substring (0, 1);   // "a" / "b": parameter names read "a wave", "b detune"
+    l.f (x + "shape", n + " wave", NR (0.0f, 4.0f), shape, waveText);
+    l.f (x + "pw", n + " width", NR (0.05f, 0.95f), 0.5f, pct);
+    l.c (x + "oct", n + " octave", { "-3", "-2", "-1", "0", "+1", "+2", "+3" }, 3);
+    l.f (x + "semi", n + " semi", NR (-12.0f, 12.0f, 1.0f), 0.0f, stText);
+    l.f (x + "fine", n + " fine", NR (-100.0f, 100.0f), 0.0f, [] (float v) { return juce::String (juce::roundToInt (v)) + " ct"; });
+    l.f (x + "level", n + " level", NR (0.0f, 1.0f), level, pct);
+    l.c (x + "uni", n + " unison", { "1", "2", "3", "4", "5", "6", "7" }, uni - 1);
+    l.f (x + "detune", n + " detune", NR (0.0f, 1.0f), 0.25f, pct);
+    l.f (x + "spread", n + " spread", NR (0.0f, 1.0f), 0.6f, pct);
+}
+
+void bassParams (L& l)
+{
+    bassOsc (l, "a_", 2.0f, 1.0f, 1);
+    bassOsc (l, "b_", 3.0f, 0.0f, 1);
+    l.f ("fm", "fm b>a", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("sub", "sub", NR (0.0f, 1.0f), 0.8f, pct);
+    l.c ("subwave", "sub wave", { "sine", "round" }, 0);
+    l.c ("suboct", "sub octave", { "-2", "-1", "0" }, 1);
+    l.f ("noise", "noise", NR (0.0f, 1.0f), 0.0f, pct);
+    l.c ("ftype", "filter", { "lp24", "lp12", "bp", "hp", "notch" }, 0);
+    l.f ("cutoff", "cutoff", NR (20.0f, 20000.0f, 0.0f, 0.25f), 260.0f, hz);
+    l.f ("res", "resonance", NR (0.0f, 1.0f), 0.35f, plain2);
+    l.f ("fdrive", "filter drive", NR (0.0f, 1.0f), 0.3f, plain2);
+    l.f ("keytrack", "key track", NR (0.0f, 1.0f), 0.5f, pct);
+    l.f ("vowel", "vowel", NR (0.0f, 4.0f), 0.0f, vowelText);
+    l.f ("fmtq", "formant q", NR (0.0f, 1.0f), 0.45f, plain2);
+    l.f ("fmtshift", "formant shift", NR (-12.0f, 12.0f), 0.0f, stText);
+    l.f ("fmtmix", "formant mix", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("combtune", "comb tune", NR (-24.0f, 24.0f), 0.0f, stText);
+    l.f ("combfb", "comb feedback", NR (-0.95f, 0.95f), 0.6f, bip);
+    l.f ("combmix", "comb mix", NR (0.0f, 1.0f), 0.0f, pct);
+    l.c ("dmode", "distortion", { "soft", "fold", "hard", "tube", "crush", "smooth" }, 0);
+    l.f ("ddrive", "drive", NR (0.0f, 1.0f), 0.25f, plain2);
+    l.f ("dtone", "dist tone", NR (0.0f, 1.0f), 0.8f, [] (float v) { return hz (expMap (v, 1200.0f, 20000.0f)); });
+    l.f ("dmix", "dist mix", NR (0.0f, 1.0f), 1.0f, pct);
+    l.c ("order", "order", { "filter > dist", "dist > filter" }, 0);
+    l.c ("wdiv", "wobble rate", divNames(), 8);
+    l.c ("wshape", "wobble shape", { "sine", "triangle", "ramp down", "ramp up", "square", "wow", "yoy", "random" }, 0);
+    l.b ("wretrig", "wobble retrigger", true);
+    l.f ("wphase", "wobble phase", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("wcut", "wob > cutoff", NR (-6.0f, 6.0f), 4.0f, octText);
+    l.f ("wvowel", "wob > vowel", NR (-1.0f, 1.0f), 0.0f, bip);
+    l.f ("wfm", "wob > fm", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("wdrive", "wob > drive", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("wpitch", "wob > pitch", NR (-24.0f, 24.0f), 0.0f, stText);
+    l.f ("wamp", "wob > volume", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("wcomb", "wob > comb", NR (-1.0f, 1.0f), 0.0f, bip);
+    l.f ("ma", "env attack", NR (0.0f, 2000.0f, 0.0f, 0.3f), 1.0f, msText);
+    l.f ("md", "env decay", NR (5.0f, 4000.0f, 0.0f, 0.3f), 250.0f, msText);
+    l.f ("ms", "env sustain", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("mr", "env release", NR (5.0f, 4000.0f, 0.0f, 0.3f), 200.0f, msText);
+    l.f ("mcut", "env > cutoff", NR (-6.0f, 6.0f), 0.0f, octText);
+    l.f ("mpitch", "env > pitch", NR (-24.0f, 24.0f), 0.0f, stText);
+    l.f ("mfm", "env > fm", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("mvowel", "env > vowel", NR (-1.0f, 1.0f), 0.0f, bip);
+    l.f ("aa", "amp attack", NR (0.0f, 2000.0f, 0.0f, 0.3f), 1.0f, msText);
+    l.f ("ad", "amp decay", NR (5.0f, 4000.0f, 0.0f, 0.3f), 300.0f, msText);
+    l.f ("as", "amp sustain", NR (0.0f, 1.0f), 1.0f, pct);
+    l.f ("ar", "amp release", NR (5.0f, 4000.0f, 0.0f, 0.3f), 80.0f, msText);
+    l.f ("ott", "ott", NR (0.0f, 1.0f), 0.25f, pct);
+    l.f ("otttime", "ott time", NR (0.0f, 1.0f), 0.4f, plain2);
+    l.c ("voices", "voices", { "mono", "poly" }, 0);
+    l.b ("legato", "legato", true);
+    l.f ("glide", "glide", NR (0.0f, 1000.0f, 0.0f, 0.4f), 40.0f, msText);
+    l.f ("bend", "bend range", NR (0.0f, 24.0f, 1.0f), 2.0f, stText);
+    l.c ("wheel", "mod wheel", { "off", "wobble depth", "wobble rate" }, 0);
+    l.f ("vel", "velocity", NR (0.0f, 1.0f), 0.3f, pct);
+    l.f ("width", "width", NR (0.0f, 1.0f), 0.6f, pct);
+    l.f ("level", "level", NR (-24.0f, 6.0f), -6.0f, dbText);
+}
+
 void seqGlobals (L& l, bool kit)
 {
     l.b ("run", "run (internal clock)", false);
@@ -236,6 +333,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
             }
             break;
         }
+        case Kind::Synth:
+            bassParams (l);
+            break;
         case Kind::Effect:
         {
             switch (p)
@@ -459,6 +559,32 @@ const std::vector<Preset>& presets (Pid p)
             { "push", { { "template", 3 }, { "swing", 0.54f } } },
             { "drag", { { "template", 4 }, { "swing", 0.6f } } },
             { "drunk", { { "template", 5 }, { "humanize", 4 } } } };
+        // wb1: dubstep / neuro basses
+        auto B = [] (const char* name, V v) { return Preset { name, v, {} }; };
+        table[(int) Pid::wb1] = {
+            B ("dmz sub wob", { { "a_shape", 2 }, { "b_shape", 3 }, { "b_oct", 2 }, { "b_level", 0.4f }, { "sub", 0.9f }, { "cutoff", 220 }, { "res", 0.35f },
+                                { "fdrive", 0.35f }, { "wdiv", 8 }, { "wshape", 0 }, { "wcut", 4.5f }, { "ddrive", 0.25f }, { "ott", 0.2f } }),
+            B ("hench square", { { "a_shape", 3 }, { "a_pw", 0.42f }, { "sub", 0.85f }, { "cutoff", 160 }, { "res", 0.45f }, { "wdiv", 4 }, { "wshape", 4 },
+                                 { "wcut", 5.0f }, { "dmode", 3 }, { "ddrive", 0.45f }, { "ott", 0.35f } }),
+            B ("skream wow", { { "a_shape", 2 }, { "b_shape", 2 }, { "b_semi", 7 }, { "b_level", 0.5f }, { "cutoff", 520 }, { "fmtmix", 0.8f }, { "vowel", 0 },
+                               { "wvowel", 0.85f }, { "wcut", 2.5f }, { "wshape", 5 }, { "wdiv", 11 }, { "ddrive", 0.35f }, { "ott", 0.3f } }),
+            B ("rusko yoy", { { "a_shape", 2.6f }, { "a_uni", 2 }, { "a_detune", 0.15f }, { "cutoff", 700 }, { "fmtmix", 1.0f }, { "fmtq", 0.6f }, { "wshape", 6 },
+                              { "wvowel", 1.0f }, { "wcut", 2.0f }, { "wdiv", 7 }, { "mpitch", -5 }, { "md", 180 }, { "dmode", 1 }, { "ddrive", 0.3f }, { "ott", 0.4f } }),
+            B ("loefah sub", { { "a_shape", 0 }, { "a_level", 0.35f }, { "sub", 1.0f }, { "suboct", 1 }, { "cutoff", 380 }, { "wcut", 0 }, { "ddrive", 0.12f },
+                               { "aa", 6 }, { "ar", 220 }, { "ott", 0 }, { "glide", 90 } }),
+            B ("noisa reese", { { "a_shape", 2 }, { "a_uni", 6 }, { "a_detune", 0.45f }, { "a_spread", 0.85f }, { "b_shape", 2 }, { "b_uni", 4 }, { "b_oct", 2 },
+                                { "b_detune", 0.3f }, { "b_level", 0.6f }, { "cutoff", 1400 }, { "res", 0.2f }, { "wcut", 0 }, { "dmode", 5 }, { "ddrive", 0.5f },
+                                { "combmix", 0.25f }, { "combfb", 0.5f }, { "ott", 0.6f }, { "glide", 80 }, { "sub", 0.6f } }),
+            B ("current value fm", { { "a_shape", 0 }, { "b_shape", 0 }, { "b_oct", 4 }, { "b_level", 0 }, { "fm", 0.42f }, { "wfm", 0.3f }, { "wdiv", 4 }, { "wshape", 1 },
+                                     { "wcut", 1.5f }, { "cutoff", 1800 }, { "res", 0.25f }, { "dmode", 1 }, { "ddrive", 0.3f }, { "dtone", 0.6f }, { "fmtmix", 0.3f }, { "ott", 0.6f } }),
+            B ("billain growl", { { "a_shape", 2 }, { "b_shape", 3 }, { "b_fine", 7 }, { "b_level", 0.3f }, { "fm", 0.35f }, { "fmtmix", 0.7f }, { "vowel", 1 },
+                                  { "wvowel", 0.7f }, { "wdiv", 9 }, { "wshape", 1 }, { "wcut", 1.5f }, { "cutoff", 900 }, { "dmode", 2 }, { "ddrive", 0.4f },
+                                  { "combmix", 0.3f }, { "wcomb", 0.4f }, { "ott", 0.8f } }),
+            B ("talk box", { { "a_shape", 2 }, { "a_uni", 3 }, { "cutoff", 2400 }, { "wcut", 0 }, { "fmtmix", 1.0f }, { "fmtq", 0.8f }, { "mvowel", 0.8f }, { "md", 400 },
+                             { "dmode", 3 }, { "ddrive", 0.3f }, { "ott", 0.4f } }),
+            B ("neuro stab", { { "voices", 1 }, { "a_shape", 4 }, { "a_uni", 5 }, { "a_detune", 0.35f }, { "cutoff", 200 }, { "wcut", 0 }, { "mcut", 4.0f }, { "md", 160 },
+                               { "dmode", 1 }, { "ddrive", 0.6f }, { "ott", 0.8f }, { "ad", 300 }, { "as", 0 }, { "ar", 120 }, { "sub", 0.5f } }),
+        };
         built = true;
     }
     return table[(int) p];

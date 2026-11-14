@@ -82,6 +82,7 @@ Processor::Processor (Pid product)
         case Pid::gl8: glueFx = std::make_unique<Glue>(); break;
         case Pid::mc3: microFx = std::make_unique<Micro>(); break;
         case Pid::sw6: swingFx = std::make_unique<Swing>(); break;
+        case Pid::wb1: bassFx = std::make_unique<BassSynth>(); break;
         default: break;
     }
     if (pid == Pid::kt1)
@@ -137,6 +138,7 @@ void Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
     if (filterFx) filterFx->prepare ((float) sr);
     if (glueFx) glueFx->prepare ((float) sr);
     if (microFx) microFx->prepare ((float) sr);
+    if (bassFx) bassFx->prepare ((float) sr);
     if (swingFx) { swingFx->prepare ((float) sr); setLatencySamples (swingFx->latency()); }
 }
 
@@ -205,6 +207,7 @@ void Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer
         case Kind::Machine: if (pid == Pid::kt1) processKit (buffer, midi, tr); else processLoop (buffer, midi, tr); break;
         case Kind::Module:  processModule (buffer, midi); break;
         case Kind::Effect:  processEffect (buffer, tr); break;
+        case Kind::Synth:   processSynth (buffer, midi, tr); break;
     }
     // safety: never let a non-finite sample reach the host
     for (int c = 0; c < buffer.getNumChannels(); ++c)
@@ -788,4 +791,62 @@ void Processor::setStateInformation (const void* data, int size)
     xml->deleteAllChildElementsWithTagName ("sample");
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
 }
+
+// ---- wb1 wub ---------------------------------------------------------------------------------------
+BassParams Processor::readBass() const
+{
+    BassParams b;
+    auto osc = [this] (const juce::String& x, BassParams::Osc& o)
+    {
+        o.shape = param (x + "shape"); o.pw = param (x + "pw"); o.oct = (int) param (x + "oct") - 3;
+        o.semi = param (x + "semi"); o.fine = param (x + "fine"); o.level = param (x + "level");
+        o.unison = (int) param (x + "uni") + 1; o.detune = param (x + "detune"); o.spread = param (x + "spread");
+    };
+    osc ("a_", b.a); osc ("b_", b.b);
+    b.fm = param ("fm"); b.sub = param ("sub"); b.subWave = (int) param ("subwave"); b.subOct = (int) param ("suboct") - 2; b.noise = param ("noise");
+    b.fType = (int) param ("ftype"); b.cutoff = param ("cutoff"); b.res = param ("res"); b.fDrive = param ("fdrive"); b.keytrack = param ("keytrack");
+    b.vowel = param ("vowel"); b.fmtQ = param ("fmtq"); b.fmtShift = param ("fmtshift"); b.fmtMix = param ("fmtmix");
+    b.combTune = param ("combtune"); b.combFb = param ("combfb"); b.combMix = param ("combmix");
+    b.dMode = (int) param ("dmode"); b.dDrive = param ("ddrive"); b.dTone = param ("dtone"); b.dMix = param ("dmix"); b.order = (int) param ("order");
+    b.wDiv = (int) param ("wdiv"); b.wShape = (int) param ("wshape"); b.wRetrig = param ("wretrig") > 0.5f; b.wPhase = param ("wphase");
+    b.wCut = param ("wcut"); b.wVowel = param ("wvowel"); b.wFm = param ("wfm"); b.wDrive = param ("wdrive");
+    b.wPitch = param ("wpitch"); b.wAmp = param ("wamp"); b.wComb = param ("wcomb");
+    b.mA = param ("ma"); b.mD = param ("md"); b.mS = param ("ms"); b.mR = param ("mr");
+    b.mCut = param ("mcut"); b.mPitch = param ("mpitch"); b.mFm = param ("mfm"); b.mVowel = param ("mvowel");
+    b.aA = param ("aa"); b.aD = param ("ad"); b.aS = param ("as"); b.aR = param ("ar");
+    b.ott = param ("ott"); b.ottTime = param ("otttime");
+    b.mono = (int) param ("voices") == 0; b.legato = param ("legato") > 0.5f; b.glide = param ("glide"); b.bend = param ("bend");
+    b.wheel = (int) param ("wheel"); b.vel = param ("vel"); b.width = param ("width"); b.level = param ("level");
+    return b;
+}
+
+void Processor::processSynth (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi, const Transport& tr)
+{
+    const int n = buffer.getNumSamples();
+    std::array<BassEvent, 512> ev; int ne = 0;
+    auto push = [&] (BassEvent e) { if (ne < (int) ev.size()) ev[(size_t) ne++] = e; };
+    int s1, n1, s2, n2;
+    uiFifo.prepareToRead (uiFifo.getNumReady(), s1, n1, s2, n2);
+    for (int i = 0; i < n1 + n2; ++i)
+    {
+        const auto& q = uiQueue[(size_t) (i < n1 ? s1 + i : s2 + i - n1)];
+        push ({ 0, q.second > 0 ? 0 : 1, q.first, q.second });
+    }
+    uiFifo.finishedRead (n1 + n2);
+    for (const auto m : midi)
+    {
+        const auto msg = m.getMessage();
+        const int at = std::clamp (m.samplePosition, 0, n - 1);
+        if (msg.isNoteOn()) { push ({ at, 0, msg.getNoteNumber(), msg.getFloatVelocity() }); hitCount[0].fetch_add (1); }
+        else if (msg.isNoteOff()) push ({ at, 1, msg.getNoteNumber(), 0 });
+        else if (msg.isPitchWheel()) push ({ at, 2, 0, (float) (msg.getPitchWheelValue() - 8192) / 8192.0f });
+        else if (msg.isController() && msg.getControllerNumber() == 1) push ({ at, 3, 0, msg.getControllerValue() / 127.0f });
+        else if (msg.isAllNotesOff() || msg.isAllSoundOff()) push ({ at, 4, 0, 0 });
+    }
+    std::stable_sort (ev.begin(), ev.begin() + ne, [] (const BassEvent& a, const BassEvent& b) { return a.sample < b.sample; });
+    auto* L = buffer.getWritePointer (0); auto* R = buffer.getWritePointer (1);
+    bassFx->process (L, R, n, readBass(), tr, ev.data(), ne);
+    midi.clear();
+}
+
 } // namespace fal

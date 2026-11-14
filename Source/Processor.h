@@ -1,6 +1,7 @@
 #pragma once
 #include "Products.h"
 #include "dsp/Sequencer.h"
+#include "dsp/Bass.h"
 
 namespace fal
 {
@@ -70,6 +71,9 @@ public:
     Glue* glue() { return glueFx.get(); }
     Micro* micro() { return microFx.get(); }
     Swing* swing() { return swingFx.get(); }
+    BassSynth* bass() { return bassFx.get(); }
+    /** synth keyboard in the editor: velocity 0 = note off */
+    void uiNote (int note, float velocity) { uiTrigger (note, velocity); }
     void swingLearn (bool start);
 
     float param (const juce::String& id) const
@@ -115,6 +119,9 @@ private:
     std::unique_ptr<Glue> glueFx;
     std::unique_ptr<Micro> microFx;
     std::unique_ptr<Swing> swingFx;
+    std::unique_ptr<BassSynth> bassFx;
+    BassParams readBass() const;
+    void processSynth (juce::AudioBuffer<float>&, juce::MidiBuffer&, const Transport&);
     Smooth masterSm;
 
     static BusesProperties busesFor (Pid);

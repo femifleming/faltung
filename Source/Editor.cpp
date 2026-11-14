@@ -776,10 +776,154 @@ private:
 };
 
 // =================================================================================================
+//  wb1 wub
+// =================================================================================================
+class Keys : public juce::Component
+{
+public:
+    Keys (Processor& proc, ui::Theme t) : p (proc), theme (t) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    int base = 24;   // C0
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat();
+        g.setColour (theme.ink); g.setFont (ui::mono (11.0f));
+        g.drawText ("<", b.withWidth (20.0f), juce::Justification::centred);
+        g.drawText (">", b.withLeft (b.getRight() - 20.0f), juce::Justification::centred);
+        const float w = (b.getWidth() - 48.0f) / 36.0f;
+        for (int k = 0; k < 36; ++k)
+        {
+            const int nn = base + k;
+            const bool black = juce::MidiMessage::isMidiNoteBlack (nn);
+            auto r = juce::Rectangle<float> (24.0f + k * w, black ? 2.0f : 8.0f, w - 3.0f, b.getHeight() - (black ? 14.0f : 10.0f));
+            auto shape = ui::skewRect (r, 0.25f);
+            g.setColour (nn == down ? juce::Colours::white : black ? theme.ink.withAlpha (0.55f) : theme.fill.withAlpha (0.8f));
+            g.fillPath (shape);
+            if (nn % 12 == 0)
+            {
+                g.setColour (ui::inkFor (theme.fill)); g.setFont (ui::mono (9.0f));
+                g.drawText ("c" + juce::String (nn / 12 - 2), r.withTrimmedTop (r.getHeight() - 12.0f), juce::Justification::centred);
+            }
+        }
+    }
+    int noteAt (juce::Point<float> pt) const
+    {
+        const float w = ((float) getWidth() - 48.0f) / 36.0f;
+        const int k = (int) ((pt.x - 24.0f) / w);
+        return k >= 0 && k < 36 ? base + k : -1;
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.x < 22) { base = std::max (0, base - 12); repaint(); return; }
+        if (e.x > getWidth() - 22) { base = std::min (84, base + 12); repaint(); return; }
+        down = noteAt (e.position);
+        if (down >= 0) p.uiNote (down, 0.6f + 0.4f * (float) e.y / (float) getHeight());
+        repaint();
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        const int n = noteAt (e.position);
+        if (n >= 0 && n != down)
+        {
+            const int old = down; down = n;
+            p.uiNote (n, 0.85f);        // new note first: mono legato glides
+            if (old >= 0) p.uiNote (old, 0.0f);
+            repaint();
+        }
+    }
+    void mouseUp (const juce::MouseEvent&) override { if (down >= 0) p.uiNote (down, 0.0f); down = -1; repaint(); }
+private:
+    Processor& p; ui::Theme theme; int down = -1;
+};
+
+class SynthView : public View
+{
+public:
+    explicit SynthView (Processor& proc) : p (proc), pi (proc.pinfo), theme (themeFor (pi)), art (proc), presetBar (proc, theme), keys (proc, theme)
+    {
+        addAndMakeVisible (art); addAndMakeVisible (presetBar); addAndMakeVisible (keys);
+        const std::vector<std::vector<std::pair<juce::String, std::vector<juce::String>>>> cols = {
+            { { "osc a", { "a_shape", "a_pw", "a_oct", "a_semi", "a_fine", "a_level", "a_uni", "a_detune", "a_spread" } },
+              { "osc b", { "b_shape", "b_pw", "b_oct", "b_semi", "b_fine", "b_level", "b_uni", "b_detune", "b_spread", "fm" } } },
+            { { ui::U ("sub · noise"), { "sub", "subwave", "suboct", "noise" } },
+              { "filter", { "ftype", "cutoff", "res", "fdrive", "keytrack" } },
+              { "formant", { "vowel", "fmtq", "fmtshift", "fmtmix" } },
+              { "comb", { "combtune", "combfb", "combmix" } } },
+            { { "distortion", { "dmode", "ddrive", "dtone", "dmix", "order" } },
+              { "ott", { "ott", "otttime" } },
+              { "wobble", { "wdiv", "wshape", "wretrig", "wphase", "wcut", "wvowel", "wfm", "wdrive", "wpitch", "wamp", "wcomb" } } },
+            { { "mod env", { "ma", "md", "ms", "mr", "mcut", "mpitch", "mfm", "mvowel" } },
+              { "amp env", { "aa", "ad", "as", "ar" } },
+              { "play", { "voices", "legato", "glide", "bend", "wheel", "vel", "width", "level" } } } };
+        for (size_t c = 0; c < cols.size(); ++c)
+            for (auto& [title, ids] : cols[c])
+            {
+                items.push_back ({ (int) c, title, nullptr });
+                for (auto& id : ids)
+                {
+                    auto& prm = P (p, id);
+                    juce::String label = prm.getName (40);
+                    for (auto pre : { "a ", "b ", "wob > ", "env > ", "amp ", "env ", "wobble ", "formant ", "comb ", "dist ", "sub " })
+                        if (label.startsWith (pre) && label.length() > juce::String (pre).length() + 1) { label = label.substring (juce::String (pre).length()); break; }
+                    if (title == "wobble" && id.startsWith ("w") && id != "wdiv" && id != "wshape" && id != "wretrig" && id != "wphase") label = "> " + label;
+                    if (title == "mod env" && (id == "mcut" || id == "mpitch" || id == "mfm" || id == "mvowel")) label = "> " + label;
+                    juce::Component* comp;
+                    if (dynamic_cast<juce::AudioParameterChoice*> (&prm)) comp = new ui::ChoiceBox (prm, theme, label);
+                    else if (dynamic_cast<juce::AudioParameterBool*> (&prm)) comp = new ui::ToggleBox (prm, theme, label);
+                    else { auto* s = new ui::ParamSlider (prm, theme, label); s->setLabelWidth (64); comp = s; }
+                    owned.add (comp); addAndMakeVisible (comp);
+                    items.push_back ({ (int) c, {}, comp });
+                }
+            }
+        setSize (pi.w, pi.h);
+    }
+    void resized() override
+    {
+        const int w = getWidth();
+        art.setBounds (0, 0, w, 212);
+        presetBar.setBounds (w - 236, 14, 200, 20);
+        const int colW = (w - 72 - 3 * 28) / 4;
+        std::array<int, 4> y { 226, 226, 226, 226 };
+        headers.clear();
+        for (auto& it : items)
+        {
+            const int x = 36 + it.col * (colW + 28);
+            if (it.comp == nullptr) { headers.push_back ({ juce::Rectangle<int> (x, y[(size_t) it.col] + 4, colW, 16), it.title }); y[(size_t) it.col] += 24; }
+            else { it.comp->setBounds (x, y[(size_t) it.col], colW, 18); y[(size_t) it.col] += 19; }
+        }
+        keys.setBounds (36, getHeight() - 48, w - 72, 34);
+    }
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (theme.ground);
+        for (auto& [r, t] : headers)
+        {
+            g.setColour (theme.ink);
+            g.setFont (ui::mono (11.0f, true));
+            g.drawText (t, r, juce::Justification::centredLeft);
+            g.setColour (Colour (pi.accent).withAlpha (0.6f));
+            g.fillRect ((float) r.getX(), (float) r.getBottom(), (float) r.getWidth(), 1.0f);
+        }
+    }
+    void tick() override { art.tick(); }
+private:
+    struct Item { int col; juce::String title; juce::Component* comp; };
+    Processor& p;
+    const ProductInfo& pi;
+    ui::Theme theme;
+    Art art;
+    ui::PresetBar presetBar;
+    Keys keys;
+    std::vector<Item> items;
+    juce::OwnedArray<juce::Component> owned;
+    std::vector<std::pair<juce::Rectangle<int>, juce::String>> headers;
+};
+
+// =================================================================================================
 Editor::Editor (Processor& p) : AudioProcessorEditor (p), proc (p)
 {
     if (p.pid == Pid::kt1) view = std::make_unique<KitView> (p);
     else if (p.pid == Pid::kt2) view = std::make_unique<LoopView> (p);
+    else if (p.pid == Pid::wb1) view = std::make_unique<SynthView> (p);
     else view = std::make_unique<ModuleView> (p);
     nominalW = p.pinfo.w; nominalH = p.pinfo.h;
     view->setBounds (0, 0, nominalW, nominalH);

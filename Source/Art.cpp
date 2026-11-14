@@ -125,6 +125,65 @@ void Art::paintFell (juce::Graphics& g, Rectangle<float> b)
     const float fl = flash[0];
     const auto c = Point<float> (b.getCentreX() - 40.0f, b.getCentreY() + 40.0f);
 
+    if (pi.id == Pid::wb1)
+    {
+        auto* bs = p.bass();
+        const float wob = bs ? bs->showWob.load() : 0.0f;
+        const float env = bs ? bs->showEnv.load() : 0.0f;
+        const float vowel = p.param ("vowel");
+        const float cutoff01 = std::log2 (p.param ("cutoff") / 20.0f) / std::log2 (1000.0f);
+        const auto cc = Point<float> (b.getCentreX() - 30.0f, b.getCentreY() + 18.0f);
+        static const float ang[9] = { 190, 225, 262, 300, 335, 15, 60, 110, 150 };
+        std::array<Point<float>, 9> base, top;
+        const float h = 30.0f + 70.0f * cutoff01 + 60.0f * wob;
+        for (int i = 0; i < 9; ++i)
+        {
+            const float a = juce::degreesToRadians (ang[i] + wob * 14.0f * std::sin ((float) i * 1.7f));
+            const float r = (150.0f + 60.0f * std::sin ((float) i * 2.3f)) * (1.0f + 0.28f * wob * std::sin ((float) i * 1.3f + time * 3.0f)) * (1.0f + 0.08f * env);
+            base[(size_t) i] = cc + Point<float> (std::cos (a) * r * 1.5f, std::sin (a) * r * 0.32f + 30.0f);
+            top[(size_t) i] = base[(size_t) i] + Point<float> ((wob - 0.5f) * 60.0f * (float) (i % 3), -h * (0.7f + 0.15f * (float) (i % 4)));
+        }
+        g.setColour (tint);
+        for (int i = 0; i < 9; ++i)
+        {
+            g.drawLine ({ base[(size_t) i], base[(size_t) ((i + 1) % 9)] }, 1.0f);
+            g.drawLine ({ top[(size_t) i], top[(size_t) ((i + 1) % 9)] }, 1.0f);
+            if (i % 2 == 0) g.drawLine ({ base[(size_t) i], top[(size_t) i] }, 1.0f);
+            if (i % 3 == 1) g.drawLine ({ base[(size_t) i], top[(size_t) ((i + 3) % 9)] }, 1.0f);
+        }
+        // the mouth: how open the vowel is, breathing with the wobble
+        static const float openness[5] = { 1.0f, 0.6f, 0.22f, 0.8f, 0.4f };
+        const int vi = std::min (3, (int) vowel); const float vt = vowel - (float) vi;
+        const float open = lerp (openness[vi], openness[vi + 1], vt) * (0.4f + 0.6f * (p.param ("fmtmix") > 0.01f ? 1.0f : 0.4f));
+        const auto mc = cc + Point<float> (-60.0f, -h * 0.4f);
+        const float mw = 70.0f + 40.0f * (1.0f - open), mh = 6.0f + 46.0f * open * (0.5f + 0.5f * wob);
+        juce::Path mouth;
+        mouth.startNewSubPath (mc + Point<float> (-mw * 0.5f, 0)); mouth.lineTo (mc + Point<float> (0, -mh * 0.5f));
+        mouth.lineTo (mc + Point<float> (mw * 0.5f, 0)); mouth.lineTo (mc + Point<float> (0, mh * 0.5f)); mouth.closeSubPath();
+        g.setColour (juce::Colours::white.withAlpha (0.25f + 0.5f * flash[0]));
+        g.fillPath (mouth);
+        g.setColour (juce::Colours::white);
+        g.strokePath (mouth, juce::PathStrokeType (2.0f));
+        // the wobble itself: a lit slab that slides with the lfo
+        const auto s0 = base[3] + (base[4] - base[3]) * (0.15f + 0.6f * wob);
+        juce::Path slab;
+        slab.startNewSubPath (s0); slab.lineTo (s0 + Point<float> (46, -10)); slab.lineTo (s0 + Point<float> (46, -10 - 30 * env - 10));
+        slab.lineTo (s0 + Point<float> (0, -30 * env - 10)); slab.closeSubPath();
+        g.strokePath (slab, juce::PathStrokeType (2.0f));
+        // formant ticks
+        float f[3], gg[3]; vowelAt (vowel, f, gg);
+        g.setColour (tint.brighter (0.4f));
+        for (int k = 0; k < 3; ++k)
+        {
+            const float x = b.getRight() - 330.0f + std::log2 (f[k] / 200.0f) / 4.5f * 260.0f;
+            g.drawLine (x, b.getBottom() - 30.0f, x, b.getBottom() - 30.0f - 50.0f * gg[k], 2.0f);
+        }
+        g.drawLine (b.getRight() - 330.0f, b.getBottom() - 30.0f, b.getRight() - 70.0f, b.getBottom() - 30.0f, 1.0f);
+        g.setFont (ui::mono (10.0f));
+        g.drawText ("formants", juce::Rectangle<float> (b.getRight() - 330.0f, b.getBottom() - 26.0f, 120.0f, 12.0f), juce::Justification::centredLeft);
+        return;
+    }
+
     if (pi.id == Pid::sw6)
     {
         auto* sw = p.swing();

@@ -65,6 +65,18 @@ static juce::AudioBuffer<float> render (Processor& p, const juce::AudioBuffer<fl
                     ++noteCount;
                 }
         }
+        if (p.pinfo.kind == Kind::Synth)
+        {
+            // a dubstep line: 2 notes per beat-pair, held, with note-offs
+            const int len = (int) (sr * 0.45), every = (int) (sr * 0.5);
+            const int line[6] = { 31, 31, 34, 29, 31, 38 };
+            for (int i = 0; i < n; ++i)
+            {
+                const int t = pos + i;
+                if (t % every == 0) midi.addEvent (juce::MidiMessage::noteOn (1, line[(t / every) % 6], (juce::uint8) 100), i);
+                if (t % every == len) midi.addEvent (juce::MidiMessage::noteOff (1, line[(t / every) % 6]), i);
+            }
+        }
         p.processBlock (block, midi);
         for (int c = 0; c < 2; ++c) out.copyFrom (c, pos, block, c, 0, n);
         head.ppq += n / sr * head.bpm / 60.0;

@@ -102,6 +102,7 @@ faltung_plugin(rv5 12 Frv5 effect  "room")
 faltung_plugin(sw6 13 Fsw6 effect  "swing")
 faltung_plugin(fl7 14 Ffl7 effect  "filter")
 faltung_plugin(gl8 15 Fgl8 effect  "glue")
+faltung_plugin(wb1 16 Fwb1 module  "dubstep + neuro bass synth")
 add_custom_target(faltung_all DEPENDS ${FAL_ALL_TARGETS})
 
 if(FALTUNG_BUILD_TESTS)
