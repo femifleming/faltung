@@ -1,0 +1,3672 @@
+[
+  {
+    "code": "kt1",
+    "name": "kit",
+    "blurb": "eight-voice drum synth + microtime sequencer",
+    "params": [
+      {
+        "id": "run",
+        "name": "run (internal clock)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "bpm",
+        "name": "internal bpm",
+        "type": "float",
+        "min": "60.00 bpm",
+        "max": "180.00 bpm",
+        "def": "124.00 bpm"
+      },
+      {
+        "id": "swing",
+        "name": "swing",
+        "type": "float",
+        "min": "50%",
+        "max": "75%",
+        "def": "54%"
+      },
+      {
+        "id": "micro",
+        "name": "micro range",
+        "type": "float",
+        "min": "±0.0 ms",
+        "max": "±40.0 ms",
+        "def": "±12.0 ms"
+      },
+      {
+        "id": "pattern",
+        "name": "pattern",
+        "choices": "a1, a2, a3, a4, a5, a6, a7, a8",
+        "type": "choice",
+        "min": "a1",
+        "max": "a8",
+        "def": "a1"
+      },
+      {
+        "id": "master",
+        "name": "master",
+        "type": "float",
+        "min": "-24.0 db",
+        "max": "+6.0 db",
+        "def": "-4.0 db"
+      },
+      {
+        "id": "v1_model",
+        "name": "bd1 model",
+        "choices": "tok, thud, 909, sine",
+        "type": "choice",
+        "min": "tok",
+        "max": "sine",
+        "def": "tok"
+      },
+      {
+        "id": "v1_tune",
+        "name": "bd1 tune",
+        "type": "float",
+        "min": "30.0 hz",
+        "max": "140 hz",
+        "def": "55.6 hz"
+      },
+      {
+        "id": "v1_decay",
+        "name": "bd1 decay",
+        "type": "float",
+        "min": "35 ms",
+        "max": "1.60 s",
+        "def": "174 ms"
+      },
+      {
+        "id": "v1_click",
+        "name": "bd1 click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.35"
+      },
+      {
+        "id": "v1_sub",
+        "name": "bd1 sub",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.25"
+      },
+      {
+        "id": "v1_tok",
+        "name": "bd1 tok",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "v1_sweep",
+        "name": "bd1 sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+48.0 st",
+        "def": "+20.2 st"
+      },
+      {
+        "id": "v1_bend",
+        "name": "bd1 bend",
+        "type": "float",
+        "min": "2.0 ms",
+        "max": "140 ms",
+        "def": "7.2 ms"
+      },
+      {
+        "id": "v1_drive",
+        "name": "bd1 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.15"
+      },
+      {
+        "id": "v1_level",
+        "name": "bd1 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-1.6 db"
+      },
+      {
+        "id": "v1_pan",
+        "name": "bd1 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "c"
+      },
+      {
+        "id": "v1_vel",
+        "name": "bd1 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v1_len",
+        "name": "bd1 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v1_prob",
+        "name": "bd1 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v1_shift",
+        "name": "bd1 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v1_mute",
+        "name": "bd1 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v2_model",
+        "name": "sd2 model",
+        "choices": "tuned, fm, brush, 808",
+        "type": "choice",
+        "min": "tuned",
+        "max": "808",
+        "def": "tuned"
+      },
+      {
+        "id": "v2_tune",
+        "name": "sd2 tune",
+        "type": "float",
+        "min": "110 hz",
+        "max": "420 hz",
+        "def": "201 hz"
+      },
+      {
+        "id": "v2_decay",
+        "name": "sd2 decay",
+        "type": "float",
+        "min": "40 ms",
+        "max": "900 ms",
+        "def": "139 ms"
+      },
+      {
+        "id": "v2_snap",
+        "name": "sd2 snap",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "v2_body",
+        "name": "sd2 body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "v2_noise",
+        "name": "sd2 noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "v2_sweep",
+        "name": "sd2 sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+2.4 st"
+      },
+      {
+        "id": "v2_tone",
+        "name": "sd2 tone",
+        "type": "float",
+        "min": "1.80 khz",
+        "max": "13.0 khz",
+        "def": "5.34 khz"
+      },
+      {
+        "id": "v2_drive",
+        "name": "sd2 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "v2_level",
+        "name": "sd2 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "v2_pan",
+        "name": "sd2 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "c"
+      },
+      {
+        "id": "v2_vel",
+        "name": "sd2 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v2_len",
+        "name": "sd2 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v2_prob",
+        "name": "sd2 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v2_shift",
+        "name": "sd2 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v2_mute",
+        "name": "sd2 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v3_model",
+        "name": "rm3 model",
+        "choices": "rim, wood, tok, metal",
+        "type": "choice",
+        "min": "rim",
+        "max": "metal",
+        "def": "tok"
+      },
+      {
+        "id": "v3_tune",
+        "name": "rm3 tune",
+        "type": "float",
+        "min": "180 hz",
+        "max": "2.40 khz",
+        "def": "593 hz"
+      },
+      {
+        "id": "v3_decay",
+        "name": "rm3 decay",
+        "type": "float",
+        "min": "8.0 ms",
+        "max": "600 ms",
+        "def": "21 ms"
+      },
+      {
+        "id": "v3_click",
+        "name": "rm3 click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.68"
+      },
+      {
+        "id": "v3_body",
+        "name": "rm3 body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.41"
+      },
+      {
+        "id": "v3_noise",
+        "name": "rm3 noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.12"
+      },
+      {
+        "id": "v3_sweep",
+        "name": "rm3 sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+3.6 st"
+      },
+      {
+        "id": "v3_hard",
+        "name": "rm3 hard",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "v3_drive",
+        "name": "rm3 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "v3_level",
+        "name": "rm3 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "v3_pan",
+        "name": "rm3 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "l 6"
+      },
+      {
+        "id": "v3_vel",
+        "name": "rm3 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v3_len",
+        "name": "rm3 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v3_prob",
+        "name": "rm3 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v3_shift",
+        "name": "rm3 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v3_mute",
+        "name": "rm3 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v4_model",
+        "name": "hh4 model",
+        "choices": "808, noise, ring, tick",
+        "type": "choice",
+        "min": "808",
+        "max": "tick",
+        "def": "808"
+      },
+      {
+        "id": "v4_tune",
+        "name": "hh4 tune",
+        "type": "float",
+        "min": "x0.50",
+        "max": "x2.00",
+        "def": "x1.00"
+      },
+      {
+        "id": "v4_decay",
+        "name": "hh4 decay",
+        "type": "float",
+        "min": "6.0 ms",
+        "max": "1.40 s",
+        "def": "34 ms"
+      },
+      {
+        "id": "v4_click",
+        "name": "hh4 click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "v4_metal",
+        "name": "hh4 metal",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.60"
+      },
+      {
+        "id": "v4_air",
+        "name": "hh4 air",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.40"
+      },
+      {
+        "id": "v4_chirp",
+        "name": "hh4 chirp",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+1.2 st"
+      },
+      {
+        "id": "v4_tone",
+        "name": "hh4 tone",
+        "type": "float",
+        "min": "5.00 khz",
+        "max": "15.0 khz",
+        "def": "9.15 khz"
+      },
+      {
+        "id": "v4_drive",
+        "name": "hh4 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "v4_level",
+        "name": "hh4 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-8.0 db"
+      },
+      {
+        "id": "v4_pan",
+        "name": "hh4 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "r 7"
+      },
+      {
+        "id": "v4_vel",
+        "name": "hh4 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v4_len",
+        "name": "hh4 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v4_prob",
+        "name": "hh4 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v4_shift",
+        "name": "hh4 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v4_mute",
+        "name": "hh4 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v5_model",
+        "name": "oh5 model",
+        "choices": "808, noise, ring, tick",
+        "type": "choice",
+        "min": "808",
+        "max": "tick",
+        "def": "808"
+      },
+      {
+        "id": "v5_tune",
+        "name": "oh5 tune",
+        "type": "float",
+        "min": "x0.50",
+        "max": "x2.00",
+        "def": "x1.00"
+      },
+      {
+        "id": "v5_decay",
+        "name": "oh5 decay",
+        "type": "float",
+        "min": "6.0 ms",
+        "max": "1.40 s",
+        "def": "34 ms"
+      },
+      {
+        "id": "v5_click",
+        "name": "oh5 click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "v5_metal",
+        "name": "oh5 metal",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.60"
+      },
+      {
+        "id": "v5_air",
+        "name": "oh5 air",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.40"
+      },
+      {
+        "id": "v5_chirp",
+        "name": "oh5 chirp",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+1.2 st"
+      },
+      {
+        "id": "v5_tone",
+        "name": "oh5 tone",
+        "type": "float",
+        "min": "5.00 khz",
+        "max": "15.0 khz",
+        "def": "9.15 khz"
+      },
+      {
+        "id": "v5_drive",
+        "name": "oh5 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "v5_level",
+        "name": "oh5 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-8.0 db"
+      },
+      {
+        "id": "v5_pan",
+        "name": "oh5 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "r 7"
+      },
+      {
+        "id": "v5_vel",
+        "name": "oh5 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v5_len",
+        "name": "oh5 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v5_prob",
+        "name": "oh5 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v5_shift",
+        "name": "oh5 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v5_mute",
+        "name": "oh5 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v6_model",
+        "name": "cp6 model",
+        "choices": "clap, snap, room, tight",
+        "type": "choice",
+        "min": "clap",
+        "max": "tight",
+        "def": "snap"
+      },
+      {
+        "id": "v6_tune",
+        "name": "cp6 tune",
+        "type": "float",
+        "min": "500 hz",
+        "max": "3.20 khz",
+        "def": "1.05 khz"
+      },
+      {
+        "id": "v6_decay",
+        "name": "cp6 decay",
+        "type": "float",
+        "min": "30 ms",
+        "max": "1.00 s",
+        "def": "206 ms"
+      },
+      {
+        "id": "v6_snap",
+        "name": "cp6 snap",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "v6_claps",
+        "name": "cp6 claps",
+        "type": "float",
+        "min": "2 claps",
+        "max": "6 claps",
+        "def": "4 claps"
+      },
+      {
+        "id": "v6_noise",
+        "name": "cp6 noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "v6_spread",
+        "name": "cp6 spread",
+        "type": "float",
+        "min": "4.0 ms",
+        "max": "26 ms",
+        "def": "7.0 ms"
+      },
+      {
+        "id": "v6_tone",
+        "name": "cp6 tone",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "v6_drive",
+        "name": "cp6 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "v6_level",
+        "name": "cp6 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "v6_pan",
+        "name": "cp6 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "c"
+      },
+      {
+        "id": "v6_vel",
+        "name": "cp6 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v6_len",
+        "name": "cp6 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v6_prob",
+        "name": "cp6 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v6_shift",
+        "name": "cp6 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v6_mute",
+        "name": "cp6 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v7_model",
+        "name": "pc7 model",
+        "choices": "conga, bongo, bell, glass",
+        "type": "choice",
+        "min": "conga",
+        "max": "glass",
+        "def": "conga"
+      },
+      {
+        "id": "v7_tune",
+        "name": "pc7 tune",
+        "type": "float",
+        "min": "60.0 hz",
+        "max": "1.40 khz",
+        "def": "212 hz"
+      },
+      {
+        "id": "v7_decay",
+        "name": "pc7 decay",
+        "type": "float",
+        "min": "20 ms",
+        "max": "2.50 s",
+        "def": "85 ms"
+      },
+      {
+        "id": "v7_click",
+        "name": "pc7 click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "v7_body",
+        "name": "pc7 body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "v7_noise",
+        "name": "pc7 noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "v7_sweep",
+        "name": "pc7 sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+5.4 st"
+      },
+      {
+        "id": "v7_hard",
+        "name": "pc7 hard",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "v7_drive",
+        "name": "pc7 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "v7_level",
+        "name": "pc7 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "v7_pan",
+        "name": "pc7 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "r 2"
+      },
+      {
+        "id": "v7_vel",
+        "name": "pc7 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v7_len",
+        "name": "pc7 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v7_prob",
+        "name": "pc7 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v7_shift",
+        "name": "pc7 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v7_mute",
+        "name": "pc7 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "v8_model",
+        "name": "cl8 model",
+        "choices": "tick, pop, dust, blip",
+        "type": "choice",
+        "min": "tick",
+        "max": "blip",
+        "def": "tick"
+      },
+      {
+        "id": "v8_tune",
+        "name": "cl8 tune",
+        "type": "float",
+        "min": "300 hz",
+        "max": "14.0 khz",
+        "def": "1.15 khz"
+      },
+      {
+        "id": "v8_decay",
+        "name": "cl8 decay",
+        "type": "float",
+        "min": "0.8 ms",
+        "max": "80 ms",
+        "def": "3.2 ms"
+      },
+      {
+        "id": "v8_click",
+        "name": "cl8 click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "v8_res",
+        "name": "cl8 res",
+        "type": "float",
+        "min": "0.8 ms",
+        "max": "40 ms",
+        "def": "8.4 ms"
+      },
+      {
+        "id": "v8_dust",
+        "name": "cl8 dust",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "v8_sweep",
+        "name": "cl8 sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+48.0 st",
+        "def": "+9.6 st"
+      },
+      {
+        "id": "v8_tone",
+        "name": "cl8 tone",
+        "type": "float",
+        "min": "30.0 hz",
+        "max": "4.00 khz",
+        "def": "271 hz"
+      },
+      {
+        "id": "v8_drive",
+        "name": "cl8 drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "v8_level",
+        "name": "cl8 level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "v8_pan",
+        "name": "cl8 pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "l 15"
+      },
+      {
+        "id": "v8_vel",
+        "name": "cl8 velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "v8_len",
+        "name": "cl8 length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "v8_prob",
+        "name": "cl8 probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "v8_shift",
+        "name": "cl8 shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "v8_mute",
+        "name": "cl8 mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "a3 tok",
+      "perlon shuffle",
+      "bucharest",
+      "empty"
+    ]
+  },
+  {
+    "code": "kt2",
+    "name": "loop",
+    "blurb": "loop slicer + sequencer, cut-ups from any break",
+    "params": [
+      {
+        "id": "run",
+        "name": "run (internal clock)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "bpm",
+        "name": "internal bpm",
+        "type": "float",
+        "min": "60.00 bpm",
+        "max": "180.00 bpm",
+        "def": "124.00 bpm"
+      },
+      {
+        "id": "swing",
+        "name": "swing",
+        "type": "float",
+        "min": "50%",
+        "max": "75%",
+        "def": "54%"
+      },
+      {
+        "id": "micro",
+        "name": "micro range",
+        "type": "float",
+        "min": "±0.0 ms",
+        "max": "±40.0 ms",
+        "def": "±12.0 ms"
+      },
+      {
+        "id": "pattern",
+        "name": "pattern",
+        "choices": "a1, a2, a3, a4, a5, a6, a7, a8",
+        "type": "choice",
+        "min": "a1",
+        "max": "a8",
+        "def": "a1"
+      },
+      {
+        "id": "master",
+        "name": "master",
+        "type": "float",
+        "min": "-24.0 db",
+        "max": "+6.0 db",
+        "def": "+0.0 db"
+      },
+      {
+        "id": "slices",
+        "name": "slices",
+        "choices": "4, 8, 16, 32",
+        "type": "choice",
+        "min": "4",
+        "max": "32",
+        "def": "16"
+      },
+      {
+        "id": "slicemode",
+        "name": "slice mode",
+        "choices": "grid, onsets",
+        "type": "choice",
+        "min": "grid",
+        "max": "onsets",
+        "def": "grid"
+      },
+      {
+        "id": "start",
+        "name": "start",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "pitch",
+        "name": "pitch",
+        "type": "float",
+        "min": "-24.00 st",
+        "max": "+24.00 st",
+        "def": "-0.00 st"
+      },
+      {
+        "id": "gate",
+        "name": "gate",
+        "type": "float",
+        "min": "2%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "attack",
+        "name": "attack",
+        "type": "float",
+        "min": "0.0 ms",
+        "max": "30.0 ms",
+        "def": "0.5 ms"
+      },
+      {
+        "id": "release",
+        "name": "release",
+        "type": "float",
+        "min": "0.5 ms",
+        "max": "200.0 ms",
+        "def": "8.0 ms"
+      },
+      {
+        "id": "tone",
+        "name": "tone",
+        "type": "float",
+        "min": "300 hz",
+        "max": "20.0 khz",
+        "def": "20.0 khz"
+      },
+      {
+        "id": "revprob",
+        "name": "reverse chance",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "spread",
+        "name": "spread",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "20%"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-2.1 db"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "50%"
+      },
+      {
+        "id": "fit",
+        "name": "fit loop to tempo",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "loopbeats",
+        "name": "loop length",
+        "type": "float",
+        "min": "1 beats",
+        "max": "16 beats",
+        "def": "4 beats"
+      },
+      {
+        "id": "len",
+        "name": "length",
+        "type": "float",
+        "min": "1",
+        "max": "16",
+        "def": "16"
+      },
+      {
+        "id": "prob",
+        "name": "probability",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "shift",
+        "name": "shift",
+        "type": "float",
+        "min": "-30.0 ms",
+        "max": "+30.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "mute",
+        "name": "mute",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "straight",
+      "cut-up",
+      "stutter",
+      "sparse"
+    ]
+  },
+  {
+    "code": "bd1",
+    "name": "kick",
+    "blurb": "tok / thud / click kick designer",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "tok, thud, 909, sine",
+        "type": "choice",
+        "min": "tok",
+        "max": "sine",
+        "def": "tok"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "30.0 hz",
+        "max": "140 hz",
+        "def": "55.6 hz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "35 ms",
+        "max": "1.60 s",
+        "def": "174 ms"
+      },
+      {
+        "id": "click",
+        "name": "click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.35"
+      },
+      {
+        "id": "sub",
+        "name": "sub",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.25"
+      },
+      {
+        "id": "tok",
+        "name": "tok",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "sweep",
+        "name": "sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+48.0 st",
+        "def": "+20.2 st"
+      },
+      {
+        "id": "bend",
+        "name": "bend",
+        "type": "float",
+        "min": "2.0 ms",
+        "max": "140 ms",
+        "def": "7.2 ms"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.15"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-1.6 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "c"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      }
+    ],
+    "presets": [
+      "tok",
+      "perlon thud",
+      "909 short",
+      "sub sine",
+      "knock"
+    ]
+  },
+  {
+    "code": "sd2",
+    "name": "snare",
+    "blurb": "tuned modes + wires",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "tuned, fm, brush, 808",
+        "type": "choice",
+        "min": "tuned",
+        "max": "808",
+        "def": "tuned"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "110 hz",
+        "max": "420 hz",
+        "def": "201 hz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "40 ms",
+        "max": "900 ms",
+        "def": "139 ms"
+      },
+      {
+        "id": "snap",
+        "name": "snap",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "body",
+        "name": "body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "noise",
+        "name": "noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "sweep",
+        "name": "sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+2.4 st"
+      },
+      {
+        "id": "tone",
+        "name": "tone",
+        "type": "float",
+        "min": "1.80 khz",
+        "max": "13.0 khz",
+        "def": "5.34 khz"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "c"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      }
+    ],
+    "presets": [
+      "tuned",
+      "fm crack",
+      "brush",
+      "808"
+    ]
+  },
+  {
+    "code": "rm3",
+    "name": "rim",
+    "blurb": "modal rim, wood and tok",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "rim, wood, tok, metal",
+        "type": "choice",
+        "min": "rim",
+        "max": "metal",
+        "def": "tok"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "180 hz",
+        "max": "2.40 khz",
+        "def": "593 hz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "8.0 ms",
+        "max": "600 ms",
+        "def": "21 ms"
+      },
+      {
+        "id": "click",
+        "name": "click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.68"
+      },
+      {
+        "id": "body",
+        "name": "body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.41"
+      },
+      {
+        "id": "noise",
+        "name": "noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.12"
+      },
+      {
+        "id": "sweep",
+        "name": "sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+3.6 st"
+      },
+      {
+        "id": "hard",
+        "name": "hard",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "l 6"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "tok",
+      "rimshot",
+      "woodblock",
+      "metal tick"
+    ]
+  },
+  {
+    "code": "hh4",
+    "name": "hats",
+    "blurb": "metallic hats, closed / open with choke",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "808, noise, ring, tick",
+        "type": "choice",
+        "min": "808",
+        "max": "tick",
+        "def": "808"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "x0.50",
+        "max": "x2.00",
+        "def": "x1.00"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "6.0 ms",
+        "max": "1.40 s",
+        "def": "34 ms"
+      },
+      {
+        "id": "click",
+        "name": "click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "metal",
+        "name": "metal",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.60"
+      },
+      {
+        "id": "air",
+        "name": "air",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.40"
+      },
+      {
+        "id": "chirp",
+        "name": "chirp",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+1.2 st"
+      },
+      {
+        "id": "tone",
+        "name": "tone",
+        "type": "float",
+        "min": "5.00 khz",
+        "max": "15.0 khz",
+        "def": "9.15 khz"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-8.0 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "r 7"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "open",
+        "name": "open decay",
+        "type": "float",
+        "min": "6.0 ms",
+        "max": "1.40 s",
+        "def": "176 ms"
+      }
+    ],
+    "presets": [
+      "808 hats",
+      "noise hats",
+      "ring",
+      "tick hats"
+    ]
+  },
+  {
+    "code": "cp6",
+    "name": "clap",
+    "blurb": "burst-train clap, snap and room",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "clap, snap, room, tight",
+        "type": "choice",
+        "min": "clap",
+        "max": "tight",
+        "def": "snap"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "500 hz",
+        "max": "3.20 khz",
+        "def": "1.05 khz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "30 ms",
+        "max": "1.00 s",
+        "def": "206 ms"
+      },
+      {
+        "id": "snap",
+        "name": "snap",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "claps",
+        "name": "claps",
+        "type": "float",
+        "min": "2 claps",
+        "max": "6 claps",
+        "def": "4 claps"
+      },
+      {
+        "id": "noise",
+        "name": "noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "spread",
+        "name": "spread",
+        "type": "float",
+        "min": "4.0 ms",
+        "max": "26 ms",
+        "def": "7.0 ms"
+      },
+      {
+        "id": "tone",
+        "name": "tone",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "c"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "clap",
+      "snap",
+      "room clap",
+      "tight"
+    ]
+  },
+  {
+    "code": "pc7",
+    "name": "perc",
+    "blurb": "membranes, bells, glass",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "conga, bongo, bell, glass",
+        "type": "choice",
+        "min": "conga",
+        "max": "glass",
+        "def": "conga"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "60.0 hz",
+        "max": "1.40 khz",
+        "def": "212 hz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "20 ms",
+        "max": "2.50 s",
+        "def": "85 ms"
+      },
+      {
+        "id": "click",
+        "name": "click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "body",
+        "name": "body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "noise",
+        "name": "noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "sweep",
+        "name": "sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+12.0 st",
+        "def": "+5.4 st"
+      },
+      {
+        "id": "hard",
+        "name": "hard",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "r 2"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "conga",
+      "bongo",
+      "bell",
+      "glass"
+    ]
+  },
+  {
+    "code": "cl8",
+    "name": "click",
+    "blurb": "ticks, pops, dust and blips",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "tick, pop, dust, blip",
+        "type": "choice",
+        "min": "tick",
+        "max": "blip",
+        "def": "tick"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "300 hz",
+        "max": "14.0 khz",
+        "def": "1.15 khz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "0.8 ms",
+        "max": "80 ms",
+        "def": "3.2 ms"
+      },
+      {
+        "id": "click",
+        "name": "click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.55"
+      },
+      {
+        "id": "res",
+        "name": "res",
+        "type": "float",
+        "min": "0.8 ms",
+        "max": "40 ms",
+        "def": "8.4 ms"
+      },
+      {
+        "id": "dust",
+        "name": "dust",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "sweep",
+        "name": "sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+48.0 st",
+        "def": "+9.6 st"
+      },
+      {
+        "id": "tone",
+        "name": "tone",
+        "type": "float",
+        "min": "30.0 hz",
+        "max": "4.00 khz",
+        "def": "271 hz"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-4.8 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "l 15"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "tick",
+      "pop",
+      "dust",
+      "blip"
+    ]
+  },
+  {
+    "code": "tm9",
+    "name": "tom",
+    "blurb": "toms and minimal blips",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "tom, blip, fm, low",
+        "type": "choice",
+        "min": "tom",
+        "max": "low",
+        "def": "tom"
+      },
+      {
+        "id": "tune",
+        "name": "tune",
+        "type": "float",
+        "min": "45.0 hz",
+        "max": "420 hz",
+        "def": "215 hz"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "50 ms",
+        "max": "1.60 s",
+        "def": "141 ms"
+      },
+      {
+        "id": "click",
+        "name": "click",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.60"
+      },
+      {
+        "id": "body",
+        "name": "body",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.40"
+      },
+      {
+        "id": "noise",
+        "name": "noise",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.20"
+      },
+      {
+        "id": "sweep",
+        "name": "sweep",
+        "type": "float",
+        "min": "+0.0 st",
+        "max": "+36.0 st",
+        "def": "+0.0 st"
+      },
+      {
+        "id": "bend",
+        "name": "bend",
+        "type": "float",
+        "min": "3.0 ms",
+        "max": "220 ms",
+        "def": "11 ms"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.00"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "off",
+        "max": "6.0 db",
+        "def": "-10.2 db"
+      },
+      {
+        "id": "pan",
+        "name": "pan",
+        "type": "float",
+        "min": "l 50",
+        "max": "r 50",
+        "def": "r 18"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "keytrack",
+        "name": "key tracking",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "choke",
+        "name": "choke (mono)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "tom",
+      "blip",
+      "fm tom",
+      "low"
+    ]
+  },
+  {
+    "code": "mc3",
+    "name": "micro",
+    "blurb": "live micro-sampling: cuts, grains, clicks",
+    "params": [
+      {
+        "id": "mode",
+        "name": "mode",
+        "choices": "cut, grain, click",
+        "type": "choice",
+        "min": "cut",
+        "max": "click",
+        "def": "grain"
+      },
+      {
+        "id": "division",
+        "name": "rate",
+        "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar",
+        "type": "choice",
+        "min": "1/64",
+        "max": "1 bar",
+        "def": "1/16"
+      },
+      {
+        "id": "density",
+        "name": "density",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "45%"
+      },
+      {
+        "id": "size",
+        "name": "size",
+        "type": "float",
+        "min": "2.0 ms",
+        "max": "250.0 ms",
+        "def": "60.0 ms"
+      },
+      {
+        "id": "pitch",
+        "name": "pitch",
+        "type": "float",
+        "min": "-24.00 st",
+        "max": "+24.00 st",
+        "def": "-0.00 st"
+      },
+      {
+        "id": "scatter",
+        "name": "scatter",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "30%"
+      },
+      {
+        "id": "reverse",
+        "name": "reverse",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "shape",
+        "name": "shape",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "hold",
+        "name": "hold",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "mix",
+        "name": "mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "50%"
+      }
+    ],
+    "presets": [
+      "grains",
+      "stutter 1/32",
+      "clicks",
+      "reverse dust"
+    ]
+  },
+  {
+    "code": "dl4",
+    "name": "dub",
+    "blurb": "tape / bbd echo, filter in the loop",
+    "params": [
+      {
+        "id": "sync",
+        "name": "sync",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "division",
+        "name": "division",
+        "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar",
+        "type": "choice",
+        "min": "1/64",
+        "max": "1 bar",
+        "def": "1/16 d"
+      },
+      {
+        "id": "time",
+        "name": "time",
+        "type": "float",
+        "min": "2.0 ms",
+        "max": "2000 ms",
+        "def": "375 ms"
+      },
+      {
+        "id": "feedback",
+        "name": "feedback",
+        "type": "float",
+        "min": "0%",
+        "max": "110%",
+        "def": "55%"
+      },
+      {
+        "id": "age",
+        "name": "age",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.35"
+      },
+      {
+        "id": "wow",
+        "name": "wow",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.20"
+      },
+      {
+        "id": "hp",
+        "name": "loop hp",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "2.00 khz",
+        "def": "200 hz"
+      },
+      {
+        "id": "lp",
+        "name": "loop lp",
+        "type": "float",
+        "min": "500 hz",
+        "max": "20.0 khz",
+        "def": "3.50 khz"
+      },
+      {
+        "id": "spread",
+        "name": "spread",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "50%"
+      },
+      {
+        "id": "mode",
+        "name": "mode",
+        "choices": "tape, bbd, clean",
+        "type": "choice",
+        "min": "tape",
+        "max": "clean",
+        "def": "tape"
+      },
+      {
+        "id": "freeze",
+        "name": "freeze",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "input",
+        "name": "send",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "mix",
+        "name": "mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "35%"
+      }
+    ],
+    "presets": [
+      "dub 3/16",
+      "ping 1/8 d",
+      "bbd slap",
+      "runaway"
+    ]
+  },
+  {
+    "code": "rv5",
+    "name": "room",
+    "blurb": "small rooms, plates, gated air",
+    "params": [
+      {
+        "id": "model",
+        "name": "model",
+        "choices": "room, plate, air, chamber",
+        "type": "choice",
+        "min": "room",
+        "max": "chamber",
+        "def": "room"
+      },
+      {
+        "id": "size",
+        "name": "size",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "35%"
+      },
+      {
+        "id": "decay",
+        "name": "decay",
+        "type": "float",
+        "min": "0.10 s",
+        "max": "8.00 s",
+        "def": "0.70 s"
+      },
+      {
+        "id": "predelay",
+        "name": "predelay",
+        "type": "float",
+        "min": "0.0 ms",
+        "max": "120.0 ms",
+        "def": "6.0 ms"
+      },
+      {
+        "id": "damp",
+        "name": "damp",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "lowcut",
+        "name": "low cut",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "1.00 khz",
+        "def": "160 hz"
+      },
+      {
+        "id": "diffusion",
+        "name": "diffusion",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.70"
+      },
+      {
+        "id": "mod",
+        "name": "modulation",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.25"
+      },
+      {
+        "id": "gate",
+        "name": "gate",
+        "type": "float",
+        "min": "off",
+        "max": "-12 db",
+        "def": "off"
+      },
+      {
+        "id": "width",
+        "name": "width",
+        "type": "float",
+        "min": "0%",
+        "max": "150%",
+        "def": "100%"
+      },
+      {
+        "id": "mix",
+        "name": "mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "22%"
+      }
+    ],
+    "presets": [
+      "small room",
+      "plate",
+      "gated air",
+      "chamber"
+    ]
+  },
+  {
+    "code": "sw6",
+    "name": "swing",
+    "blurb": "moves the audio onto a groove",
+    "params": [
+      {
+        "id": "template",
+        "name": "template",
+        "choices": "straight, mpc, shuffle, push, drag, drunk",
+        "type": "choice",
+        "min": "straight",
+        "max": "drunk",
+        "def": "shuffle"
+      },
+      {
+        "id": "swing",
+        "name": "swing",
+        "type": "float",
+        "min": "50%",
+        "max": "75%",
+        "def": "56%"
+      },
+      {
+        "id": "amount",
+        "name": "amount",
+        "type": "float",
+        "min": "0%",
+        "max": "200%",
+        "def": "100%"
+      },
+      {
+        "id": "humanize",
+        "name": "humanize",
+        "type": "float",
+        "min": "0.0 ms",
+        "max": "15.0 ms",
+        "def": "0.0 ms"
+      },
+      {
+        "id": "accent",
+        "name": "accent",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "xfade",
+        "name": "crossfade",
+        "type": "float",
+        "min": "1.0 ms",
+        "max": "12.0 ms",
+        "def": "4.0 ms"
+      },
+      {
+        "id": "step1",
+        "name": "step 1",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step2",
+        "name": "step 2",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step3",
+        "name": "step 3",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step4",
+        "name": "step 4",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step5",
+        "name": "step 5",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step6",
+        "name": "step 6",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step7",
+        "name": "step 7",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step8",
+        "name": "step 8",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step9",
+        "name": "step 9",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step10",
+        "name": "step 10",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step11",
+        "name": "step 11",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step12",
+        "name": "step 12",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step13",
+        "name": "step 13",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step14",
+        "name": "step 14",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step15",
+        "name": "step 15",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      },
+      {
+        "id": "step16",
+        "name": "step 16",
+        "type": "float",
+        "min": "-50%",
+        "max": "+50%",
+        "def": "0%"
+      }
+    ],
+    "presets": [
+      "mpc 56",
+      "shuffle",
+      "push",
+      "drag",
+      "drunk"
+    ]
+  },
+  {
+    "code": "fl7",
+    "name": "filter",
+    "blurb": "3-band isolator + resonant sweep",
+    "params": [
+      {
+        "id": "low",
+        "name": "low",
+        "type": "float",
+        "min": "kill",
+        "max": "+6.0 db",
+        "def": "-0.0 db"
+      },
+      {
+        "id": "mid",
+        "name": "mid",
+        "type": "float",
+        "min": "kill",
+        "max": "+6.0 db",
+        "def": "-0.0 db"
+      },
+      {
+        "id": "high",
+        "name": "high",
+        "type": "float",
+        "min": "kill",
+        "max": "+6.0 db",
+        "def": "-0.0 db"
+      },
+      {
+        "id": "xlow",
+        "name": "low / mid",
+        "type": "float",
+        "min": "40.0 hz",
+        "max": "1.20 khz",
+        "def": "250 hz"
+      },
+      {
+        "id": "xhigh",
+        "name": "mid / high",
+        "type": "float",
+        "min": "600 hz",
+        "max": "14.0 khz",
+        "def": "2.50 khz"
+      },
+      {
+        "id": "sweep",
+        "name": "filter",
+        "type": "float",
+        "min": "lp 45.0 hz",
+        "max": "hp 12.0 khz",
+        "def": "off"
+      },
+      {
+        "id": "res",
+        "name": "resonance",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "drive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.10"
+      },
+      {
+        "id": "lfodiv",
+        "name": "lfo rate",
+        "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar",
+        "type": "choice",
+        "min": "1/64",
+        "max": "1 bar",
+        "def": "1/2"
+      },
+      {
+        "id": "lfodepth",
+        "name": "lfo depth",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "lfoshape",
+        "name": "lfo shape",
+        "choices": "sine, triangle, square, s&h",
+        "type": "choice",
+        "min": "sine",
+        "max": "s&h",
+        "def": "sine"
+      },
+      {
+        "id": "mix",
+        "name": "mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      }
+    ],
+    "presets": [
+      "flat",
+      "low kill",
+      "lp sweep 2 bars",
+      "hp tension"
+    ]
+  },
+  {
+    "code": "gl8",
+    "name": "glue",
+    "blurb": "bus compressor + tape saturation",
+    "params": [
+      {
+        "id": "threshold",
+        "name": "threshold",
+        "type": "float",
+        "min": "-40.0 db",
+        "max": "0.0 db",
+        "def": "-14.0 db"
+      },
+      {
+        "id": "ratio",
+        "name": "ratio",
+        "choices": "1.5, 2, 4, 10",
+        "type": "choice",
+        "min": "1.5",
+        "max": "10",
+        "def": "2"
+      },
+      {
+        "id": "attack",
+        "name": "attack",
+        "type": "float",
+        "min": "0.10 ms",
+        "max": "30.0 ms",
+        "def": "10.0 ms"
+      },
+      {
+        "id": "release",
+        "name": "release",
+        "type": "float",
+        "min": "50 ms",
+        "max": "1200 ms",
+        "def": "200 ms"
+      },
+      {
+        "id": "auto",
+        "name": "auto release",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "schp",
+        "name": "sidechain hp",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "300 hz",
+        "def": "90.0 hz"
+      },
+      {
+        "id": "makeup",
+        "name": "makeup",
+        "type": "float",
+        "min": "-6.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "tape",
+        "name": "tape",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.25"
+      },
+      {
+        "id": "bump",
+        "name": "head bump",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.50"
+      },
+      {
+        "id": "hf",
+        "name": "hf loss",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "bias",
+        "name": "bias",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.20"
+      },
+      {
+        "id": "mix",
+        "name": "mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "out",
+        "name": "output",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+6.0 db",
+        "def": "0.0 db"
+      }
+    ],
+    "presets": [
+      "glue 2:1",
+      "drum crush",
+      "tape only"
+    ]
+  },
+  {
+    "code": "wb1",
+    "name": "wub",
+    "blurb": "dubstep + neuro bass synth",
+    "params": [
+      {
+        "id": "a_shape",
+        "name": "a wave",
+        "type": "float",
+        "min": "sine",
+        "max": "hard",
+        "def": "saw"
+      },
+      {
+        "id": "a_pw",
+        "name": "a width",
+        "type": "float",
+        "min": "5%",
+        "max": "95%",
+        "def": "50%"
+      },
+      {
+        "id": "a_oct",
+        "name": "a octave",
+        "choices": "-3, -2, -1, 0, +1, +2, +3",
+        "type": "choice",
+        "min": "-3",
+        "max": "+3",
+        "def": "0"
+      },
+      {
+        "id": "a_semi",
+        "name": "a semi",
+        "type": "float",
+        "min": "-12 st",
+        "max": "+12 st",
+        "def": "0 st"
+      },
+      {
+        "id": "a_fine",
+        "name": "a fine",
+        "type": "float",
+        "min": "-100 ct",
+        "max": "100 ct",
+        "def": "0 ct"
+      },
+      {
+        "id": "a_level",
+        "name": "a level",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "a_uni",
+        "name": "a unison",
+        "choices": "1, 2, 3, 4, 5, 6, 7",
+        "type": "choice",
+        "min": "1",
+        "max": "7",
+        "def": "1"
+      },
+      {
+        "id": "a_detune",
+        "name": "a detune",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "25%"
+      },
+      {
+        "id": "a_spread",
+        "name": "a spread",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "b_shape",
+        "name": "b wave",
+        "type": "float",
+        "min": "sine",
+        "max": "hard",
+        "def": "square"
+      },
+      {
+        "id": "b_pw",
+        "name": "b width",
+        "type": "float",
+        "min": "5%",
+        "max": "95%",
+        "def": "50%"
+      },
+      {
+        "id": "b_oct",
+        "name": "b octave",
+        "choices": "-3, -2, -1, 0, +1, +2, +3",
+        "type": "choice",
+        "min": "-3",
+        "max": "+3",
+        "def": "0"
+      },
+      {
+        "id": "b_semi",
+        "name": "b semi",
+        "type": "float",
+        "min": "-12 st",
+        "max": "+12 st",
+        "def": "0 st"
+      },
+      {
+        "id": "b_fine",
+        "name": "b fine",
+        "type": "float",
+        "min": "-100 ct",
+        "max": "100 ct",
+        "def": "0 ct"
+      },
+      {
+        "id": "b_level",
+        "name": "b level",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "b_uni",
+        "name": "b unison",
+        "choices": "1, 2, 3, 4, 5, 6, 7",
+        "type": "choice",
+        "min": "1",
+        "max": "7",
+        "def": "1"
+      },
+      {
+        "id": "b_detune",
+        "name": "b detune",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "25%"
+      },
+      {
+        "id": "b_spread",
+        "name": "b spread",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "fm",
+        "name": "fm b>a",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "sub",
+        "name": "sub",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "80%"
+      },
+      {
+        "id": "subwave",
+        "name": "sub wave",
+        "choices": "sine, round",
+        "type": "choice",
+        "min": "sine",
+        "max": "round",
+        "def": "sine"
+      },
+      {
+        "id": "suboct",
+        "name": "sub octave",
+        "choices": "-2, -1, 0",
+        "type": "choice",
+        "min": "-2",
+        "max": "0",
+        "def": "-1"
+      },
+      {
+        "id": "noise",
+        "name": "noise",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "ftype",
+        "name": "filter",
+        "choices": "lp24, lp12, bp, hp, notch",
+        "type": "choice",
+        "min": "lp24",
+        "max": "notch",
+        "def": "lp24"
+      },
+      {
+        "id": "cutoff",
+        "name": "cutoff",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "260 hz"
+      },
+      {
+        "id": "res",
+        "name": "resonance",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.35"
+      },
+      {
+        "id": "fdrive",
+        "name": "filter drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.30"
+      },
+      {
+        "id": "keytrack",
+        "name": "key track",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "50%"
+      },
+      {
+        "id": "vowel",
+        "name": "vowel",
+        "type": "float",
+        "min": "a",
+        "max": "u",
+        "def": "a"
+      },
+      {
+        "id": "fmtq",
+        "name": "formant q",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.45"
+      },
+      {
+        "id": "fmtshift",
+        "name": "formant shift",
+        "type": "float",
+        "min": "-12 st",
+        "max": "+12 st",
+        "def": "0 st"
+      },
+      {
+        "id": "fmtmix",
+        "name": "formant mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "combtune",
+        "name": "comb tune",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "combfb",
+        "name": "comb feedback",
+        "type": "float",
+        "min": "-95%",
+        "max": "+95%",
+        "def": "+60%"
+      },
+      {
+        "id": "combmix",
+        "name": "comb mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "dmode",
+        "name": "distortion",
+        "choices": "soft, fold, hard, tube, crush, smooth",
+        "type": "choice",
+        "min": "soft",
+        "max": "smooth",
+        "def": "soft"
+      },
+      {
+        "id": "ddrive",
+        "name": "drive",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.25"
+      },
+      {
+        "id": "dtone",
+        "name": "dist tone",
+        "type": "float",
+        "min": "1.20 khz",
+        "max": "20.0 khz",
+        "def": "11.4 khz"
+      },
+      {
+        "id": "dmix",
+        "name": "dist mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "order",
+        "name": "order",
+        "choices": "filter > dist, dist > filter",
+        "type": "choice",
+        "min": "filter > dist",
+        "max": "dist > filter",
+        "def": "filter > dist"
+      },
+      {
+        "id": "wdiv",
+        "name": "wobble rate",
+        "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar",
+        "type": "choice",
+        "min": "1/64",
+        "max": "1 bar",
+        "def": "1/8"
+      },
+      {
+        "id": "wshape",
+        "name": "wobble shape",
+        "choices": "sine, triangle, ramp down, ramp up, square, wow, yoy, random",
+        "type": "choice",
+        "min": "sine",
+        "max": "random",
+        "def": "sine"
+      },
+      {
+        "id": "wretrig",
+        "name": "wobble retrigger",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "wphase",
+        "name": "wobble phase",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "wcut",
+        "name": "wob > cutoff",
+        "type": "float",
+        "min": "-6.0 oct",
+        "max": "+6.0 oct",
+        "def": "+4.0 oct"
+      },
+      {
+        "id": "wvowel",
+        "name": "wob > vowel",
+        "type": "float",
+        "min": "-100%",
+        "max": "+100%",
+        "def": "0%"
+      },
+      {
+        "id": "wfm",
+        "name": "wob > fm",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "wdrive",
+        "name": "wob > drive",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "wpitch",
+        "name": "wob > pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "wamp",
+        "name": "wob > volume",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "wcomb",
+        "name": "wob > comb",
+        "type": "float",
+        "min": "-100%",
+        "max": "+100%",
+        "def": "0%"
+      },
+      {
+        "id": "ma",
+        "name": "env attack",
+        "type": "float",
+        "min": "0 ms",
+        "max": "2.00 s",
+        "def": "1 ms"
+      },
+      {
+        "id": "md",
+        "name": "env decay",
+        "type": "float",
+        "min": "5 ms",
+        "max": "4.00 s",
+        "def": "250 ms"
+      },
+      {
+        "id": "ms",
+        "name": "env sustain",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "mr",
+        "name": "env release",
+        "type": "float",
+        "min": "5 ms",
+        "max": "4.00 s",
+        "def": "200 ms"
+      },
+      {
+        "id": "mcut",
+        "name": "env > cutoff",
+        "type": "float",
+        "min": "-6.0 oct",
+        "max": "+6.0 oct",
+        "def": "0.0 oct"
+      },
+      {
+        "id": "mpitch",
+        "name": "env > pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "mfm",
+        "name": "env > fm",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "mvowel",
+        "name": "env > vowel",
+        "type": "float",
+        "min": "-100%",
+        "max": "+100%",
+        "def": "0%"
+      },
+      {
+        "id": "aa",
+        "name": "amp attack",
+        "type": "float",
+        "min": "0 ms",
+        "max": "2.00 s",
+        "def": "1 ms"
+      },
+      {
+        "id": "ad",
+        "name": "amp decay",
+        "type": "float",
+        "min": "5 ms",
+        "max": "4.00 s",
+        "def": "300 ms"
+      },
+      {
+        "id": "as",
+        "name": "amp sustain",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "ar",
+        "name": "amp release",
+        "type": "float",
+        "min": "5 ms",
+        "max": "4.00 s",
+        "def": "80 ms"
+      },
+      {
+        "id": "ott",
+        "name": "ott",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "25%"
+      },
+      {
+        "id": "otttime",
+        "name": "ott time",
+        "type": "float",
+        "min": "0.00",
+        "max": "1.00",
+        "def": "0.40"
+      },
+      {
+        "id": "voices",
+        "name": "voices",
+        "choices": "mono, poly",
+        "type": "choice",
+        "min": "mono",
+        "max": "poly",
+        "def": "mono"
+      },
+      {
+        "id": "legato",
+        "name": "legato",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "glide",
+        "name": "glide",
+        "type": "float",
+        "min": "0 ms",
+        "max": "1.00 s",
+        "def": "40 ms"
+      },
+      {
+        "id": "bend",
+        "name": "bend range",
+        "type": "float",
+        "min": "0 st",
+        "max": "+24 st",
+        "def": "+2 st"
+      },
+      {
+        "id": "wheel",
+        "name": "mod wheel",
+        "choices": "off, wobble depth, wobble rate",
+        "type": "choice",
+        "min": "off",
+        "max": "wobble rate",
+        "def": "off"
+      },
+      {
+        "id": "vel",
+        "name": "velocity",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "30%"
+      },
+      {
+        "id": "width",
+        "name": "width",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "60%"
+      },
+      {
+        "id": "level",
+        "name": "level",
+        "type": "float",
+        "min": "-24.0 db",
+        "max": "+6.0 db",
+        "def": "-6.0 db"
+      }
+    ],
+    "presets": [
+      "dmz sub wob",
+      "hench square",
+      "skream wow",
+      "rusko yoy",
+      "loefah sub",
+      "noisa reese",
+      "current value fm",
+      "billain growl",
+      "talk box",
+      "neuro stab"
+    ]
+  }
+]

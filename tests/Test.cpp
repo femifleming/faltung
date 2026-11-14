@@ -100,6 +100,40 @@ int main (int argc, char** argv)
     }
     if (wavDir != juce::File()) wavDir.createDirectory();
     for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--dump-params" && i + 1 < argc)
+        {
+            // every product's parameters as JSON, for the manual
+            juce::Array<juce::var> prods;
+            for (int k = 0; k < kNumProducts; ++k)
+            {
+                Processor proc ((Pid) k);
+                auto* o = new juce::DynamicObject();
+                o->setProperty ("code", info (k).code); o->setProperty ("name", info (k).name); o->setProperty ("blurb", info (k).blurb);
+                juce::Array<juce::var> ps;
+                for (auto* prm : proc.getParameters())
+                {
+                    auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm);
+                    if (! r) continue;
+                    auto* q = new juce::DynamicObject();
+                    q->setProperty ("id", r->getParameterID()); q->setProperty ("name", r->getName (64));
+                    juce::String type = "float";
+                    if (auto* c = dynamic_cast<juce::AudioParameterChoice*> (r)) { type = "choice"; q->setProperty ("choices", c->choices.joinIntoString (", ")); }
+                    if (dynamic_cast<juce::AudioParameterBool*> (r)) type = "bool";
+                    q->setProperty ("type", type);
+                    q->setProperty ("min", r->getText (0.0f, 64)); q->setProperty ("max", r->getText (1.0f, 64));
+                    q->setProperty ("def", r->getText (r->getDefaultValue(), 64));
+                    ps.add (juce::var (q));
+                }
+                o->setProperty ("params", ps);
+                juce::Array<juce::var> pr;
+                for (int j = 0; j < proc.getNumPrograms(); ++j) pr.add (proc.getProgramName (j));
+                o->setProperty ("presets", pr);
+                prods.add (juce::var (o));
+            }
+            juce::File (juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1])).replaceWithText (juce::JSON::toString (juce::var (prods)));
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
         if (juce::String (argv[i]) == "--calibrate")
         {
             // median raw peak per type/model over random settings (velocity 1, unity level, no drive)
