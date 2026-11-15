@@ -287,11 +287,14 @@ void Processor::processKit (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& 
     // where does each voice go: its own output if that bus is on, otherwise the main pair
     std::array<float*, 8> outL {}, outR {};
     auto mainBus = getBusBuffer (buffer, false, 0);
+    // VST3 hosts switch the extra buses on only when they are routed; AU and VST2 keep them all on,
+    // so there a voice moves to its own output only with "separate outputs"
+    const bool ownOuts = wrapperType == wrapperType_VST3 || param ("outs") > 0.5f;
     for (int v = 0; v < kKitVoices; ++v)
     {
         outL[(size_t) v] = mainBus.getWritePointer (0); outR[(size_t) v] = mainBus.getWritePointer (1);
         if (auto* bus = getBus (false, v + 1))
-            if (bus->isEnabled())
+            if (ownOuts && bus->isEnabled())
             {
                 auto b = getBusBuffer (buffer, false, v + 1);
                 if (b.getNumChannels() >= 2) { outL[(size_t) v] = b.getWritePointer (0); outR[(size_t) v] = b.getWritePointer (1); }

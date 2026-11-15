@@ -1084,6 +1084,14 @@
         "min": "off",
         "max": "on",
         "def": "off"
+      },
+      {
+        "id": "outs",
+        "name": "separate outputs",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
       }
     ],
     "presets": [

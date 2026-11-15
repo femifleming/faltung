@@ -566,10 +566,10 @@ public:
           presetBar (proc, theme), patterns (proc, theme),
           run (P (proc, "run"), theme, "run"), bpm (P (proc, "bpm"), theme, "bpm"),
           swing (P (proc, "swing"), theme, "swing"), micro (P (proc, "micro"), theme, "micro"),
-          master (P (proc, "master"), theme, "master")
+          master (P (proc, "master"), theme, "master"), outs (P (proc, "outs"), theme, "separate outs")
     {
         if (theme.mirror) { backdrop.sleeveText = false; addAndMakeVisible (backdrop); addAndMakeVisible (sleeve); sleeve.selected = 2; }
-        for (auto* c : std::initializer_list<juce::Component*> { &strips, &grid, &presetBar, &patterns, &run, &bpm, &swing, &micro, &master })
+        for (auto* c : std::initializer_list<juce::Component*> { &strips, &grid, &presetBar, &patterns, &run, &bpm, &swing, &micro, &master, &outs })
             addAndMakeVisible (c);
         strips.setVisible (! theme.mirror);
         sleeve.onSelect = [this] (int v) { grid.selected = v; grid.repaint(); buildPanel (v); };
@@ -614,6 +614,7 @@ public:
         sleeve.setBounds (250, 28, 330, 100);
         presetBar.setBounds (604, 30, 190, 20);
         master.setBounds (604, 58, 190, 22);
+        outs.setBounds (604, 84, 190, 20);
         const int px = 604, pw = w - 36 - px;
         int y = 150;
         for (int i = 0; i < panel.size(); ++i)
@@ -671,7 +672,7 @@ public:
         g.fillRect (604.0f, 145.0f, (float) getWidth() - 640.0f, 1.0f);
         g.setFont (ui::mono (10.0f));
         g.setColour (theme.ink.withAlpha (0.75f));
-        g.drawText (ui::U ("click a strip or row name to select + play · midi c1–g1 plays bd1–cl8 · multi-out: enable outputs 2–9 in your host"),
+        g.drawText (ui::U ("click a strip or row name to select + play · midi c1–g1 plays bd1–cl8 · multi-out: enable outputs 2–9 in your host (au / vst2: also switch on separate outs)"),
                     Rectangle<float> (36.0f, 400.0f, (float) getWidth() - 72.0f, 14.0f), juce::Justification::centredLeft);
     }
 
@@ -687,7 +688,7 @@ private:
     StepGrid grid;
     ui::PresetBar presetBar;
     PatternBar patterns;
-    ui::ToggleBox run;
+    ui::ToggleBox run, outs;
     ui::ParamSlider bpm, swing, micro, master;
     juce::OwnedArray<juce::Component> panel;
     int voice = 2;

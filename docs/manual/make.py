@@ -88,7 +88,7 @@ LOOP = {'slices': 'how many slices the loop is cut into', 'slicemode': 'grid: eq
         'release': 'fade-out of each slice (also the crossfade when slices cut each other)', 'tone': 'low-pass on the slices', 'revprob': 'chance a step plays reversed',
         'spread': 'random stereo placement per hit', 'level': 'output level', 'vel': 'velocity sensitivity', 'fit': 'replay speed follows the host tempo',
         'loopbeats': 'how many beats the loop is (set automatically when you load)'}
-SEQ = {'run': 'internal clock (standalone, or when the host is stopped)', 'bpm': 'internal tempo', 'swing': 'offbeat 16ths later, 50% = straight',
+SEQ = {'outs': 'separate outputs: each voice to its own output 2–9 (VST3 does this by itself when you route an output; AU / VST2 hosts need this switch on, otherwise everything plays on the main pair)', 'run': 'internal clock (standalone, or when the host is stopped)', 'bpm': 'internal tempo', 'swing': 'offbeat 16ths later, 50% = straight',
        'micro': 'how far the per-step microtiming reaches (± ms)', 'pattern': 'current pattern a1–a8 — automate it to arrange', 'master': 'output level',
        'len': 'pattern length of the track in steps (different lengths = polymeter)', 'prob': 'probability multiplier for every step of the track',
        'shift': 'moves the whole track earlier or later in ms', 'mute': 'silences the track'}

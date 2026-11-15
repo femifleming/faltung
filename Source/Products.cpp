@@ -510,6 +510,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                     voiceParams (l, kv.type, pre, np, kitDefaultVoice (v));
                     trackCtl (l, pre, np);
                 }
+                // AU / VST2 hosts keep every output bus switched on, so voices only leave the main pair when asked to
+                l.b ("outs", "separate outputs", false);
             }
             else
             {
