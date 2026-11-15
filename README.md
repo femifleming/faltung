@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" width="128" alt="faltung icon"></p>
+
 # faltung
 
 **Install:** `brew tap femifleming/tap && brew install --cask femifleming/tap/faltung` (macOS) — or download
