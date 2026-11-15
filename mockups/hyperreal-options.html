@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cloudfin: hyperreal looks</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d0f14;color:#e9edf3;font:14px/1.45 "Avenir Next",system-ui,sans-serif}
+nav{position:sticky;top:0;z-index:20;background:#0d0f14ee;backdrop-filter:blur(8px);padding:10px 20px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #262b36}
+nav b{font-weight:600;font-size:16px;margin-right:14px}
+nav a{color:#e9edf3;text-decoration:none;border:1px solid #3a4150;border-radius:16px;padding:4px 12px;font-size:12.5px}
+nav a:hover{background:#222836}
+nav span{margin-left:auto;color:#8f98a8;font-size:12px}
+section{padding:24px 20px 6px;max-width:1540px;margin:auto}
+h2{font:600 20px "Avenir Next";margin:0 0 4px}
+h2 i{font-style:normal;color:#f2a65a;margin-right:8px}
+p.note{margin:0 0 12px;color:#9aa3b2;max-width:1100px}
+p.note b{color:#e9edf3;font-weight:600}
+.scale{width:100%;overflow:hidden;border-radius:10px}
+.frame{width:1500px;height:790px;position:relative;transform-origin:0 0;overflow:hidden;user-select:none;-webkit-user-select:none;background:#000}
+.frame canvas{position:absolute;inset:0;width:1500px;height:790px}
+.ui{position:absolute;inset:0;font-family:"Avenir Next",system-ui,sans-serif}
+.ui div{position:absolute;white-space:nowrap}
+.kn{font-size:11px;font-weight:600;text-align:center;transform:translateX(-50%)}
+.kv{font-size:11px;font-weight:500;text-align:center;transform:translateX(-50%);opacity:.9}
+.hit{border-radius:50%;cursor:ns-resize}
+.pt{font-size:17px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pt.r{flex-direction:row-reverse}
+.pt em{font-style:normal;font-size:11px;font-weight:700;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.ps{font-size:10.5px;font-weight:600;opacity:.75}
+.word{font-size:46px;font-weight:700;letter-spacing:1px;transform:translateX(-50%)}
+.pill{font-size:11.5px;font-weight:600;border-radius:14px;display:flex;align-items:center;justify-content:center}
+.chip{font-size:11px;font-weight:600;border-radius:13px;display:flex;align-items:center;justify-content:center}
+.err{position:absolute;left:10px;top:10px;color:#ff6b6b;font:12px monospace;white-space:pre;z-index:9}
+/* per-option type colour */
+.A .ui{color:#fff;text-shadow:0 1px 2px #000c,0 0 6px #1a0f22cc,0 0 14px #1a0f2299}
+.A .pill,.A .chip{background:linear-gradient(#ffffff55,#ffffff22);border:1px solid #ffffff88;backdrop-filter:blur(6px);box-shadow:0 4px 14px #0005, inset 0 1px 0 #fffa}
+.A .pt em{background:#ffffff33;border:1px solid #fffc}
+.A .word{background:linear-gradient(#fff,#ffd9a8 55%,#ff9d6b);-webkit-background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 4px 10px #2008)}
+.B .ui{color:#d7e6e6;text-shadow:0 1px 2px #000}
+.B .kn{letter-spacing:1.2px;text-transform:uppercase;font-size:9.5px;color:#9fb6b8}
+.B .kv{color:#ffbf7a;font-variant-numeric:tabular-nums}
+.B .pt{letter-spacing:2px;text-transform:uppercase;font-size:13px}
+.B .pt em{background:#0b1114;border:1px solid #38d6c8;color:#38d6c8;box-shadow:0 0 8px #38d6c888}
+.B .pill,.B .chip{background:linear-gradient(#1a2226,#0c1114);border:1px solid #2f3d42;color:#cfe;box-shadow:inset 0 1px 0 #ffffff14,0 3px 10px #000a}
+.B .word{letter-spacing:10px;text-transform:uppercase;font-weight:500;font-size:34px;color:#e8f4f2;text-shadow:0 0 18px #38d6c866}
+.C .ui{color:#f4feff;text-shadow:0 1px 2px #013c,0 0 8px #012a}
+.C .pt em{background:#ffffff22;border:1px solid #bfefff}
+.C .pill,.C .chip{background:#0a3a5a66;border:1px solid #9fe0ff88;backdrop-filter:blur(4px)}
+.C .word{color:#f2fdff;text-shadow:0 0 24px #7fe3ffaa,0 2px 6px #0138;font-weight:600}
+.D .ui{color:#1c2530}
+.D .kn{color:#3a4654}.D .kv{color:#1c2530}
+.D .pt em{background:#1c2530;color:#fff}
+.D .pill,.D .chip{background:linear-gradient(#fff,#e9eef3);border:1px solid #c5ced8;box-shadow:0 3px 10px #0002, inset 0 1px 0 #fff}
+.D .word{color:#1c2530;font-weight:300;letter-spacing:4px;font-size:42px}
+</style></head><body>
+<nav><b>Cloudfin, hyperreal</b><a href="#A">A golden hour</a><a href="#B">B above the clouds</a><a href="#C">C underwater</a><a href="#D">D macro</a><span>drag any knob up or down. live shaders: scroll to one to start it</span></nav>
+<div id="out"></div>
+<script>
+const W=1500,H=790,Q=new URLSearchParams(location.search),ONLY=Q.get('only'),FIXT=Q.get('t');
+// ---- the real layout and controls (as in the plug-in today) ----
+const PAN=[
+ {t:'pitch',n:2,x:20,y:112,w:364,side:'l',sub:'The Well-Tuned Piano',k:[['shift',.64,'+7.0 st'],['grain',.42,'65 ms'],['feedback',.37,'35 %'],['mix',.30,'30 %']]},
+ {t:'spectral smear',n:1,x:400,y:112,w:700,side:'c',sub:'spectral freeze',k:[['cutoff',.55,'-24.0 dB'],['attack',.45,'45 ms'],['smear',.48,'1.80 s'],['knee',.40,'4.0 : 1'],['blur',.05,'0 %'],['scatter',.05,'0 %'],['tilt',.50,'0.0 dB/oct'],['mix',.35,'35 %']]},
+ {t:'formant',n:3,x:1116,y:112,w:364,side:'r',sub:'a  e  i  o  u',k:[['vowel',.05,'a'],['shift',.50,'0.0 st'],['resonance',.45,'x1.00'],['mix',.20,'20 %']]},
+ {t:'feedback',n:0,x:20,y:332,w:190,side:'l',sub:'',k:[['amount',.05,'0 %']]},
+ {t:'grains',n:4,x:226,y:332,w:1048,side:'c',sub:'4 s live tape',g:1,k:[['size',.45,'90 ms'],['density',.50,'7.0x'],['position',.25,'25 %'],['spray',.10,'10 %'],['freeze',.0,'off'],['mix',.40,'40 %'],['rand pan',.45,'45 %'],['reverse',.05,'0 %'],['octave',.50,'0 oct'],['freeze fade',.42,'1.00 s']]},
+ {t:'drift',n:0,x:1290,y:332,w:190,side:'r',sub:'',k:[['rate',.42,'0.35 Hz'],['slew',.70,'70 %']]},
+ {t:'ji delay',n:5,x:20,y:552,w:364,side:'l',sub:'L 1/1 147/128 21/16',k:[['time',.50,'380 ms'],['feedback',.35,'35 %'],['tone',.62,'5.0 kHz'],['mix',.20,'20 %']]},
+ {t:'compander',n:7,x:400,y:552,w:700,side:'c',sub:'',k:[['threshold',.55,'-18.0 dB'],['ratio',.30,'2.0 : 1'],['below',.50,'off'],['attack',.40,'10 ms'],['release',.50,'250 ms'],['makeup',.45,'0.0 dB'],['mix',.98,'100 %']]},
+ {t:'reverb',n:6,x:1116,y:552,w:364,side:'r',sub:'hp 500 > lp 20k',k:[['decay',.48,'4.0 s'],['tone',.50,'flat'],['mix',.30,'30 %']]}];
+const PH=200,KR=31;
+const KNOBS=[];   // {x,y,r,v,name,txt,pi}
+PAN.forEach((p,pi)=>{const n=p.k.length,cy=p.y+102;
+ if(p.g){const cell=78,shape=220,total=4*cell+cell+shape+cell+4*cell+16;let x=p.x+(p.w-total)/2+cell/2;
+  p.k.forEach((k,i)=>{KNOBS.push({x,y:cy,r:i==4?34:KR,v:k[1],name:k[0],txt:k[2],pi,toggle:i==4});x+=cell;if(i==4){p.shapeX=x-cell/2+8;x+=shape+16}});}
+ else{const cell=Math.min(84,(p.w-28)/n);let x=p.x+p.w/2-cell*(n-1)/2;p.k.forEach(k=>{KNOBS.push({x,y:cy,r:n<=2&&p.w<200?36:KR,v:k[1],name:k[0],txt:k[2],pi});x+=cell});}});
+const OPT={
+A:{title:'Golden hour over the sea',note:'<b>Volumetric cumulus, a real ocean and thick refractive glass.</b> Each control is a glass ball half full of water on a wet glass shelf; the sun sits on the centre line with an anamorphic flare and a glitter path. <b>Good at:</b> closest to today\'s Cloudfin, just photographed instead of drawn. <b>Costs:</b> in the plug-in the sky and sea would be a pre-rendered looping image sequence (about 6 s, three times of day, roughly 60 MB) and the knobs filmstrips of 96 frames each; cheap to draw (blits only), heavy to ship. Real-time shading as on this page needs an OpenGL/Metal view and about 4 to 8 ms a frame.'},
+B:{title:'Above the clouds, night',note:'<b>A moonlit cloud deck from above, with dark machined hardware floating over it.</b> Brushed metal and smoked glass, thin lit bezels, knobs as glass lenses holding luminous water, a teal-and-amber grade and film grain. <b>Good at:</b> the most "3D object" and the easiest to read on a dark stage. <b>Costs:</b> the least like Cloudfin\'s soft, bright character. Cheapest to build: the panels and lenses are static renders plus one glow layer per knob, and the cloud deck is one slow loop or a small shader (2 to 3 ms).'},
+C:{title:'Underwater, looking up',note:'<b>The camera is under the surface.</b> Snell\'s window overhead with the clouds seen through it, god rays, caustics crawling over white sand, the controls as air bubbles tethered in rows. <b>Good at:</b> the most cinematic and the most "water"; nothing else looks like it. <b>Costs:</b> the clouds become a detail and labels sit on a moving, darker picture. It only works live: caustics and rays need real-time shading (about 5 to 9 ms a frame at full size, less at half resolution) or a long image loop.'},
+D:{title:'Macro: one drop',note:'<b>A studio product shot.</b> White seamless, softbox reflections, frosted glass plates, and every control a photoreal droplet that lenses what is under it; very shallow focus behind. <b>Good at:</b> the cleanest and most legible; the 3D is all in the drops. <b>Costs:</b> no sky or sea at all, so the "clouds and water" theme is only the material. Build cost is low: droplets are filmstrips (or one refraction shader), the background a still.'}};
+
+// ---- shader ----
+const VS='attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+const FS=o=>`precision highp float;
+#define OPT ${o}
+uniform vec2 R;uniform float T;uniform vec4 K[48];uniform vec4 P[9];uniform float NK;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
+float fbm(vec2 p,float lod){float a=.5,s=0.;for(int i=0;i<6;i++){if(float(i)<lod)s+=a*noise(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return s;}
+float sdBox(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return length(max(q,0.))+min(max(q.x,q.y),0.)-r;}
+const float ASP=1500./790.;
+#if OPT==0
+const float HZ=.60;
+vec3 scene(vec2 uv,float lod){vec2 m=vec2(abs(uv.x-.5),uv.y);vec2 sun=vec2(0.,HZ-.035);float ds=length((m-sun)*vec2(ASP,1.));
+ if(m.y<HZ){float t=m.y/HZ;vec3 c=mix(vec3(.08,.17,.40),vec3(.86,.47,.36),smoothstep(.15,.92,t));c=mix(c,vec3(1.,.78,.46),smoothstep(.72,1.,t));
+  c+=vec3(1.,.72,.38)*exp(-ds*4.5)*1.1;c+=vec3(1.,.96,.85)*smoothstep(.05,.03,ds)*1.6;
+  float k=HZ-m.y;vec2 q=vec2(m.x*2.6/(k+.22)+T*.006,1.9/(k+.10));
+  float d=fbm(q*1.1,lod),d2=fbm(q*1.1+vec2(-.22,.16),lod);
+  float cov=smoothstep(.50,.60,d)*smoothstep(0.,.06,k);
+  float lit=clamp((d-d2)*3.5+.45,0.,1.);
+  vec3 cl=mix(vec3(.26,.20,.36),vec3(1.,.80,.60),lit);cl=mix(cl,vec3(1.,.95,.86),lit*lit*.75);cl*=.80+.35*smoothstep(.5,.8,d);cl+=vec3(1.,.55,.25)*exp(-ds*2.6)*.7;
+  c=mix(c,cl,cov*.94);
+  float ang=atan(m.y-sun.y,m.x-sun.x+1e-4);c+=vec3(1.,.8,.5)*.10*pow(noise(vec2(ang*11.,T*.04)),2.)*exp(-ds*1.8)*(1.-cov);
+  return c;}
+ float d=m.y-HZ;float z=1./(d+.012);vec2 w=vec2(m.x*z*1.3,z*.55);
+ float h1=fbm(w*vec2(1.,3.2)+vec2(0.,T*.22),lod),h2=fbm(w*vec2(1.,3.2)+vec2(.03,T*.22+.05),lod);
+ float sl=clamp((h1-h2)*26.,-1.,1.);
+ vec3 skyr=mix(vec3(.98,.66,.42),vec3(.10,.20,.42),smoothstep(0.,.42,d*1.6+sl*.05));
+ // the clouds, upside down in the water
+ float k=d*.9;vec2 q=vec2((m.x+sl*.01)*2.6/(k+.22)+T*.006,1.9/(k+.10));float cov=smoothstep(.5,.72,fbm(q*1.1,min(lod,3.)));
+ skyr=mix(skyr,vec3(.95,.72,.6),cov*.35*exp(-d*3.));
+ vec3 c=mix(vec3(.015,.06,.12),skyr,.5+.32*sl);
+ float wd=.012+.20*d;float gl=exp(-pow(m.x/wd,2.))*pow(noise(w*vec2(5.,36.)+vec2(0.,T*1.3)),3.)*5.*smoothstep(.0,.02,d);
+ c+=vec3(1.,.82,.52)*gl;c=mix(c,vec3(1.,.8,.55),exp(-d*60.)*.5);return c;}
+const vec3 WATER=vec3(.16,.50,.74);const vec3 LIGHT=vec3(0.,-.55,.83);const vec3 RIM=vec3(1.,.82,.6);
+#elif OPT==1
+const float HZ=.36;
+vec3 scene(vec2 uv,float lod){vec2 m=vec2(abs(uv.x-.5),uv.y);vec2 moon=vec2(0.,.15);float dm=length((m-moon)*vec2(ASP,1.));
+ if(m.y<HZ){vec3 c=mix(vec3(.008,.014,.035),vec3(.03,.08,.13),smoothstep(0.,1.,m.y/HZ));
+  vec2 g=floor(vec2(m.x*ASP,m.y)*260.);float st=step(.992,hash(g))*(.4+.6*hash(g+3.))*(.7+.3*sin(T*2.+hash(g)*30.));c+=vec3(.8,.9,1.)*st*smoothstep(HZ,HZ-.12,m.y);
+  c+=vec3(.55,.75,.95)*exp(-dm*9.)*.5;float disc=smoothstep(.048,.042,dm);c=mix(c,vec3(.93,.96,1.)*(.86+.14*noise(m*60.)),disc);
+  c+=vec3(1.,.55,.2)*.10*exp(-(HZ-m.y)*40.);return c;}
+ float d=m.y-HZ;float z=1./(d+.03);vec2 q=vec2(m.x*z*.9,z*.75+T*.008);
+ float h=fbm(q*1.3,lod),h2=fbm(q*1.3+vec2(-.10,-.22),lod);
+ float lit=clamp((h-h2)*4.+.42,0.,1.);
+ vec3 c=mix(vec3(.03,.07,.11),vec3(.62,.80,.92),lit*smoothstep(.25,.7,h));
+ c=mix(c,vec3(.72,.86,.95),pow(lit,3.)*.5*exp(-m.x*2.));
+ float gap=smoothstep(.40,.26,h);c=mix(c,vec3(.01,.02,.03),gap*.85);
+ float city=pow(noise(q*14.),6.)*gap;c+=vec3(1.,.58,.18)*city*2.2;
+ c=mix(c,vec3(.10,.20,.26),exp(-d*9.)*.8);return c;}
+const vec3 WATER=vec3(.10,.95,.82);const vec3 LIGHT=vec3(0.,-.7,.71);const vec3 RIM=vec3(.5,.9,.95);
+#elif OPT==2
+vec3 scene(vec2 uv,float lod){vec2 m=vec2(abs(uv.x-.5),uv.y);vec2 wc=vec2(0.,-.02);
+ float rip=fbm(vec2(m.x*7.,m.y*7.-T*.25),min(lod,4.))-.5;
+ float dw=length((m-wc)*vec2(ASP,1.))+rip*.07;float win=smoothstep(.56,.47,dw);
+ // through the window: sky and clouds, bent by the waves
+ vec2 s=m*vec2(2.2,2.6)+rip*.5+vec2(T*.008,0.);float cl=smoothstep(.45,.72,fbm(s*1.6,lod));
+ vec3 sky=mix(vec3(.55,.83,1.),vec3(.9,.97,1.),smoothstep(.5,0.,dw));sky=mix(sky,vec3(1.),cl*.9);sky+=vec3(1.,.97,.85)*exp(-dw*7.)*.9;
+ float depth=smoothstep(0.,1.,m.y);
+ vec3 deep=mix(vec3(.02,.30,.52),vec3(.0,.07,.20),depth);
+ float under=pow(fbm(vec2(m.x*9.,m.y*16.-T*.3),min(lod,4.)),2.)*smoothstep(.5,.0,m.y);deep+=vec3(.05,.25,.35)*under;
+ vec3 c=mix(deep,sky,win);c+=vec3(.6,.95,1.)*smoothstep(.07,0.,abs(dw-.5))*.25;
+ // god rays from the window
+ float ang=atan(m.x,m.y+.25);float ray=pow(noise(vec2(ang*26.,T*.12)),2.)*.6+pow(noise(vec2(ang*60.+3.,T*.2)),3.)*.5;
+ c+=vec3(.45,.85,1.)*ray*(1.-win)*smoothstep(1.15,.1,m.y)*exp(-abs(ang)*1.6)*.75;
+ // the sand, with caustics
+ float fl=smoothstep(.80,.90,m.y+fbm(vec2(m.x*5.,3.),2.)*.05);
+ if(fl>0.){float z=1./(1.14-m.y);vec2 q=vec2(m.x*z*1.2,z);float c1=noise(q*5.+vec2(T*.35,T*.1)),c2=noise(q*5.-vec2(T*.25,-T*.2)+7.);
+  float ca=pow(1.-abs(c1-c2),10.);vec3 sand=vec3(.50,.66,.66)*(.75+.25*noise(q*40.))+vec3(.75,1.,.95)*ca*.7;
+  c=mix(c,sand*mix(.35,1.,exp(-m.x*1.4)),fl);}
+ // drifting particles
+ vec2 pg=vec2(m.x*ASP,m.y+T*.006)*42.;vec2 pc=floor(pg);float pd=length(fract(pg)-.5-(vec2(hash(pc),hash(pc+9.))-.5)*.6);
+ c+=vec3(.7,.95,1.)*smoothstep(.07,.0,pd)*step(.86,hash(pc+2.))*.35*(1.-win);return c;}
+const vec3 WATER=vec3(.55,.92,1.);const vec3 LIGHT=vec3(0.,-.8,.6);const vec3 RIM=vec3(.8,1.,1.);
+#else
+vec3 scene(vec2 uv,float lod){vec2 m=vec2(abs(uv.x-.5),uv.y);
+ vec3 c=mix(vec3(.985,.99,1.),vec3(.80,.85,.90),smoothstep(.0,1.,m.y*.9+m.x*.35));
+ c+=vec3(1.)*exp(-length((m-vec2(0.,-.1))*vec2(1.,2.2))*2.2)*.25;
+ // out of focus drops and softboxes far behind
+ for(int i=0;i<7;i++){float fi=float(i);vec2 bc=vec2(.07+hash(vec2(fi,1.))*.43,.06+hash(vec2(fi,2.))*.88);float br=.035+hash(vec2(fi,3.))*.07;
+  float d=length((m-bc)*vec2(ASP,1.));float b=smoothstep(br,br*.8,d);c=mix(c,c*vec3(.90,.95,1.)+vec3(.06,.07,.08)*smoothstep(br*.6,br,d),b*.55);c+=vec3(1.)*smoothstep(br*.5,0.,length((m-bc-vec2(-br*.3,-br*.35))*vec2(ASP,1.)))*b*.5;}
+ c*=.985+.03*noise(uv*R*.5);
+ c=mix(c,vec3(.70,.84,.96),smoothstep(.75,1.05,m.y+fbm(m*6.+T*.02,3.)*.12)*.35);return c;}
+const vec3 WATER=vec3(.50,.76,.96);const vec3 LIGHT=vec3(-.25,-.6,.76);const vec3 RIM=vec3(1.);
+#endif
+void main(){vec2 px=vec2(gl_FragCoord.x,R.y-gl_FragCoord.y);vec2 uv=px/R;
+ vec3 col=scene(uv,6.);
+ // ---- the panels ----
+ float inside=0.;
+ for(int i=0;i<9;i++){vec4 b=P[i];vec2 c=b.xy+b.zw*.5;float sd=sdBox(px-c,b.zw*.5,22.);
+  float sh=exp(-max(sdBox(px-c-vec2(0.,14.),b.zw*.5,22.),0.)/20.);
+  float a=smoothstep(1.,-1.,sd),e=smoothstep(2.2,0.,abs(sd)),e2=smoothstep(7.,0.,abs(sd+5.));
+  vec2 lp=(px-b.xy)/b.zw;
+#if OPT==0
+  col*=1.-.38*sh*(1.-a);
+  vec3 g=scene(uv+vec2(0.,.012)*(lp.y-.5),2.5)*.82+vec3(.10,.09,.11);g+=vec3(1.,.9,.8)*.16*smoothstep(.5,0.,lp.y);g+=vec3(1.,.75,.5)*.10*smoothstep(.75,1.,lp.y);
+  col=mix(col,g,a*.88);col+=vec3(1.,.93,.85)*e*.55*(1.-lp.y*.6)+vec3(1.)*e2*a*.07;
+#elif OPT==1
+  col*=1.-.75*sh*(1.-a);
+  float br=noise(vec2(px.x*.9,px.y*.02))*.5+noise(vec2(px.x*3.,px.y*.05))*.5;
+  vec3 g=vec3(.050,.060,.068)+vec3(.035)*br+vec3(.06,.10,.12)*smoothstep(.6,0.,lp.y)*.6;
+  g+=scene(vec2(uv.x,.30-uv.y*.2),2.)*.10;
+  col=mix(col,g+col*.55,a*.80);col+=vec3(.20,.85,.78)*e*.55+vec3(.20,.85,.78)*exp(-abs(sd)/9.)*.10*(1.-a);col+=vec3(1.)*e2*a*.03;
+#elif OPT==2
+  col=mix(col,col*.62+vec3(.0,.05,.09),a*.70);col+=vec3(.8,1.,1.)*e*.30;
+  // the tether lines down to the sand
+  float tx=abs(fract((px.x-b.x)/60.)-.5)*60.;col+=vec3(.8,1.,1.)*smoothstep(1.2,0.,tx)*.0;
+#else
+  col*=1.-.20*sh*(1.-a);
+  vec3 g=mix(col,vec3(.975,.985,.995),.62)*(.975+.03*hash(px));g+=vec3(1.)*.06*smoothstep(.35,0.,lp.y);
+  col=mix(col,g,a);col-=vec3(.10,.09,.08)*e*.5;col+=vec3(1.)*smoothstep(3.,0.,abs(sd+3.))*a*.5;
+#endif
+  inside=max(inside,a);}
+ // ---- the knobs: glass balls (lenses, bubbles, drops) holding water ----
+ for(int i=0;i<48;i++){if(float(i)>=NK)break;vec4 k=K[i];vec2 d=px-k.xy;float r=k.z;float val=k.w;
+  // contact shadow and the light it focuses onto the shelf
+  float sd=length(d-vec2(0.,r*.55))/r;
+#if OPT==3
+  col*=1.-.30*smoothstep(1.35,.6,sd)*step(1.,length(d)/r);col+=vec3(1.)*.30*smoothstep(.55,.0,length(d-vec2(r*.25,r*.75))/r)*step(1.,length(d)/r);
+#elif OPT==2
+  col+=vec3(.6,1.,1.)*.05*smoothstep(1.6,.9,length(d)/r)*step(1.,length(d)/r);
+  // its tether
+  if(d.y>r&&d.y<r+78.)col+=vec3(.85,1.,1.)*smoothstep(1.1,0.,abs(d.x+sin(d.y*.08+T+float(i))*2.))*.28;
+#else
+  col*=1.-.45*smoothstep(1.4,.5,sd)*step(1.,length(d)/r);
+  col+=RIM*.22*smoothstep(.6,.0,length(d-vec2(0.,r*.95))/r)*step(1.,length(d)/r);
+#endif
+  float q=length(d)/r;if(q<1.){vec2 p=d/r;float nz=sqrt(1.-q*q);vec3 n=vec3(p,nz);
+   float aa=smoothstep(1.,.96,q);
+   // what you see through it: the world behind, upside down and squeezed (a ball lens)
+   vec2 ruv=(k.xy-d*(1.25+.9*q*q))/R;vec3 back=scene(ruv,4.);
+#if OPT==3
+   back=scene((k.xy+d*.55)/R,4.)*1.02;   // a drop magnifies what's under it
+#endif
+   float wob=sin(p.x*5.+T*1.6+float(i))*.025+sin(p.x*9.-T*1.1)*.012;
+   float lvl=1.-2.*val+wob;float inW=smoothstep(lvl-.03,lvl+.03,p.y);
+   vec3 glass=back*.92+vec3(.04);
+   vec3 wcol=mix(back,WATER,.62)*(.70+.5*smoothstep(1.,-.2,p.y));
+#if OPT==1
+   glass=back*.25+vec3(.02,.03,.035);wcol=WATER*(.55+.75*smoothstep(1.,lvl,p.y))+vec3(1.,.6,.2)*.25*smoothstep(lvl+.5,lvl,p.y);
+#elif OPT==2
+   // an air bubble: bright silver, the water it has taken on at the bottom
+   glass=mix(back,vec3(.80,.97,1.),.45+.3*q);wcol=mix(back,vec3(.05,.35,.6),.55);
+#endif
+   vec3 c=mix(glass,wcol,inW);
+   // the meniscus: a bright line where the surface meets the glass
+   c+=RIM*smoothstep(.05,0.,abs(p.y-lvl))*.55*(1.-q*.5);
+   // caustic at the bottom, fresnel at the rim, the light's reflection up top
+   c+=RIM*pow(max(0.,1.-length(p-vec2(0.,.62))*2.2),2.)*.45*inW;
+   float fr=pow(1.-nz,2.6);
+#if OPT==3
+   c=mix(c,vec3(.52,.62,.74),fr*.80);c*=1.-.10*smoothstep(.2,1.,p.y);
+#else
+   c=mix(c,RIM*1.05,fr*.75);
+#endif
+   vec3 h=normalize(LIGHT+vec3(0.,0.,1.));float sp=pow(max(dot(n,h),0.),90.);c+=vec3(1.)*sp*1.6;
+   #if OPT==3
+   float sb=smoothstep(.20,.08,abs(p.x+.34))*smoothstep(.24,.10,abs(p.y+.40))*.55;
+#else
+   float sb=smoothstep(.22,.0,length((p+vec2(.36,.42))*vec2(1.,1.5)))*.30;
+#endif
+   c+=vec3(1.)*sb*(1.-fr);
+   c+=vec3(1.)*pow(max(dot(n,normalize(vec3(.5,.6,.62))),0.),30.)*.18;
+#if OPT==1
+   // a machined ring round the lens
+   float ring=smoothstep(.84,.88,q)*smoothstep(1.,.97,q);c=mix(c,vec3(.10,.12,.13)+vec3(.5)*pow(abs(sin(atan(p.y,p.x)*2.+.6)),8.),ring);
+#endif
+   // where the value is, on the rim
+   float an=(-2.36+4.72*val);vec2 tp=vec2(sin(an),-cos(an))*.90;c=mix(c,vec3(1.),smoothstep(.085,.05,length(p-tp)));
+   col=mix(col,c,aa);}
+ }
+ // ---- the lens: flare, bloom, grade, vignette, grain ----
+#if OPT==0
+ float fy=abs(uv.y-(HZ-.035));col+=vec3(.45,.65,1.)*exp(-fy*150.)*exp(-abs(uv.x-.5)*2.6)*.55;col+=vec3(1.,.6,.3)*exp(-fy*30.)*exp(-abs(uv.x-.5)*5.)*.18;
+ col=pow(col,vec3(.95,1.,1.06));
+#elif OPT==1
+ float l=dot(col,vec3(.3,.6,.1));col=mix(col,mix(vec3(.0,.22,.24),vec3(1.,.74,.45),smoothstep(0.,.9,l))*l*1.9,.30);
+#elif OPT==2
+ col=mix(col,vec3(.0,.10,.22),smoothstep(.35,1.1,length((uv-vec2(.5,.2))*vec2(1.,1.2)))*.45);
+#endif
+ vec2 v=uv-.5;col*=1.-dot(v,v)*${o==3?'.35':'.85'};
+ col+=(hash(px+fract(T)*91.7)-.5)*${o==3?'.018':'.045'};
+ col=col/(1.+max(col-1.,0.)*.6);
+ gl_FragColor=vec4(pow(max(col,0.),vec3(.96)),1.);}`;
+
+// ---- build the page ----
+const out=document.getElementById('out');const views=[];
+'ABCD'.split('').forEach((key,oi)=>{if(ONLY&&ONLY!=key)return;const o=OPT[key];
+ const sec=document.createElement('section');sec.id=key;
+ sec.innerHTML=`<h2><i>${key}</i>${o.title}</h2><p class="note">${o.note}</p><div class="scale"><div class="frame ${key}"><canvas width="${W}" height="${H}"></canvas><div class="ui"></div></div></div>`;
+ out.appendChild(sec);const frame=sec.querySelector('.frame'),ui=sec.querySelector('.ui'),cv=sec.querySelector('canvas');
+ const add=(cls,x,y,html,st='')=>{const d=document.createElement('div');d.className=cls;d.style.cssText=`left:${x}px;top:${y}px;${st}`;d.innerHTML=html;ui.appendChild(d);return d};
+ // header: theme switch + presets | wordmark | hydrophone + gravity; the order strip under it
+ add('pill',24,19,'day &nbsp;&middot;&nbsp; <b>dusk</b> &nbsp;&middot;&nbsp; night','width:132px;height:30px');add('pill',172,20,'Cloudfin &nbsp;&#9662;','width:250px;height:28px');
+ add('pill',1078,20,'hydrophone 0 % &nbsp;|&nbsp; onto the output','width:250px;height:28px');add('pill',1344,19,'gravity','width:132px;height:30px');
+ add('word',750,4,'Cloudfin');
+ const names=['smear','pitch','formant','grains','delay','reverb','comp'];const cw=84,gp=20,tw=7*cw+6*gp;let cx=750-tw/2;
+ add('chip',cx-12-92,75,'shuffle','width:92px;height:26px');names.forEach(n=>{add('chip',cx,75,n,`width:${cw}px;height:26px`);cx+=cw+gp});add('chip',cx-gp+12,75,'randomize','width:92px;height:26px');
+ PAN.forEach(p=>{const badge=p.n?`<em>${p.n}</em>`:'';
+  if(p.side=='r'){add('pt r',p.x,p.y+10,`${badge}<span>${p.t}</span>`,`width:${p.w-16}px`);if(p.sub)add('ps',p.x+18,p.y+17,p.sub);}
+  else{add('pt',p.x+16,p.y+10,`${badge}<span>${p.t}</span>`);if(p.sub)add('ps',p.x,p.y+17,p.sub,`width:${p.w-18}px;text-align:right`);}
+  if(p.g){const sx=p.shapeX,sy=p.y+46;add('',sx,sy,`<svg width="220" height="118" viewBox="0 0 220 118"><rect x=".5" y=".5" width="219" height="117" rx="10" fill="${key=='D'?'#ffffffaa':key=='B'?'#05090bcc':'#ffffff22'}" stroke="${key=='D'?'#b9c4cf':key=='B'?'#38d6c8':'#ffffffaa'}"/><path d="M8 110 L182 14 Q196 8 200 40 L212 110Z" fill="${key=='B'?'#38d6c855':key=='D'?'#7fb4e488':'#9fd8ff77'}" stroke="${key=='B'?'#7ff5e6':key=='D'?'#3a78b8':'#fff'}" stroke-width="1.5"/></svg>`);
+   add('ps',sx,sy+124,'saw &nbsp; bell &nbsp; tri &nbsp; rev &nbsp; pulse &nbsp; smooth','width:220px;text-align:center');}
+  if(p.t=='compander')for(const mx of [p.x+22,p.x+p.w-22-18])add('',mx,p.y+50,'',`width:18px;height:112px;border-radius:9px;border:1px solid ${key=='D'?'#b9c4cf':key=='B'?'#2f3d42':'#ffffff99'};background:linear-gradient(${key=='B'?'#38d6c8,#0b1114 38%':key=='D'?'#7fb4e4,#fff 38%':'#ffffffcc,#ffffff22 38%'})`);
+ });
+ const kv=KNOBS.map(k=>({...k}));
+ kv.forEach((k,i)=>{add('kn',k.x,k.y-k.r-19,k.name);const v=add('kv',k.x,k.y+k.r+5,k.txt);
+  const h=add('hit',k.x-k.r,k.y-k.r,'',`width:${2*k.r}px;height:${2*k.r}px`);
+  h.addEventListener('pointerdown',e=>{h.setPointerCapture(e.pointerId);const y0=e.clientY,v0=k.v;
+   const mv=ev=>{k.v=Math.max(0.02,Math.min(.98,v0+(y0-ev.clientY)/170));v.textContent=Math.round(k.v*100)+' %';view.dirty=true};
+   const up=()=>{h.removeEventListener('pointermove',mv);h.removeEventListener('pointerup',up)};h.addEventListener('pointermove',mv);h.addEventListener('pointerup',up);e.preventDefault()});});
+ // WebGL
+ const gl=cv.getContext('webgl',{antialias:false,preserveDrawingBuffer:true});const view={key,cv,gl,kv,visible:false,dirty:true};views.push(view);
+ if(!gl){add('err',10,10,'WebGL is not available here');return}
+ const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)){const m=gl.getShaderInfoLog(x);add('err',10,10,key+': '+m);document.title='SHADER ERROR '+key+' '+m;}return x};
+ const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS(oi)));gl.linkProgram(pr);gl.useProgram(pr);
+ const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+ const loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+ gl.uniform2f(gl.getUniformLocation(pr,'R'),W,H);gl.uniform1f(gl.getUniformLocation(pr,'NK'),kv.length);
+ const pa=new Float32Array(36);PAN.forEach((p,i)=>pa.set([p.x,p.y,p.w,PH],i*4));gl.uniform4fv(gl.getUniformLocation(pr,'P'),pa);
+ view.uT=gl.getUniformLocation(pr,'T');view.uK=gl.getUniformLocation(pr,'K');view.ka=new Float32Array(192);
+ view.draw=t=>{kv.forEach((k,i)=>view.ka.set([k.x,k.y,k.r,k.v],i*4));gl.uniform4fv(view.uK,view.ka);gl.uniform1f(view.uT,t);gl.drawArrays(gl.TRIANGLE_STRIP,0,4)};
+ view.draw(FIXT?+FIXT:3);
+ new IntersectionObserver(es=>es.forEach(e=>view.visible=e.isIntersecting),{threshold:.05}).observe(cv);
+});
+function fit(){document.querySelectorAll('.scale').forEach(s=>{const k=Math.min(1,s.clientWidth/W);s.firstElementChild.style.transform=`scale(${k})`;s.style.height=H*k+'px'})}
+addEventListener('resize',fit);fit();
+let last=0;function tick(ms){requestAnimationFrame(tick);if(FIXT||ms-last<33)return;last=ms;for(const v of views)if(v.visible&&v.draw)v.draw(ms/1000+3)}
+requestAnimationFrame(tick);
+</script></body></html>

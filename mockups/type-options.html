@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cloudfin, readable type</title>
+<style>
+body{margin:0;background:#101014;color:#e9e6f0;font:14px/1.5 "Avenir Next",system-ui,sans-serif}
+nav{position:sticky;top:0;z-index:5;background:#101014ee;backdrop-filter:blur(6px);padding:10px 20px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #2c2a36}
+nav b{margin-right:12px;font-size:16px}nav a{color:#e9e6f0;text-decoration:none;border:1px solid #474456;border-radius:16px;padding:3px 12px;font-size:12.5px}
+section{max-width:1500px;margin:auto;padding:24px 20px 6px}
+h2{margin:0 0 4px;font-size:20px}h2 i{font-style:normal;color:#ff9d5c;margin-right:8px}
+p{margin:0 0 10px;color:#a9a5b6;max-width:1000px}p b{color:#e9e6f0;font-weight:600}
+img{width:100%;display:block;image-rendering:pixelated;border:1px solid #2c2a36;margin-bottom:8px}
+.cap{font-size:12px;color:#8d899b;margin:-4px 0 10px}
+</style></head><body>
+<nav><b>Cloudfin, dithered: readable type</b><a href="#now">now</a><a href="#A">A heavier</a><a href="#B">B heavier, solid</a><a href="#C">C large, solid</a><a href="#D">D compact</a></nav>
+<section><p>These are the plug-in itself, rendered with each setting (not drawings), with the same dither you liked. Under each window is a close-up of the spectral smear panel at double size. Look at the smallest type: the values under the knobs and the line along the bottom of each panel.</p></section>
+<section id="now"><h2><i>now</i>As installed</h2><p>The small values are drawn thin and part-transparent, so the dither breaks them up.</p><img src="type/look0.png"><img src="type/zoom0.png"></section>
+<section id="A"><h2><i>A</i>Heavier and 20 % bigger</h2><p><b>Every label 20 % larger and set in a heavier weight; still dithered with everything else.</b> <b>Good at:</b> the smallest change. <b>Costs:</b> the dither still eats into the letters a little.</p><img src="type/look1.png"><img src="type/zoom1.png"></section>
+<section id="B"><h2><i>B</i>Heavier, 20 % bigger, and solid</h2><p><b>As A, and the type is kept out of the dither:</b> it is drawn in one solid colour at full strength, and only the pictures behind it are dithered. <b>Good at:</b> small type reads cleanly while the look stays the same. <b>Costs:</b> none I can see; a few long labels are cut short ("random octa...", "smo...") and would be given more room.</p><img src="type/look2.png"><img src="type/zoom2.png"></section>
+<section id="C"><h2><i>C</i>Large (40 % bigger) and solid</h2><p><b>The same solid type, 40 % larger.</b> <b>Good at:</b> readable from across the room. <b>Costs:</b> labels start to crowd the bubbles and each other, and more of the long ones are cut short; the bubbles get a little smaller to make room.</p><img src="type/look3.png"><img src="type/zoom3.png"></section>
+<section id="D"><h2><i>D</i>Compact: packed tighter, type 30 % bigger and solid</h2><p><b>Each knob's small drift bubble moves from underneath it into its bottom corner, the panels lose that row and the gaps between rows close up.</b> The window comes out about 15 % shorter (1500 x 668 instead of 1500 x 790), so at the same height on your screen everything is that much larger. <b>Good at:</b> big type and nothing wasted. <b>Costs:</b> the drift bubbles overlap the corner of each knob and are smaller targets; the strip of open water along the bottom goes.</p><img src="type/look4.png"><img src="type/zoom4.png"><p class="cap">In this render the window is cut at the new bottom edge; the real build would make the window that shape.</p></section>
+</body></html>

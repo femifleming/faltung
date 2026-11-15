@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cloudfin, low-res and dithered</title>
+<style>
+body{margin:0;background:#101014;color:#e9e6f0;font:14px/1.5 "Avenir Next",system-ui,sans-serif}
+nav{position:sticky;top:0;z-index:5;background:#101014ee;backdrop-filter:blur(6px);padding:10px 20px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #2c2a36}
+nav b{margin-right:12px;font-size:16px}nav a{color:#e9e6f0;text-decoration:none;border:1px solid #474456;border-radius:16px;padding:3px 12px;font-size:12.5px}
+section{max-width:1500px;margin:auto;padding:24px 20px 6px}
+h2{margin:0 0 4px;font-size:20px}h2 i{font-style:normal;color:#ff9d5c;margin-right:8px}
+p{margin:0 0 10px;color:#a9a5b6;max-width:1000px}p b{color:#e9e6f0;font-weight:600}
+img{width:100%;display:block;image-rendering:pixelated;border:1px solid #2c2a36}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
+.cap{font-size:12px;color:#8d899b;margin:4px 0 0}
+</style></head><body>
+<nav><b>Cloudfin, low-res and dithered</b><a href="#A">A SVGA</a><a href="#B">B 16 colours</a><a href="#C">C sharp + dithered</a><a href="#D">D 1-bit</a><a href="#E">E console</a></nav>
+<section><p>These are made from today's real Cloudfin window (the symmetric clouds-and-water one), reduced the way a 90s screen would show it. Nothing is redrawn: same layout, same bubbles, fewer pixels and fewer colours. In the plug-in this would be a last step that shrinks and dithers every frame, so everything still moves.</p></section>
+<section id="A"><h2><i>A</i>SVGA, 256 colours</h2><p><b>750 pixels wide (each pixel doubled), 256 colours picked from the picture, ordered dither.</b> The gentlest: reads as a mid-90s multimedia CD-ROM. <b>Good at:</b> keeps the mood and nearly all the detail; small labels are soft but readable. <b>Costs:</b> the least "retro" of the five.</p>
+<img src="lowres/A_dusk.png"><div class="three"><div><img src="lowres/A_day.png"><p class="cap">day</p></div><div><img src="lowres/A_dusk.png"><p class="cap">dusk</p></div><div><img src="lowres/A_night.png"><p class="cap">night</p></div></div></section>
+<section id="B"><h2><i>B</i>16 colours, the Windows 3.1 palette</h2><p><b>640 wide, the fixed 16-colour VGA palette, 4 x 4 ordered dither.</b> Every gradient becomes a checker pattern; the sky turns to cyan, grey and magenta weave. <b>Good at:</b> the strongest period feel. <b>Costs:</b> the dusk colours are approximated from a palette that has no peach or lilac, and small labels would need redrawing in a bitmap font to stay readable.</p><img src="lowres/B_dusk.png"></section>
+<section id="C"><h2><i>C</i>Full sharpness, 16 colours, dithered</h2><p><b>No loss of resolution: only the colours are cut to 16 (picked from the picture) with an 8 x 8 ordered dither.</b> Text and edges stay crisp while every soft gradient turns into a fine printed-looking screen. <b>Good at:</b> fully usable, nothing gets harder to read. <b>Costs:</b> less "low-res", more "newsprint"; the dither is very fine on a Retina screen.</p><img src="lowres/C_dusk.png"></section>
+<section id="D"><h2><i>D</i>1-bit, black and white</h2><p><b>512 wide, two colours, Atkinson dither</b> (the early Macintosh look). <b>Good at:</b> striking, and the bubbles' water levels still read. <b>Costs:</b> no colour at all, so day, dusk and night differ only in brightness, and this kind of dither shimmers when things move (an ordered pattern would be used for the moving parts).</p><img src="lowres/D_dusk.png"></section>
+<section id="E"><h2><i>E</i>Console, 320 wide</h2><p><b>320 x 169, 32 levels per colour channel with a dither, like a first PlayStation.</b> <b>Good at:</b> big chunky pixels, colours stay true. <b>Costs:</b> at this size the labels are gone; they would have to be drawn afterwards in a pixel font, and fine controls like the grain shape box get coarse.</p><img src="lowres/E_dusk.png"></section>
+<section><p><b>How it would be built:</b> the window is drawn as now into a small off-screen picture, then each pixel is snapped to the palette with an ordered dither and scaled up without smoothing. That is cheap (well under a millisecond at these sizes) and could be a switch beside day / dusk / night, so the current look stays available. For B, D and E the labels and values would be drawn after the dither, in a pixel font, so they stay sharp.</p></section>
+</body></html>
