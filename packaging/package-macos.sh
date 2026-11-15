@@ -15,6 +15,6 @@ ditto "$A/VST/ConvoSolution.vst" "$STAGE/VST/ConvoSolution.vst"
 ditto "$A/AU/ConvoSolution.component" "$STAGE/Components/ConvoSolution.component"
 ditto "$A/Standalone/ConvoSolution.app" "$STAGE/Applications/ConvoSolution.app"
 find "$STAGE" -maxdepth 2 \( -name "*.vst3" -o -name "*.vst" -o -name "*.component" -o -name "*.app" \) -exec codesign --force --deep -s - {} \;
-cp packaging/INSTALL.txt README.md LICENSE Resources/IR-CREDITS.txt "$STAGE/"
+cp packaging/INSTALL.txt README.md LICENSE Resources/IR-CREDITS.txt "docs/manual/convosolution Manual.pdf" "$STAGE/"
 (cd dist && ditto -c -k --keepParent "$NAME" "$NAME.zip")
 shasum -a 256 "dist/$NAME.zip"

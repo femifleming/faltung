@@ -20,6 +20,8 @@ and a standalone app, for macOS, Windows and Linux.
 ![ConvoSolution](docs/knobs.png)
 ![Modulation](docs/modulation.png)
 
+**[The manual (PDF)](docs/manual/convosolution%20Manual.pdf)**: every knob, link and menu item, the responses, recording, the LFOs and the matrix. It is also in every download.
+
 ## Install
 
 Download the package for your system from the releases page and follow

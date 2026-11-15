@@ -16,6 +16,6 @@ New-Item -ItemType Directory -Force -Path "$Stage\VST3", "$Stage\VST", "$Stage\A
 Copy-Item -Recurse "$A\VST3\*.vst3" "$Stage\VST3\"
 Copy-Item "$A\VST\*.dll" "$Stage\VST\"
 Copy-Item "$A\Standalone\*.exe" "$Stage\Apps\"
-Copy-Item packaging\INSTALL.txt, README.md, LICENSE, Resources\IR-CREDITS.txt $Stage
+Copy-Item packaging\INSTALL.txt, README.md, LICENSE, Resources\IR-CREDITS.txt, "docs\manual\convosolution Manual.pdf" $Stage
 Compress-Archive -Force -Path $Stage -DestinationPath "dist\$Name.zip"
 (Get-FileHash "dist\$Name.zip" -Algorithm SHA256).Hash
