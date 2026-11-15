@@ -2,106 +2,55 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
+#include "../../Source/Ui.h"
 
 //==============================================================================
-// Frutiger Aero, after a recurring dream: clouds heaped over calm water, light
-// coming through them. The whole window is the same on both sides of its centre line.
-//   day   : bright sky, a high sun, white cumulus over a blue sea
-//   dusk  : a water-aero sunset, a little darker, the sun on the horizon and warm
-//           light under the clouds (the default)
-//   night : deep blue under the stars and a moon; the clouds glow from inside
-struct Theme
+// Cloudfin in the faltung look. Clouds heaped over calm water, drawn the way Oval's sleeves draw:
+// stacked coloured lines on a flat ground, the whole picture mirrored about its centre line. The seven
+// effects are snd's folded paper strips: drag them to change the order. Below, the faltung rows:
+// label · slanted bar · value, and after each one a small bar for how far the random drift moves it.
+//   day   : a pale ground, blues and pinks
+//   dusk  : a warm pale ground, oranges and lilac (the default)
+//   night : the dark ground of the series, pale lines
+struct CfTheme
 {
-    int mode = 1;                   // 0 day, 1 dusk, 2 night
-    bool dusk = false, dark = false;
-    juce::Colour skyTop, skyMid, skyWarm, skyLow;
-    juce::Colour deep, mist;        // text on the glass panels
-    juce::Colour ink;               // text on light pills (chips, buttons, menus)
-    juce::Colour titleShadow;
-    juce::Colour ocean, aqua, aquaLight, glint, halo;   // water
-    juce::Colour violet, lime, warm;
-    juce::Colour cloudShade, cloud[6], cloudGlowA, cloudGlowB;   // a cloud from its shaded underside to its lit top, and the light under it
-    juce::Colour glintA, glintB;    // the glow passing through the clouds
-    juce::Colour panelTop, panelBottom, panelGlow, panelEdge, panelSlab;
-    float gloss = 0.6f;
-    juce::Colour rimA, rimB, rimC;  // soap-film iridescence
-    juce::Colour wordA, wordB, wordC, wordExtrude;
-    juce::Colour pillTop, pillBottom;
-
-    static const Theme& dayTheme();
-    static const Theme& duskTheme();
-    static const Theme& nightTheme();
-    static const Theme& forMode (int m);
+    int mode = 1;
+    juce::Colour ground, ink, fill, rule, water, sun;
+    std::array<juce::Colour, 5> lines;   // the cloud and water lines
+    fal::ui::Theme ui() const { return { ground, ink, fill, fal::ui::edgeFor (ground), false }; }
+    static const CfTheme& forMode (int m);
 };
 
-// colour per module, shared by the order strip chips and the panel badges
-juce::Colour stageColour (int stage);
+juce::Colour stageColour (int stage);   // the folded strip of each effect
 const char* stageName (int stage);
 
 //==============================================================================
-class AeroLookAndFeel : public juce::LookAndFeel_V4
+class CfLook : public juce::LookAndFeel_V4
 {
 public:
-    AeroLookAndFeel();
-    void setTheme (const Theme&);
-    const Theme& theme() const noexcept { return *th; }
-
-    void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos,
-                           float startAngle, float endAngle, juce::Slider&) override;
-    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
-    void drawComboBox (juce::Graphics&, int w, int h, bool down, int bx, int by, int bw, int bh, juce::ComboBox&) override;
-    void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
-    juce::Font getComboBoxFont (juce::ComboBox&) override;
-    juce::Font getPopupMenuFont() override;
-    juce::Label* createSliderTextBox (juce::Slider&) override;
-    void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool highlighted, bool down) override;
-    void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
-    juce::Font getSliderPopupFont (juce::Slider&) override;
-    void drawBubble (juce::Graphics&, juce::BubbleComponent&, const juce::Point<float>& tip, const juce::Rectangle<float>& body) override;
-
-    static juce::Font uiFont (float h, bool bold = false);
-    static juce::Font titleFont (float h);
-
-    // a glossy soap/water bubble, filled to 'level' (0..1) with sloshing water
-    void drawWaterBubble (juce::Graphics&, juce::Rectangle<float> r, float level, float phase,
-                          bool hot, float ghostLevel = -1.0f) const;
-    void drawGlass (juce::Graphics&, juce::Rectangle<float> r, bool hot) const;
-    void drawGloss (juce::Graphics&, juce::Rectangle<float> r) const;
-
-    float time = 0.0f; // animation clock, advanced by the editor
-
-private:
-    const Theme* th = &Theme::duskTheme();
+    void setTheme (const CfTheme&);
+    juce::Font getPopupMenuFont() override { return fal::ui::mono (12.0f); }
+    void drawTooltip (juce::Graphics&, const juce::String&, int w, int h) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String&, juce::Point<int>, juce::Rectangle<int>) override;
 };
 
 //==============================================================================
-// A knob that floats: name, a water-filled bubble, its value, and (optionally)
-// the attenuverter bubble that scales the random voltage into it.
-struct FloatKnob : public juce::Component
+// the drift a control gets from the random voltage: a short bipolar bar (drag, double-click: none)
+class DriftBar : public juce::Component, public juce::SettableTooltipClient
 {
-    static inline float cacheScale = 1.0f;   // the window's pixel scale (set by the editor as it paints)
-    static inline bool justMoving = false;
-    static inline bool fastBlit = false;     // while they tumble under gravity: draw their pictures without smoothing   // set while the editor moves a knob: moving it doesn't change its picture
-    FloatKnob (CloudfinProcessor&, const char* paramId, const juce::String& title, bool withAttenuverter, juce::Component* popupParent);
-    void resized() override;
-    void animate (float t, float dt);   // updates bob offset + modulation ghost
-    void applyTheme (const Theme&);
-
-    CloudfinProcessor& proc;
-    juce::Label name;
-    juce::Slider main, att;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mainAtt, attAtt;
-    int modIndex = -1;
-    bool hasAtt = true;
-    float ph1 = 0, ph2 = 0, ph3 = 0, settle = 1.0f, lastMod = -1.0f;
-    int frame = 0;   // it's cached as a picture; the water in it is redrawn every third frame (or right away when touched)
-    juce::Point<float> bob;
-};
-
-struct BubbleToggle : public juce::ToggleButton
-{
-    BubbleToggle (juce::AudioProcessorValueTreeState& s, const char* paramId, const juce::String& text);
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> att;
+public:
+    DriftBar (juce::RangedAudioParameter&, fal::ui::Theme);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void setTheme (fal::ui::Theme t) { theme = t; repaint(); }
+private:
+    juce::RangedAudioParameter& param;
+    fal::ui::Theme theme;
+    juce::ParameterAttachment attach;
+    float value01 = 0.5f, start = 0.5f;
 };
 
 //==============================================================================
@@ -116,6 +65,7 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void poll (float t, float grainSeconds);
+    void setTheme (const CfTheme&);
 
 private:
     void drawAt (juce::Point<float>);
@@ -123,19 +73,20 @@ private:
     void applyPreset (int which);
 
     CloudfinProcessor& proc;
+    CfTheme th;
     std::array<float, CloudfinProcessor::kShapeN> table {};
     juce::Rectangle<float> plot;
     juce::Point<float> last;
     bool drawing = false;
     uint32_t seenVersion = 0;
     float time = 0.0f, riderPos = 0.0f;
-    juce::OwnedArray<juce::TextButton> presets;
+    juce::OwnedArray<fal::ui::TextLink> presets;
 };
 
 //==============================================================================
-// The module order, as a row of chips. Drag a chip to move that module in the
-// signal chain; double-click the strip to go back to the default order.
-class ChainStrip : public juce::Component
+// The module order as a row of folded paper strips. Drag a strip to move that effect in the chain;
+// double-click for the default order.
+class ChainStrip : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     explicit ChainStrip (CloudfinProcessor&);
@@ -146,8 +97,10 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void poll (float dt);
     void shuffle();
+    const CfTheme* theme = nullptr;
 
-    static constexpr float chipW = 84.0f, gap = 20.0f, endW = 26.0f;   // endW: room at each end (in, and the loop back)
+    static constexpr float chipW = 104.0f, gap = 14.0f, endW = 44.0f;   // endW: room at each end (in, and the loop back)
+    static float width() { return (float) fp::numStages * chipW + (float) (fp::numStages - 1) * gap + 2.0f * endW; }
 
 private:
     float slotX (int i) const noexcept { return endW + (float) i * (chipW + gap); }
@@ -162,42 +115,23 @@ private:
 };
 
 //==============================================================================
-// The hydrophone: a little water-filled capsule (drag sideways for the level, double-click
-// for silence) and a pill that says where it goes: into the input, or onto the output.
-class HydroControl : public juce::Component
+// presets: ‹ name ›, click the name for the list (groups, yours, save, the folder)
+class CfPresets : public juce::Component
 {
 public:
-    explicit HydroControl (CloudfinProcessor&);
+    explicit CfPresets (CloudfinProcessor& p) : proc (p) {}
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
-    void mouseDrag (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override;
-    void mouseDoubleClick (const juce::MouseEvent&) override;
-    const Theme* theme = nullptr;
-    float t = 0.0f;
+    void poll();
+    fal::ui::Theme theme;
 private:
-    juce::Rectangle<float> capsule() const;
-    juce::Rectangle<float> pill() const;
+    void step (int d);
+    void menu();
     CloudfinProcessor& proc;
-    juce::ParameterAttachment levelAtt, intoAtt;
-    float level = 0.0f, into = 0.0f;
-    bool dragging = false;
-};
-
-//==============================================================================
-// Day / dusk / night: a little pill with a sun, a setting sun and a moon.
-class ThemeSwitch : public juce::Component
-{
-public:
-    void paint (juce::Graphics&) override;
-    void mouseUp (const juce::MouseEvent&) override;
-    void setMode (int m, bool animate);
-    void poll (float dt);
-    std::function<void (int)> onChange;
-    int mode = 1;
-
-private:
-    float pos = 0.5f; // 0 day .. 0.5 dusk .. 1 night
+    juce::String shownName;
+    int shownProgram = -2;
+    bool user = false;
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 //==============================================================================
@@ -210,125 +144,76 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int designW = 1500, designH = 668;
+    static constexpr int designW = 1240, designH = 850;
+    static constexpr int skyH = 300;   // the picture band
 
 private:
     struct Content : public juce::Component
     {
         explicit Content (CloudfinEditor& e) : owner (e) {}
         void paint (juce::Graphics& g) override { owner.paintContent (g); }
-        void paintOverChildren (juce::Graphics& g) override { owner.paintForeground (g); }
         CloudfinEditor& owner;
     };
 
-    struct Panel
+    struct Row
     {
-        juce::Rectangle<int> r;
-        juce::String title, sub;
-        std::vector<FloatKnob*> knobs;
-        int stage = -1; // which module, for the order badge
+        std::unique_ptr<fal::ui::ParamSlider> slider;
+        std::unique_ptr<DriftBar> drift;
+        int modIndex = -1;
+    };
+    struct Section
+    {
+        juce::String title;
+        int stage = -1;                      // which effect (for its strip colour and place in the chain)
+        juce::Rectangle<int> r;              // header + rows
+        std::vector<Row*> rows;
     };
 
-    struct AmbientBubble { float x, speed, size, phase, offset; };
+    // the clouds: puffs of stacked lines; each cloud is drawn on both sides of the centre line
+    struct Puff { float x, y, r; float fall = 0, vy = 0; bool wet = false; };
+    struct Cloud { float dx = 0, baseY = 0, w = 100; std::vector<Puff> puffs; };
 
-    // gravity: every control is a rigid disc that can fall, roll and pile up
-    struct Body
-    {
-        juce::Component* comp = nullptr;
-        FloatKnob* knob = nullptr;
-        juce::Point<float> home, pos, vel;
-        float r = 40.0f, angle = 0.0f, spin = 0.0f;
-    };
-
-    FloatKnob* knob (const char* id, const juce::String& title, bool withAtt = true);
-    void paintContent (juce::Graphics&);
+    Row* row (const char* id, const juce::String& label);
+    Section* section (const juce::String& title, int stage);
     void layoutContent();
-    void timerCallback() override;
+    void paintContent (juce::Graphics&);
+    void drawSky (juce::Graphics&);            // the whole picture band (mirrored)
+    void drawSkyHalf (juce::Graphics&);        // its left half
+    void drawSection (juce::Graphics&, const Section&);
     void buildClouds();
-    void renderStatic (float scale);
-    void drawBackScene (juce::Graphics&);
-    void drawFrontScene (juce::Graphics&, bool panelsPart);   // the wordmark, or the glass frames
-    void drawPanelGlass (juce::Graphics&, const Panel&);
-    void drawSkyLights (juce::Graphics&, float alpha);
-    void drawAmbient (juce::Graphics&);
-    void drawStars (juce::Graphics&);
-    void drawBokehLayer (juce::Graphics&, bool foreground);
-    void paintForeground (juce::Graphics&);
-    void drawDynamic (juce::Graphics&);
-    float modValue (const char* id) const;
     void setThemeMode (int mode);
-    void setGravity (bool on);
-    void stepPhysics (float dt);
+    void timerCallback() override;
+    void stepGravity (float dt);
+    float surfaceY (float x) const noexcept;   // the water line at x (left-half coordinates)
+    float modValue (const char* id) const;
 
     CloudfinProcessor& proc;
-    AeroLookAndFeel lnf;
+    CfLook look;
+    CfTheme th = CfTheme::forMode (1);
     Content content { *this };
 
-    juce::OwnedArray<FloatKnob> knobs;
-    std::vector<Panel> panels;
-    Panel *sgP = nullptr, *psP = nullptr, *fmP = nullptr, *grP = nullptr, *dlP = nullptr,
-          *rvP = nullptr, *cpP = nullptr, *fbP = nullptr, *drP = nullptr;
+    std::vector<std::unique_ptr<Row>> rows;
+    std::vector<std::unique_ptr<Section>> sections;
+    Section *sgS = nullptr, *psS = nullptr, *fmS = nullptr, *grS = nullptr, *shS = nullptr, *dlS = nullptr,
+            *rvS = nullptr, *cpS = nullptr, *fbS = nullptr, *drS = nullptr;
 
-    juce::ComboBox scaleBox;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> scaleAtt;
-    BubbleToggle freeze, randOct, specFreeze;
+    std::unique_ptr<fal::ui::ChoiceBox> scaleBox, hydroInto;
+    std::unique_ptr<fal::ui::ToggleBox> freeze, randOct, specFreeze, gravity;
+    std::unique_ptr<fal::ui::ParamSlider> hydroLevel;
     ShapeEditor shapeEditor { proc };
     ChainStrip chain { proc };
-    juce::TextButton shuffleBtn { "shuffle" };
-    juce::TextButton randomBtn { "randomize" };
-    ThemeSwitch themeSwitch;
-    juce::ToggleButton gravityBtn { "gravity" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gravityAtt;
-    juce::ComboBox presetBox;
-    int shownPreset = -1;
-    juce::Array<juce::File> userPresetFiles;
-    std::unique_ptr<juce::FileChooser> chooser;
-    void fillPresets();
-    void presetChosen();
-    HydroControl hydroCtl { proc };
+    CfPresets presets { proc };
+    fal::ui::TextLink shuffleBtn { "shuffle", {} }, randomBtn { "randomize", {} };
+    std::array<std::unique_ptr<fal::ui::TextLink>, 3> modeLinks;
 
-    // the water along the bottom: a strip when things are calm, a pool when gravity's on
-    std::vector<float> waveH, waveV;          // surface displacement per column, and its speed
-    std::vector<float> lastDepth;             // per body: how deep it was last step (for splashes)
-    struct Droplet { juce::Point<float> p, v; float life; };
-    std::vector<Droplet> droplets;
-    float waterLevel = 18.0f, gravVis = 0.0f, splashEnergy = 0.0f;
-    static constexpr float calmLevel = 18.0f, poolLevel = 190.0f;
-    float surfaceY (float x) const noexcept;
-    void stepWater (float dt);
-    void drawWater (juce::Graphics&);
-    void splash (float x, float strength);
-    juce::Rectangle<int> meterAreas[2];        // the compander's gain meter, at each end of its row
-
-    // the clouds over the sea (dx: how far from the centre line; each is drawn on both sides)
-    struct Puff { float x, y, r; };
-    struct Cloud { float dx = 0, baseY = 0, w = 100, alpha = 1; std::vector<Puff> puffs; };
     std::vector<Cloud> clouds;
-    static constexpr float horizonY = 540.0f;
-    // is this panel right of the centre line? (its title and badge mirror the left ones)
-    static bool mirrored (const Panel& p) noexcept { return p.r.getCentreX() > designW / 2 + 60; }
-    static juce::Point<float> mirrorOf (juce::Point<float> p) noexcept { return { (float) designW - p.x, p.y }; }
-    std::vector<AmbientBubble> ambient;
-
-    // two cached layers: the sky, clouds and sea behind (it drifts with the mouse: parallax),
-    // and the glass panels in front
-    juce::Image backLayer, frontLayer, panelLayer;   // panelLayer: the glass frames (they go when gravity's on)
-    juce::Image farLayer;                            // on retina: the far layers composed at 1x each frame
-    bool composeFarAt1x = true;
-    int farFrame = 0;
-    float pixelScale = 1.0f;
-    float staticScale = 0.0f;
-    static constexpr int parallaxMargin = 28;
-    juce::Point<float> parallax;
-
-    std::vector<Body> bodies;
+    std::vector<float> waveH, waveV;
+    float waterRise = 0.0f, splashEnergy = 0.0f, levelSm = 0.0f;
     bool gravityOn = false;
-    juce::Point<int> lastScreenPos;
-    bool haveScreenPos = false;
+    static constexpr float horizonY = 212.0f;
 
     double lastTick = 0.0;
     float t = 0.0f;
-    float lastFreeze = -1.0f;
 
     friend struct CloudfinTestAccess; // headless test drives the timer / gravity
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CloudfinEditor)

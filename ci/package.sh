@@ -10,7 +10,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 
 art() {   # artefact folder of a target (single- or multi-config generators)
     local tgt="$1"
-    for d in "$B/${tgt}_artefacts/Release" "$B/${tgt}_artefacts" "$B/partials/${tgt}_artefacts/Release" "$B/partials/${tgt}_artefacts"; do
+    for d in "$B/${tgt}_artefacts/Release" "$B/${tgt}_artefacts" "$B/partials/${tgt}_artefacts/Release" "$B/partials/${tgt}_artefacts" "$B/cloudfin/${tgt}_artefacts/Release" "$B/cloudfin/${tgt}_artefacts"; do
         [ -d "$d/VST3" ] && { echo "$d"; return; }
     done
     echo "missing artefacts for $tgt" >&2; exit 1
@@ -50,8 +50,10 @@ else
         product "faltung $p" "faltung_$p" "faltung $p"
     done
     product Partials Partials Partials
+    product Cloudfin Cloudfin Cloudfin
     cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$OUT/"
     cp "$ROOT/partials/docs/manual/manual.pdf" "$OUT/Partials Manual.pdf"
+    cp "$ROOT/cloudfin/docs/manual/Cloudfin Manual.pdf" "$OUT/"
 fi
 cp "$ROOT/README.md" "$ROOT/LICENSE" "$OUT/"
 

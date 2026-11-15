@@ -25,8 +25,8 @@ jobs:
           - os: Linux
             runner: ubuntu-22.04
           - suite: faltung
-            targets: faltung_all faltungTest PartialsTest
-            tests: faltungTest PartialsTest
+            targets: faltung_all faltungTest PartialsTest CloudfinTest CloudfinHostTest
+            tests: faltungTest PartialsTest CloudfinTest CloudfinHostTest
             name: faltung
           - suite: deep
             targets: faltung_deep_all faltungDeepTest

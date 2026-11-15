@@ -47,6 +47,9 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void setFill (juce::Colour c) { theme.fill = c; repaint(); }
     void setLabelWidth (int w) { labelW = w; resized(); repaint(); }
+    void setTheme (Theme t) { theme = t; repaint(); }
+    /** where modulation has moved it (0..1), drawn as a hollow tick; < 0: none */
+    void setGhost (float g) { if (std::abs (g - ghost) > 0.002f) { ghost = g; repaint(); } }
     std::function<void()> onTouch;
     juce::RangedAudioParameter& param;
 
@@ -54,7 +57,7 @@ private:
     Theme theme;
     juce::String label;
     int labelW = 64;
-    float value01 = 0, dragStart = 0;
+    float value01 = 0, dragStart = 0, ghost = -1.0f;
     bool dragging = false;
     juce::ParameterAttachment attach;
     juce::Rectangle<float> track() const;
@@ -72,6 +75,7 @@ public:
     juce::RangedAudioParameter& param;
     bool asTabs = false;   // draw every option as a row of tabs
     int labelW = 64;
+    void setTheme (Theme t) { theme = t; repaint(); }
 
 private:
     Theme theme; juce::String label;
@@ -88,6 +92,7 @@ public:
     ToggleBox (juce::RangedAudioParameter& p, Theme t, juce::String label = {});
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void setTheme (Theme t) { theme = t; repaint(); }
     juce::RangedAudioParameter& param;
 
 private:
@@ -96,7 +101,7 @@ private:
 };
 
 // ---- text button in the house style ----------------------------------------------------------------
-class TextLink : public juce::Component
+class TextLink : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     TextLink (juce::String t, Theme th) : text (std::move (t)), theme (th) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }

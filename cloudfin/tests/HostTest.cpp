@@ -10,13 +10,13 @@ using namespace juce;
 // steps the editor's animation clock by hand (no message loop in this test)
 struct CloudfinTestAccess
 {
-    static void farAt1x (CloudfinEditor& e, bool on) { e.composeFarAt1x = on; }
-    // the far scene by itself (sky, clouds, sea: nothing in front of it), to check it's the same on both sides
+    static void farAt1x (CloudfinEditor&, bool) {}   // (the old look's far-layer cache; nothing to switch now)
+    // the picture band by itself, to check it's the same on both sides
     static Image backScene (CloudfinEditor& e)
     {
-        Image img (Image::RGB, CloudfinEditor::designW, CloudfinEditor::designH, true);
+        Image img (Image::RGB, CloudfinEditor::designW, CloudfinEditor::skyH, true);
         Graphics g (img);
-        e.drawBackScene (g);
+        e.drawSky (g);
         return img;
     }
     // how far the picture is from its own mirror image: the mean difference per channel, 0..255
@@ -32,18 +32,23 @@ struct CloudfinTestAccess
             }
         return sum / (3.0 * d.height * (d.width / 2));
     }
-    // every panel has its mirror: the same rectangle reflected about the centre line (or it is its own)
-    static int unmirroredPanels (CloudfinEditor& e)
+    // every control sits inside the window and no two rows overlap
+    static int misplaced (CloudfinEditor& e)
     {
         int bad = 0;
-        for (auto& p : e.panels)
-        {
-            const auto m = p.r.withX (CloudfinEditor::designW - p.r.getRight());
-            bool found = false;
-            for (auto& q : e.panels) found = found || q.r == m;
-            std::printf ("  panel %-15s x %4d  y %3d  w %4d  h %3d   mirror %s\n", p.title.toRawUTF8(), p.r.getX(), p.r.getY(), p.r.getWidth(), p.r.getHeight(), found ? "ok" : "MISSING");
-            if (! found) ++bad;
-        }
+        const Rectangle<int> win (0, 0, CloudfinEditor::designW, CloudfinEditor::designH);
+        std::vector<Rectangle<int>> seen;
+        for (auto& r : e.rows)
+            for (Component* c : { (Component*) r->slider.get(), (Component*) r->drift.get() })
+            {
+                if (c == nullptr) continue;
+                const auto b = c->getBounds();
+                bool clash = ! win.contains (b);
+                for (auto& o : seen) clash = clash || o.intersects (b);
+                if (clash) { std::printf ("  control %s at %d %d %d %d: outside or overlapping\n", r->slider->param.getParameterID().toRawUTF8(), b.getX(), b.getY(), b.getWidth(), b.getHeight()); ++bad; }
+                seen.push_back (b);
+            }
+        std::printf ("  %d rows laid out, %d problems\n", (int) e.rows.size(), bad);
         return bad;
     }
     static void run (CloudfinEditor& e, bool gravity, int frames)
@@ -308,7 +313,7 @@ int main (int argc, char** argv)
                 const double asym = CloudfinTestAccess::asymmetry (back);
                 std::printf ("far scene%s: mean difference from its mirror image %.3f / 255%s\n", suffix.toRawUTF8(), asym, asym < 0.5 ? "" : "  <-- FAIL");
                 if (asym >= 0.5) ++fails;
-                if (theme == 1) fails += CloudfinTestAccess::unmirroredPanels (*ed);
+                if (theme == 1) fails += CloudfinTestAccess::misplaced (*ed);
             }
         };
         shoot (1, false, "_dusk");

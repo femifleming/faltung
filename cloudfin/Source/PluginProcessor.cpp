@@ -2,7 +2,7 @@
 #ifndef CLOUDFIN_AS_BASE   // (defined when another plug-in builds on this processor and brings its own editor)
  #include "PluginEditor.h"
 #endif
-#include <BinaryData.h>
+#include <CloudfinData.h>
 
 using namespace juce;
 using EP = fp::EngineParams;
@@ -408,7 +408,7 @@ fp::HydrophoneData::HydrophoneData()
     loader = std::thread ([this]
     {
         OggVorbisAudioFormat ogg;
-        std::unique_ptr<AudioFormatReader> r (ogg.createReaderFor (new MemoryInputStream (BinaryData::hydrophone_ogg, BinaryData::hydrophone_oggSize, false), true));
+        std::unique_ptr<AudioFormatReader> r (ogg.createReaderFor (new MemoryInputStream (CloudfinData::hydrophone_ogg, CloudfinData::hydrophone_oggSize, false), true));
         if (r == nullptr || r->lengthInSamples < 1000) return;
         audio.setSize ((int) jmax (1u, r->numChannels), (int) r->lengthInSamples);
         r->read (&audio, 0, (int) r->lengthInSamples, 0, true, true);

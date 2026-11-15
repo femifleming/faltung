@@ -145,3 +145,4 @@ Every request typed while this was being designed and built with Claude Code, in
 > also make sure it has its own repo, and add the homebrew to the homebrew list repo
 
 1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)
+2. "make cloudfin in the aesthetic of faltung and add it to that suite." + "delete the old cloudfin from here and github" (1.3.0: moved into the faltung repository with its history; new window in the faltung look — Oval line clouds and water, snd strips for the chain, faltung rows with drift bars; gravity drops the clouds into the sea; manual and help updated; the old femifleming/cloudfin repository deleted.)

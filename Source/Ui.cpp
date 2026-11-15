@@ -107,6 +107,13 @@ void ParamSlider::paint (juce::Graphics& g)
         g.fillPath (skewRect ({ a, cy - h * 0.5f, e - a, h }));
     }
     const float x = t.getX() + t.getWidth() * value01;
+    if (ghost >= 0.0f && std::abs (ghost - value01) > 0.004f)
+    {
+        // where the drift has moved it
+        const float gx = t.getX() + t.getWidth() * juce::jlimit (0.0f, 1.0f, ghost);
+        g.setColour (theme.ink.withAlpha (0.55f));
+        g.drawRect (juce::Rectangle<float> (gx - 1.5f, cy - 6.5f, 3.0f, 13.0f), 1.0f);
+    }
     g.setColour (theme.edge);
     g.fillRect (x - 1.0f, cy - 5.5f, 2.0f, 11.0f);
 }
