@@ -3,6 +3,7 @@
 #include "dsp/Sequencer.h"
 #include "dsp/Bass.h"
 #include "dsp/Master.h"
+#include "dsp/AutoMaster.h"
 
 namespace fal
 {
@@ -81,6 +82,17 @@ public:
     void abCopy();
     /** raise / lower limiter gain so the integrated loudness meets the target */
     bool goToTarget();
+    /** auto: listen to the track for `seconds` of sound, then set the master once (applyAuto) */
+    void autoStart (double seconds = 20.0) { if (autoListen) autoListen->start (seconds); }
+    void autoStop() { if (autoListen) autoListen->stop(); }          // early: uses what it heard (4 s at least)
+    void autoCancel() { if (autoListen) autoListen->cancel(); }
+    bool autoListening() const { return autoListen && autoListen->listening(); }
+    bool autoReady() const { return autoListen && autoListen->ready(); }
+    float autoProgress() const { return autoListen ? autoListen->progress() : 0.0f; }
+    double autoHeard() const { return autoListen ? autoListen->heardSeconds() : 0.0; }
+    /** message thread, once autoReady(): reset the master to its defaults, apply the decision */
+    juce::String applyAuto();
+    juce::String autoSummary;
     static float targetLufs (int index);
     /** synth keyboard in the editor: velocity 0 = note off */
     void uiNote (int note, float velocity) { uiTrigger (note, velocity); }
@@ -131,6 +143,7 @@ private:
     std::unique_ptr<Swing> swingFx;
     std::unique_ptr<BassSynth> bassFx;
     std::unique_ptr<MasterChain> masterFx;
+    std::unique_ptr<AutoListen> autoListen;
     /** redesigns the linear-phase FIRs when eq / crossover parameters move (ms0) */
     struct Designer : juce::Thread
     {

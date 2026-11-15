@@ -100,6 +100,168 @@ int main (int argc, char** argv)
     }
     if (wavDir != juce::File()) wavDir.createDirectory();
     for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--pack" && i + 1 < argc)
+        {
+            // faltungTest --pack <dir> : one-shot sample pack rendered from the bundle's own engines (24-bit / 44.1 kHz)
+            const double sr = 44100.0;
+            juce::File root (juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1]));
+            root.createDirectory();
+            auto finish = [&] (juce::AudioBuffer<float>& b, bool mono)
+            {
+                // trim the tail below -66 dB (after the last loud sample), fade 8 ms, normalise to -1 dBFS
+                const int n = b.getNumSamples();
+                int last = 0; const float thr = 0.0005f * std::max (1.0e-6f, b.getMagnitude (0, n));
+                for (int c = 0; c < b.getNumChannels(); ++c) for (int k = n - 1; k > last; --k) if (std::abs (b.getSample (c, k)) > thr) { last = k; break; }
+                const int len = std::min (n, last + (int) (0.01 * sr));
+                juce::AudioBuffer<float> o (mono ? 1 : 2, std::max (64, len));
+                for (int c = 0; c < o.getNumChannels(); ++c) o.copyFrom (c, 0, b, mono ? 0 : c, 0, o.getNumSamples());
+                const int fade = std::min (o.getNumSamples() / 4, (int) (0.008 * sr));
+                for (int c = 0; c < o.getNumChannels(); ++c) o.applyGainRamp (c, o.getNumSamples() - fade, fade, 1.0f, 0.0f);
+                const float pk = o.getMagnitude (0, o.getNumSamples());
+                if (pk > 1.0e-6f) o.applyGain (juce::Decibels::decibelsToGain (-1.0f) / pk);
+                return o;
+            };
+            auto save = [&] (const juce::File& f, const juce::AudioBuffer<float>& b)
+            {
+                f.getParentDirectory().createDirectory(); f.deleteFile();
+                juce::WavAudioFormat wav;
+                std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, (unsigned) b.getNumChannels(), 24, {}, 0));
+                if (w) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+            };
+            auto noteName = [] (float hz)
+            {
+                const int m = juce::roundToInt (69.0 + 12.0 * std::log2 (hz / 440.0));
+                return juce::MidiMessage::getMidiNoteName (m, true, true, 3);
+            };
+            auto hit = [&] (VType t, const VoiceParams& vp, float vel, double secs)
+            {
+                Voice v; v.prepare ((float) sr, 4242u);
+                juce::AudioBuffer<float> b (2, (int) (secs * sr)); b.clear();
+                v.trigger (t, vp, vel, 0.0f);
+                v.render (b.getWritePointer (0), b.getWritePointer (1), b.getNumSamples());
+                return b;
+            };
+            struct Folder { VType t; Pid pid; const char* dir; const char* word; };
+            const Folder folders[] = { { VType::Kick, Pid::bd1, "01 kicks", "kick" }, { VType::Snare, Pid::sd2, "02 snares", "snare" }, { VType::Rim, Pid::rm3, "03 rims", "rim" },
+                                       { VType::Hat, Pid::hh4, "04 hats", "hat" }, { VType::Clap, Pid::cp6, "05 claps", "clap" }, { VType::Perc, Pid::pc7, "06 perc", "perc" },
+                                       { VType::Click, Pid::cl8, "07 clicks", "click" }, { VType::Tom, Pid::tm9, "08 toms", "tom" } };
+            juce::Random rnd (2026);
+            int count = 0;
+            std::vector<std::pair<VType, VoiceParams>> forProcessing;
+            for (const auto& fo : folders)
+            {
+                const auto& vi = vtypeInfo (fo.t);
+                const auto& pr = presets (fo.pid);
+                for (int m = 0; m < 4; ++m)
+                {
+                    // start from the preset that uses this model (else the default sound)
+                    VoiceParams base = defaultVoice (fo.t); base.model = m;
+                    for (auto& p : pr)
+                    {
+                        bool isModel = false; for (auto& [id, v] : p.values) if (id == "model" && (int) v == m) isModel = true;
+                        if (! isModel) continue;
+                        for (auto& [id, v] : p.values) for (int sl = 0; sl < kSlots; ++sl) if (id == vi.slot[(size_t) sl]) base.s[(size_t) sl] = v;
+                        break;
+                    }
+                    base.level = 48.0f / 54.0f; base.pan = 0; base.vel = 0;
+                    const int variations = fo.t == VType::Hat ? 8 : 10;
+                    for (int k = 0; k < variations; ++k)
+                    {
+                        VoiceParams vp = base;
+                        if (k > 0)
+                        {
+                            const float spread = 0.08f + 0.02f * (float) k;
+                            for (int sl = 0; sl < kSlots; ++sl)
+                            {
+                                const float amount = sl == 7 ? 0.5f : (sl == 0 ? 1.2f : 1.0f);
+                                vp.s[(size_t) sl] = juce::jlimit (0.0f, sl == 7 ? 0.6f : 1.0f, vp.s[(size_t) sl] + (rnd.nextFloat() * 2 - 1) * spread * amount);
+                            }
+                        }
+                        const bool tonal = fo.t == VType::Kick || fo.t == VType::Tom || fo.t == VType::Perc || fo.t == VType::Rim;
+                        juce::String name = juce::String ("faltung ") + vi.name + " " + vi.models[(size_t) m] + " " + juce::String (k + 1).paddedLeft ('0', 2);
+                        if (tonal) name << " (" << noteName (tuneHz (fo.t, vp.s[0])) << ")";
+                        auto run = [&] (const VoiceParams& v2, const juce::String& nm, const char* sub)
+                        {
+                            auto b = hit (fo.t, v2, 1.0f, std::min (4.0, decaySec (fo.t, v2.s[1]) * 2.5 + 0.3));
+                            auto o = finish (b, true);
+                            save (root.getChildFile (fo.dir).getChildFile (sub).getChildFile (nm + ".wav"), o); ++count;
+                        };
+                        if (fo.t == VType::Hat)
+                        {
+                            VoiceParams cl = vp; cl.s[1] = juce::jlimit (0.0f, 0.45f, cl.s[1]);
+                            VoiceParams op = vp; op.s[1] = juce::jlimit (0.55f, 0.85f, 0.6f + (vp.s[1] - 0.3f) * 0.5f);
+                            run (cl, name.replace ("hat ", "hat closed "), "closed");
+                            run (op, name.replace ("hat ", "hat open "), "open");
+                        }
+                        else run (vp, name, vi.models[(size_t) m]);
+                        if (k < 2 && (fo.t == VType::Rim || fo.t == VType::Clap || fo.t == VType::Snare || fo.t == VType::Perc || fo.t == VType::Click)) forProcessing.push_back ({ fo.t, vp });
+                    }
+                }
+            }
+            // dub throws and rooms: hits through dl4 and rv5
+            {
+                int k = 0;
+                for (auto& [t, vp] : forProcessing)
+                {
+                    for (int fx = 0; fx < 2; ++fx)
+                    {
+                        auto b = hit (t, vp, 1.0f, fx == 0 ? 5.0 : 3.0);
+                        Transport tr; tr.bpm = 124; tr.playing = false;
+                        if (fx == 0)
+                        {
+                            DubDelay d; d.prepare ((float) sr);
+                            DubParams dp; dp.division = (k % 3 == 0) ? 6 : (k % 3 == 1 ? 9 : 8); dp.feedback = 0.55f + 0.1f * (k % 3); dp.age = 0.4f; dp.wow = 0.25f;
+                            dp.hp = 300; dp.lp = 2800; dp.spread = 0.8f; dp.mix = 0.55f;
+                            for (int pos = 0; pos < b.getNumSamples(); pos += 512) d.process (b.getWritePointer (0) + pos, b.getWritePointer (1) + pos, std::min (512, b.getNumSamples() - pos), dp, tr);
+                        }
+                        else
+                        {
+                            Room r; r.prepare ((float) sr);
+                            RoomParams rp; rp.model = k % 4; rp.size = 0.3f + 0.1f * (k % 3); rp.decay = 0.6f + 0.4f * (k % 3); rp.gate = (k % 4 == 2) ? 0.5f : 0.0f; rp.mix = 0.4f;
+                            for (int pos = 0; pos < b.getNumSamples(); pos += 512) r.process (b.getWritePointer (0) + pos, b.getWritePointer (1) + pos, std::min (512, b.getNumSamples() - pos), rp);
+                        }
+                        auto o = finish (b, false);
+                        const juce::String nm = juce::String ("faltung ") + vtypeInfo (t).name + (fx == 0 ? " dub " : " room ") + juce::String (k + 1).paddedLeft ('0', 2);
+                        save (root.getChildFile ("09 dub and room").getChildFile (fx == 0 ? "dub (dl4)" : "room (rv5)").getChildFile (nm + ".wav"), o); ++count;
+                    }
+                    ++k;
+                }
+            }
+            // wb1 bass: every preset as a short stab and a one-bar note, at C1 (140 bpm, host playing)
+            {
+                Processor probe (Pid::wb1);
+                for (int pr = 0; pr < probe.getNumPrograms(); ++pr)
+                    for (int len = 0; len < 2; ++len)
+                    {
+                        Processor w (Pid::wb1);
+                        w.setCurrentProgram (pr);
+                        FakeHead head; head.bpm = 140; w.setPlayHead (&head);
+                        w.setRateAndBufferSizeDetails (sr, 512); w.prepareToPlay (sr, 512);
+                        const double gate = len == 0 ? 0.35 : 60.0 / 140.0 * 4.0;
+                        const int total = (int) ((gate + 1.5) * sr);
+                        juce::AudioBuffer<float> out (2, total), blk (2, 512);
+                        for (int pos = 0; pos < total; pos += 512)
+                        {
+                            const int n = std::min (512, total - pos);
+                            blk.setSize (2, n, false, false, true); blk.clear();
+                            juce::MidiBuffer mb;
+                            if (pos == 0) mb.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 110), 0);
+                            const int off = (int) (gate * sr);
+                            if (off >= pos && off < pos + n) mb.addEvent (juce::MidiMessage::noteOff (1, 36), off - pos);
+                            w.processBlock (blk, mb);
+                            for (int c = 0; c < 2; ++c) out.copyFrom (c, pos, blk, c, 0, n);
+                            head.ppq += n / sr * head.bpm / 60.0;
+                        }
+                        w.setPlayHead (nullptr);
+                        auto o = finish (out, false);
+                        const juce::String nm = "faltung bass " + probe.getProgramName (pr) + (len == 0 ? " stab" : " 1 bar 140") + " (C1)";
+                        save (root.getChildFile ("10 bass (wb1)").getChildFile (nm + ".wav"), o); ++count;
+                    }
+            }
+            std::cout << count << " one-shots written to " << root.getFullPathName() << "\n";
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
         if (juce::String (argv[i]) == "--master" && i + 3 < argc)
         {
             // faltungTest --master in.wav <preset index> out.wav : the file through ms0, latency removed
@@ -131,6 +293,35 @@ int main (int argc, char** argv)
             std::cout << "preset: " << m.getProgramName (m.getCurrentProgram()) << ", latency " << lat << " samples\n";
             stats (in, "in "); stats (out, "out");
             writeWav (juce::File (argv[i + 3]), out, sr);
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--auto")
+        {
+            // faltungTest --auto a.wav b.wav ... : what ms0's auto hears in each (20 s from a third of
+            // the way in, as you'd play it the busy part), and what it would set
+            juce::AudioFormatManager fm; fm.registerBasicFormats();
+            for (int f = i + 1; f < argc; ++f)
+            {
+                std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (juce::File (argv[f])));
+                if (! rd) continue;
+                const double sr = rd->sampleRate; const int len = (int) rd->lengthInSamples;
+                juce::AudioBuffer<float> buf (2, len); rd->read (&buf, 0, len, 0, true, true);
+                if (rd->numChannels == 1) buf.copyFrom (1, 0, buf, 0, 0, len);
+                AutoListen al; al.prepare (sr); al.start (20.0);
+                for (int pos = len / 3; pos < len && al.listening(); pos += 512)
+                    al.push (buf.getReadPointer (0) + pos, buf.getReadPointer (1) + pos, std::min (512, len - pos), 1.0f);
+                if (al.listening()) al.stop();
+                if (! al.ready()) { std::cout << juce::File (argv[f]).getFileName() << ": not enough sound\n"; continue; }
+                const auto m = al.measures();
+                std::cout << "== " << juce::File (argv[f]).getFileName() << "\n   heard " << m.seconds << " s, " << m.integrated << " lufs, lra " << m.lra
+                          << ", tp " << m.truePeak << ", crest " << (m.peak - m.rms) << ", corr " << m.corr << "\n   per octave (mid):";
+                for (float v : m.midPerOct) std::cout << " " << juce::String (v, 1);
+                const auto d = decideAuto (m);
+                std::cout << "\n   " << d.summary << "\n   ";
+                for (auto& [id, v] : d.params) std::cout << id << "=" << juce::String (v, 2) << " ";
+                std::cout << "\n";
+            }
             return 0;
         }
     for (int i = 1; i < argc; ++i)

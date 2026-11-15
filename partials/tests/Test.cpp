@@ -231,6 +231,67 @@ int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
     const bool wavs = argc > 1 && juce::String (argv[1]) == "--wav";
+    if (argc > 2 && juce::String (argv[1]) == "--pack")
+    {
+        // PartialsTest --pack <dir> : one-shots of the factory sounds, 24-bit / 44.1 kHz, C2 / C3 / C4
+        const double sr = 44100.0;
+        juce::File dir (argv[2]); dir.createDirectory();
+        struct Patch { const char* name; std::function<void (PartialsProcessor&)> set; float secs, gate; };
+        auto P = [] (PartialsProcessor& p, int part, int id, float v) { p.setParam (p.partParam (part, id), v); };
+        auto G = [] (PartialsProcessor& p, int id, float v) { p.setParam (p.globalParam (id), v); };
+        std::vector<Patch> patches = {
+            { "saw", [] (PartialsProcessor&) {}, 2.0f, 1.2f },
+            { "pluck", [&] (PartialsProcessor& p) { P (p, 0, PP::pluckTime, 0.42f); P (p, 0, PP::uniOrder, 3); P (p, 0, PP::uniPitch, 0.2f);
+                         auto& a = p.edit (0); a.tg[TG::Volume].env.adsr (0.001f, 1.2f, 0.0f, 0.4f); a.tg[TG::Volume].env.on = true; G (p, GP::rvOn, 1); G (p, GP::rvWet, 0.3f); }, 2.5f, 1.0f },
+            { "wide pad", [&] (PartialsProcessor& p) { P (p, 0, PP::uniOrder, 7); P (p, 0, PP::uniPitch, 0.45f); P (p, 0, PP::uniPan, 0.9f); P (p, 0, PP::f1Type, 1); P (p, 0, PP::f1Freq, 0.62f);
+                         P (p, 0, PP::f1Res, 0.2f); P (p, 0, PP::blurAttack, 0.3f); auto& a = p.edit (0); a.tg[TG::Volume].env.adsr (0.6f, 0.5f, 0.8f, 1.5f); a.tg[TG::Volume].env.on = true;
+                         a.tg[TG::F1Freq].lfo.on = true; a.tg[TG::F1Freq].lfo.amt = 0.1f; a.tg[TG::F1Freq].lfo.speed = 0.2f; G (p, GP::rvOn, 1); G (p, GP::rvDecay, 0.6f); G (p, GP::chOrder, 4); }, 6.0f, 3.0f },
+            { "phaser bass", [&] (PartialsProcessor& p) { P (p, 0, PP::freqDiv, 2); P (p, 0, PP::phMix, 0.8f); P (p, 0, PP::phSpeed, 0.5f); P (p, 0, PP::f1Type, 2); P (p, 0, PP::f1Freq, 0.55f);
+                         P (p, 0, PP::f1Res, 0.5f); P (p, 0, PP::f1Env, 0.4f); P (p, 0, PP::sub1, 0.4f); auto& a = p.edit (0); a.tg[TG::F1Freq].env.adsr (0.001f, 0.25f, 0.0f, 0.2f);
+                         a.tg[TG::F1Freq].env.on = true; a.tg[TG::Volume].env.on = true; G (p, GP::distType, 1); G (p, GP::distAmt, 0.3f); }, 1.5f, 0.6f },
+            { "prism bell", [&] (PartialsProcessor& p) { P (p, 0, PP::timbreMix, 1); P (p, 0, PP::prismAmt, 0.55f); P (p, 0, PP::pluckTime, 0.6f); P (p, 0, PP::hzMix, 0.4f); P (p, 0, PP::hzShiftStep, 3);
+                         auto& a = p.edit (0); a.tg[TG::Volume].env.adsr (0.001f, 2.5f, 0.0f, 1.5f); a.tg[TG::Volume].env.on = true; G (p, GP::rvOn, 1); G (p, GP::rvDecay, 0.55f); }, 4.5f, 2.0f },
+            { "vowel", [&] (PartialsProcessor& p) { P (p, 0, PP::f1Type, 14); P (p, 0, PP::f1Freq, 0.55f); P (p, 0, PP::f1Width, 0.7f); P (p, 0, PP::f1Res, 0.5f); P (p, 0, PP::f1ResType, 3);
+                         P (p, 0, PP::vibDepth, 12); P (p, 0, PP::uniOrder, 2); auto& a = p.edit (0); a.tg[TG::Volume].env.adsr (0.05f, 0.3f, 0.9f, 0.3f); a.tg[TG::Volume].env.on = true; }, 2.5f, 1.6f },
+        };
+        int count = 0;
+        for (auto& pa : patches)
+            for (int note : { 36, 48, 60 })
+            {
+                PartialsProcessor p;
+                p.setPlayConfigDetails (0, 2, sr, 512); p.prepareToPlay (sr, 512);
+                pa.set (p); p.commit (0);
+                const int total = (int) (pa.secs * sr), off = (int) (pa.gate * sr);
+                juce::AudioBuffer<float> out (2, total), blk (2, 512);
+                for (int pos = 0; pos < total; pos += 512)
+                {
+                    const int n = juce::jmin (512, total - pos);
+                    juce::MidiBuffer mb;
+                    if (pos == 0) mb.addEvent (juce::MidiMessage::noteOn (1, note, 0.85f), 0);
+                    if (off >= pos && off < pos + n) mb.addEvent (juce::MidiMessage::noteOff (1, note), off - pos);
+                    juce::AudioBuffer<float> view (blk.getArrayOfWritePointers(), 2, n); view.clear();
+                    p.processBlock (view, mb);
+                    out.copyFrom (0, pos, view, 0, 0, n); out.copyFrom (1, pos, view, 1, 0, n);
+                }
+                // trim, fade, normalise to -1 dBFS
+                int last = 0; const float thr = 0.0005f * juce::jmax (1.0e-6f, out.getMagnitude (0, total));
+                for (int c = 0; c < 2; ++c) for (int k = total - 1; k > last; --k) if (std::abs (out.getSample (c, k)) > thr) { last = k; break; }
+                const int len = juce::jmin (total, last + (int) (0.01 * sr));
+                juce::AudioBuffer<float> o (2, juce::jmax (64, len));
+                for (int c = 0; c < 2; ++c) o.copyFrom (c, 0, out, c, 0, o.getNumSamples());
+                const int fade = juce::jmin (o.getNumSamples() / 4, (int) (0.01 * sr));
+                for (int c = 0; c < 2; ++c) o.applyGainRamp (c, o.getNumSamples() - fade, fade, 1.0f, 0.0f);
+                const float pk = o.getMagnitude (0, o.getNumSamples()); if (pk > 1.0e-6f) o.applyGain (juce::Decibels::decibelsToGain (-1.0f) / pk);
+                const auto f = dir.getChildFile (juce::String ("faltung partials ") + pa.name + " (" + juce::MidiMessage::getMidiNoteName (note, true, true, 3) + ").wav");
+                f.deleteFile();
+                juce::WavAudioFormat wav;
+                std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, 2, 24, {}, 0));
+                if (w) w->writeFromAudioSampleBuffer (o, 0, o.getNumSamples());
+                ++count;
+            }
+        std::cout << count << " partials one-shots written\n";
+        return 0;
+    }
     if (argc > 2 && juce::String (argv[1]) == "--figs") { makeFigures (juce::File (argv[2])); return 0; }
     if (argc > 2 && juce::String (argv[1]) == "--shot")
     {

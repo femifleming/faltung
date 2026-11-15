@@ -83,7 +83,7 @@ Processor::Processor (Pid product)
         case Pid::mc3: microFx = std::make_unique<Micro>(); break;
         case Pid::sw6: swingFx = std::make_unique<Swing>(); break;
         case Pid::wb1: bassFx = std::make_unique<BassSynth>(); break;
-        case Pid::ms0: masterFx = std::make_unique<MasterChain>(); designer = std::make_unique<Designer> (*this); designer->startThread(); break;
+        case Pid::ms0: masterFx = std::make_unique<MasterChain>(); autoListen = std::make_unique<AutoListen>(); designer = std::make_unique<Designer> (*this); designer->startThread(); break;
         default: break;
     }
     if (pid == Pid::kt1)
@@ -145,6 +145,7 @@ void Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
     {
         const juce::ScopedLock sl (designLock);
         masterFx->prepare (sr, samplesPerBlock);
+        if (autoListen) autoListen->prepare (sr);
         masterFx->design (readMaster(), true);
         masterReady = true;
         setLatencySamples (masterFx->latency());
@@ -699,6 +700,7 @@ void Processor::processEffect (juce::AudioBuffer<float>& buffer, const Transport
         case Pid::ms0:
         {
             const auto mp = readMaster();
+            if (autoListen && autoListen->listening()) autoListen->push (L, R, n, dbToGain (mp.trim));   // auto: hears the input
             for (int off = 0; off < n; off += 4096)
                 masterFx->process (L + off, R + off, std::min (4096, n - off), mp);
             break;
@@ -964,6 +966,26 @@ void Processor::abSwitch (int slot)
     abCurrent = slot;
 }
 void Processor::abCopy() { abState[(size_t) (1 - abCurrent)] = apvts.copyState(); }
+
+juce::String Processor::applyAuto()
+{
+    if (! autoListen || ! autoListen->ready()) return {};
+    const auto dec = decideAuto (autoListen->measures());
+    autoListen->consumed();
+    // from ms0's defaults, so the result is the same whatever was set before (A / B and the
+    // compare / listen controls are left as they are; the current slot is what changes)
+    for (auto* prm : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (prm))
+        {
+            const auto id = rp->getParameterID();
+            if (kAbSkip.contains (id) || id == "trim" || id == "out" || id == "dither" || id == "shaping") continue;
+            rp->beginChangeGesture(); rp->setValueNotifyingHost (rp->getDefaultValue()); rp->endChangeGesture();
+        }
+    for (auto& [id, v] : dec.params) setParam (id, v);
+    if (masterFx) masterFx->resetMeters();
+    autoSummary = dec.summary;
+    return autoSummary;
+}
 
 float Processor::targetLufs (int index)
 {

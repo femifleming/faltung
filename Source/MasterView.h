@@ -397,14 +397,22 @@ private:
     juce::String title; ui::Theme theme; std::unique_ptr<ui::ToggleBox> sw;
 };
 
-class MasterView : public View
+class MasterView : public View, private juce::Timer
 {
 public:
     explicit MasterView (Processor& proc) : p (proc), pi (proc.pinfo), theme (makeTheme (proc.pinfo)), analyser (proc, theme), imager (proc, theme),
         presetBar (proc, theme), listen (P (proc, "listen"), theme, " "), bypass (P (proc, "bypass"), theme, "compare"),
         match (P (proc, "match"), theme, "level-matched"), reset ("reset meters", theme),
-        abA ("a", theme), abB ("b", theme), abCopy ("copy", theme), goTarget ("go to target", theme)
+        abA ("a", theme), abB ("b", theme), abCopy ("copy", theme), goTarget ("go to target", theme), autoBtn ("auto", theme)
     {
+        // auto: listen to the track (20 s of sound), then set everything once
+        addAndMakeVisible (autoBtn);
+        autoBtn.onClick = [this]
+        {
+            if (p.autoListening()) p.autoStop();          // early: decides from what it heard (4 s at least)
+            else { p.autoStart (20.0); autoNote = "listening: play the track (the loudest, busiest part is best)"; }
+        };
+        startTimerHz (10);
         listen.asTabs = true;
         for (auto* c : std::initializer_list<juce::Component*> { &analyser, &imager, &presetBar, &listen, &bypass, &match, &reset }) addAndMakeVisible (c);
         reset.onClick = [this] { if (auto* m = p.master()) m->resetMeters(); };
@@ -509,6 +517,7 @@ public:
         bypass.setBounds (684, 13, 110, 22);
         match.setBounds (796, 13, 140, 22);
         presetBar.setBounds (w - 236, 13, 200, 22);
+        autoBtn.setBounds (w - 36 - 110 - 14 - 200, 410, 200, 18);
         abA.setBounds (w - 236 - 150, 13, 34, 22); abB.setBounds (w - 236 - 114, 13, 34, 22); abCopy.setBounds (w - 236 - 78, 13, 60, 22);
         analyser.setBounds (36, 52, w - 36 - 36 - 300 - 16, 360);
         imager.setBounds (w - 36 - 300, 52, 300, 360);
@@ -542,6 +551,18 @@ public:
         g.setColour (theme.ink); g.setFont (ui::sans (18.0f, true)); g.drawText ("ms0 master", 76, 10, 160, 26, juce::Justification::centredLeft);
         g.setFont (ui::mono (10.0f)); g.setColour (theme.ink.withAlpha (0.6f)); g.drawText ("faltung", 76, 32, 160, 12, juce::Justification::centredLeft);
         g.setColour (theme.ink); g.setFont (ui::mono (10.0f)); g.drawText ("listen", 320, 13, 48, 22, juce::Justification::centredLeft);
+        // auto: its progress under the button, and what it decided (or is doing) on the line below
+        if (p.autoListening())
+        {
+            auto b = autoBtn.getBounds().toFloat();
+            g.setColour (theme.ink.withAlpha (0.15f)); g.fillRect (b.getX(), b.getBottom() + 2, b.getWidth(), 3.0f);
+            g.setColour (theme.fill); g.fillRect (b.getX(), b.getBottom() + 2, b.getWidth() * p.autoProgress(), 3.0f);
+        }
+        if (autoNote.isNotEmpty())
+        {
+            g.setColour (theme.ink.withAlpha (0.8f)); g.setFont (ui::mono (9.5f));
+            g.drawFittedText (autoNote, juce::Rectangle<int> (370, 37, getWidth() - 370 - 36, 13), juce::Justification::centredLeft, 1, 0.8f);
+        }
         // meters line
         if (auto* m = p.master())
         {
@@ -637,7 +658,21 @@ private:
     ui::PresetBar presetBar;
     ui::ChoiceBox listen;
     ui::ToggleBox bypass, match;
-    ui::TextLink reset, abA, abB, abCopy, goTarget;
+    ui::TextLink reset, abA, abB, abCopy, goTarget, autoBtn;
+    juce::String autoNote;
+    void timerCallback() override
+    {
+        if (p.autoReady())
+        {
+            autoNote = p.applyAuto();
+            refreshAb();
+            repaint();
+        }
+        const bool l = p.autoListening();
+        autoBtn.setLit (l);
+        autoBtn.setText (l ? "listening " + juce::String ((int) p.autoHeard()) + " / 20 s  (stop)" : "auto");
+        if (l) repaint (autoBtn.getBounds().expanded (0, 6));
+    }
     void refreshAb() { abA.setLit (p.abCurrent == 0); abB.setLit (p.abCurrent == 1); }
     juce::OwnedArray<ui::TextLink> tabs;
     std::unique_ptr<Stage> eqStage, dyn, mb, sat, amb, clip, glue, lim, io;
