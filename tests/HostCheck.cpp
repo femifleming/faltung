@@ -59,6 +59,7 @@ static void run (juce::AudioPluginInstance& p, bool instrument, bool isKit, bool
             for (int k = 0; k < bs; ++k) { const float x = b.getSample (c, k); sum += x * x; peak = std::max (peak, std::abs (x)); }
         n += 2 * bs;
         head.samples += bs; head.ppq += bs / sr * head.bpm / 60.0;
+        if (pos < 30 * bs) juce::Thread::sleep ((int) (bs * 1000.0 / sr));   // the first blocks at real-time pace, as a host delivers them (background threads catch up)
     }
     p.releaseResources();
     rms = (float) std::sqrt (sum / (double) std::max<juce::int64> (1, n));
@@ -83,6 +84,8 @@ int main (int argc, char** argv)
         juce::String err;
         auto inst = fm.createPluginInstance (*found[0], 48000.0, 512, err);
         if (! inst) { std::cout << "FAIL " << path << ": " << err << "\n"; ++failures; continue; }
+        // let it settle as it would in a DAW: plug-ins that load things on the message thread (timers) get to run
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (1500);
         // stereo main in/out, aux buses off (a plain Live track)
         auto layout = inst->getBusesLayout();
         for (int i = 0; i < layout.outputBuses.size(); ++i) layout.outputBuses.getReference (i) = i == 0 ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::disabled();
@@ -112,6 +115,7 @@ int main (int argc, char** argv)
         for (int pr = 0; pr < std::min (3, inst->getNumPrograms()); ++pr)
         {
             inst->setCurrentProgram (pr);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
             run (*inst, instrument, isKit, true, true, 2.0, pk, rm);
             std::cout << "  program " << pr << " \"" << inst->getProgramName (pr) << "\": peak " << db (pk) << " dB\n";
             if (pk <= 1.0e-3f && inst->getProgramName (pr) != "empty") { std::cout << "  FAIL program silent\n"; ++failures; }

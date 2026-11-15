@@ -68,7 +68,7 @@ target_sources(CloudfinTest PRIVATE tests/OfflineTest.cpp)
 target_compile_definitions(CloudfinTest PRIVATE ${CF_DEFS})
 target_link_libraries(CloudfinTest PRIVATE juce::juce_dsp juce::juce_audio_formats PUBLIC juce::juce_recommended_config_flags)
 
-juce_add_gui_app(CloudfinHostTest PRODUCT_NAME "CloudfinHostTest")
+juce_add_console_app(CloudfinHostTest PRODUCT_NAME "CloudfinHostTest")   # (console: a plain main() everywhere, Windows included)
 target_sources(CloudfinHostTest PRIVATE tests/HostTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp ${CF_UI})
 target_compile_definitions(CloudfinHostTest PRIVATE ${CF_DEFS})
 if(MSVC)
