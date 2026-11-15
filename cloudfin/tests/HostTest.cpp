@@ -155,7 +155,7 @@ int main (int argc, char** argv)
         if (! same) ++fails;
     }
 
-    // the main feedback sings on its own: from total silence, turned up, it starts ringing; turned down, true silence
+    // the main feedback sings on its own: from total silence, turned up, it starts ringing; turned down, only the slosh's wash
     {
         auto runSilent = [] (float fb, double secs)
         {
@@ -170,7 +170,8 @@ int main (int argc, char** argv)
         };
         const float off = runSilent (0.0f, 3.0), ringing = runSilent (0.9f, 4.0);
         std::printf ("main feedback from silence: off -> peak %.6f, at 0.9 after 4 s -> peak %.3f\n", off, ringing);
-        if (off != 0.0f || ringing < 0.05f) ++fails;
+        // (gravity is always on, so 'off' is the slosh's soft wash, not true silence)
+        if (off > 0.03f || ringing < 0.05f) ++fails;
     }
 
     // the main output never clips: hot noise into full feedback, and twenty random patches, all stay under the ceiling
@@ -219,27 +220,20 @@ int main (int argc, char** argv)
             if (peakOut) *peakOut = pk;
         };
 
-        // slosh: fades in with gravity, washes even a silent input, and leaves without a trace
+        // slosh: gravity is always on (1.3), so it fades in by itself and washes even a silent input
         {
             auto p = makeP();
-            double quiet, washing, after;
-            runFor (*p, 1.0, 0.0f, &quiet);
-            *p->apvts.getRawParameterValue (ids::gravity) = 1.0f;
+            double washing;
             p->sloshEnergy = 0.5f;
             runFor (*p, 0.1, 0.0f);
             const float early = p->sloshAmount.load();
             runFor (*p, 2.5, 0.0f, &washing);
             const float full = p->sloshAmount.load();
-            *p->apvts.getRawParameterValue (ids::gravity) = 0.0f;
-            runFor (*p, 4.0, 0.0f);
-            runFor (*p, 1.0, 0.0f, &after);
-            std::printf ("slosh: amount %.2f after 0.1 s, %.2f after 2.6 s, %.2f after gravity off; silent-input rms %.5f -> %.4f -> %.5f\n",
-                         early, full, p->sloshAmount.load(), quiet, washing, after);
-            if (early > 0.4f || full < 0.95f || p->sloshAmount.load() > 0.0f || washing < 0.003 || after > quiet + 1.0e-4) ++fails;
+            std::printf ("slosh: amount %.2f after 0.1 s, %.2f after 2.6 s; silent-input rms %.4f\n", early, full, washing);
+            if (early > 0.4f || full < 0.95f || washing < 0.003) ++fails;
 
             // and it moves the filters: the same noise comes out differently each half second
             auto q = makeP();
-            *q->apvts.getRawParameterValue (ids::gravity) = 1.0f;
             runFor (*q, 2.0, 0.2f);
             double r1, r2, r3;
             runFor (*q, 0.5, 0.2f, &r1, nullptr, 1); runFor (*q, 0.5, 0.2f, &r2, nullptr, 1); runFor (*q, 0.5, 0.2f, &r3, nullptr, 1);
@@ -261,7 +255,7 @@ int main (int argc, char** argv)
             runFor (*p, 0.5, 0.0f); runFor (*p, 1.0, 0.0f, &onIn);
             std::printf ("hydrophone: ready %d (%.0f ms), silent input rms %.5f; on the output %.4f; into the input %.4f\n",
                          p->hydrophoneReady(), loadMs, off, onOut, onIn);
-            if (! p->hydrophoneReady() || onOut < 0.01 || onIn < 0.005 || off > 0.001) ++fails;
+            if (! p->hydrophoneReady() || onOut < off + 0.01 || onIn < 0.005 || off > 0.01) ++fails;   // (off: the slosh's wash)
         }
 
         // presets: all load and stay sane; the feedback ones keep going after the input stops

@@ -198,7 +198,7 @@ private:
             *rvS = nullptr, *cpS = nullptr, *fbS = nullptr, *drS = nullptr;
 
     std::unique_ptr<fal::ui::ChoiceBox> scaleBox, hydroInto;
-    std::unique_ptr<fal::ui::ToggleBox> freeze, randOct, specFreeze, gravity;
+    std::unique_ptr<fal::ui::ToggleBox> freeze, randOct, specFreeze;
     std::unique_ptr<fal::ui::ParamSlider> hydroLevel;
     ShapeEditor shapeEditor { proc };
     ChainStrip chain { proc };
