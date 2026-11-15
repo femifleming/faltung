@@ -485,12 +485,14 @@ CloudfinEditor::CloudfinEditor (CloudfinProcessor& p)
     freeze = std::make_unique<ui::ToggleBox> (P (ids::grFreeze), u, "freeze");
     randOct = std::make_unique<ui::ToggleBox> (P (ids::grRandOct), u, "random octave");
     specFreeze = std::make_unique<ui::ToggleBox> (P (ids::sgFreeze), u, "freeze");
+    gravity = std::make_unique<ui::ToggleBox> (P (ids::gravity), u, "gravity");
+    gravity->setTooltip ("the clouds fall into the water; the water sloshes in the sound");
     hydroLevel = std::make_unique<ui::ParamSlider> (P (ids::hydroLevel), u, "hydrophone");
     hydroLevel->setLabelWidth (84);
     hydroLevel->setTooltip ("a hydrophone recording of moving water (double-click: none)");
     hydroInto = std::make_unique<ui::ChoiceBox> (P (ids::hydroInto), u, "into");
     hydroInto->labelW = 34;
-    for (Component* c : std::initializer_list<Component*> { scaleBox.get(), freeze.get(), randOct.get(), specFreeze.get(), hydroLevel.get(),
+    for (Component* c : std::initializer_list<Component*> { scaleBox.get(), freeze.get(), randOct.get(), specFreeze.get(), gravity.get(), hydroLevel.get(),
                                                            hydroInto.get(), &shapeEditor, &chain, &presets, &shuffleBtn, &randomBtn })
         content.addAndMakeVisible (c);
 
@@ -563,7 +565,7 @@ void CloudfinEditor::setThemeMode (int mode)
     const auto u = th.ui();
     for (auto& r : rows) { r->slider->setTheme (u); if (r->drift) r->drift->setTheme (u); }
     scaleBox->setTheme (u); hydroInto->setTheme (u); hydroLevel->setTheme (u);
-    for (auto* tb : { freeze.get(), randOct.get(), specFreeze.get() }) tb->setTheme (u);
+    for (auto* tb : { freeze.get(), randOct.get(), specFreeze.get(), gravity.get() }) tb->setTheme (u);
     for (auto* l : { &shuffleBtn, &randomBtn }) { l->theme = u; l->repaint(); }
     for (int i = 0; i < 3; ++i) { modeLinks[(size_t) i]->theme = u; modeLinks[(size_t) i]->setLit (i == mode); }
     presets.theme = u; presets.repaint();
@@ -590,6 +592,7 @@ void CloudfinEditor::layoutContent()
     const int ly = skyH + 10;
     hydroLevel->setBounds (x0, ly, 300, 20);
     hydroInto->setBounds (x0 + 316, ly, 120, 20);
+    gravity->setBounds (cols[1] + 150, ly, 100, 20);
     randomBtn.setBounds (designW - 36 - 206, ly, 100, 20);
     shuffleBtn.setBounds (designW - 36 - 96, ly, 96, 20);
 
@@ -683,7 +686,7 @@ void CloudfinEditor::drawSkyHalf (Graphics& g)
     {
         Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (0, 0, (int) cx + 2, (int) hy);
-        const float r = th.mode == 1 ? 46.0f : 26.0f, sy = th.mode == 1 ? hy - 34.0f : (th.mode == 0 ? 62.0f : 70.0f);
+        const float r = th.mode == 1 ? 46.0f : 26.0f, sy = th.mode == 1 ? hy - 6.0f : (th.mode == 0 ? 62.0f : 70.0f);
         g.setColour (th.sun.withAlpha (0.9f));
         g.fillEllipse (cx - r, sy - r, 2 * r, 2 * r);
         if (th.mode == 2) { g.setColour (th.sun.withAlpha (0.35f)); g.drawEllipse (cx - r - 9.0f, sy - r - 9.0f, 2 * r + 18.0f, 2 * r + 18.0f, 1.0f); }
@@ -945,7 +948,7 @@ void CloudfinEditor::timerCallback()
     lastTick = now;
     t += dt;
 
-    gravityOn = true;   // always: the clouds sit in the sea and the sea sloshes in the sound
+    gravityOn = proc.apvts.getRawParameterValue (ids::gravity)->load() > 0.5f;
     stepGravity (dt);
     if (proc.themeMode.load() != th.mode) setThemeMode (proc.themeMode.load());   // a preset or session brought another light
 

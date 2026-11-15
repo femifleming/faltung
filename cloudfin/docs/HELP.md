@@ -91,7 +91,7 @@ The presets are at the top right: *<* and *>* step through them, and clicking th
 
 ## Gravity
 
-Gravity is always on. When the window opens the clouds fall into the sea: they splash, the water rises and rocks, and they float on it. The sloshing is in the sound too: the output runs through slowly wandering filters with a soft wash of water noise, which stirs faster while the clouds splash about.
+Turn on *gravity* (on the line under the picture) and the clouds fall into the sea: they splash, the water rises and rocks, and the clouds float on it. The sloshing is in the sound too. Turn it off and they float back up into the sky.
 
 ![Gravity](help/gravity.jpg)
 

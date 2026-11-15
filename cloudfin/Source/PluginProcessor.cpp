@@ -153,9 +153,8 @@ AudioProcessorValueTreeState::ParameterLayout CloudfinProcessor::createLayout()
     // Main feedback
     unit (ids::masterFb, "Main Feedback", 0.0f);
 
-    // gravity is always on now (1.3): the parameter stays, on and hidden from automation, so older sessions load cleanly
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::gravity, 1 }, "Gravity", true, AudioParameterBoolAttributes().withAutomatable (false)));
-    // the hydrophone texture
+    // the gravity toy, and the hydrophone texture
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::gravity, 1 }, "Gravity", false));
     unit (ids::hydroLevel, "Hydrophone", 0.0f);
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::hydroInto, 1 }, "Hydrophone Into", StringArray { "output", "input" }, 0));
 
@@ -372,7 +371,7 @@ void CloudfinProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
 
     // on the master: the hydrophone (if it's going there), then the slosh while gravity's on
     if (! hydroIn) hydro.addTo (oL, oR, n, p_hydroLevel->load());
-    slosh.process (oL, oR, n, true, sloshEnergy.load (std::memory_order_relaxed));   // gravity is always on
+    slosh.process (oL, oR, n, p_gravity->load() > 0.5f, sloshEnergy.load (std::memory_order_relaxed));
     sloshAmount.store (slosh.amount());
 
     // never clips: a peak limiter with its ceiling at -1 dBFS is the very last stage

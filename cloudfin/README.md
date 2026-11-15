@@ -4,7 +4,7 @@
 
 A dreamy, floating multi-effect, after a recurring dream of clouds heaped over calm water with light shining through them. **Part of [faltung](../README.md)**: it is drawn the way the rest of the series is — the clouds and the sea as stacked coloured lines on a flat ground, mirrored about the centre of the window; the seven effects as folded paper strips you drag into any order; the controls as faltung's slanted bars, each with a small drift bar beside it.
 
-Seven effects run one after another, in any order you like: spectral smear, pitch (locked to a scale), formant, grains, a just-intonation delay, reverb and a compander. Every control can drift on its own random voltage, and a feedback loop wraps the whole chain. A hydrophone recording of moving water can play into it or over it. Gravity is always on: the clouds fall into the sea, and the sea sloshes in the sound. Day, dusk and night change the light.
+Seven effects run one after another, in any order you like: spectral smear, pitch (locked to a scale), formant, grains, a just-intonation delay, reverb and a compander. Every control can drift on its own random voltage, and a feedback loop wraps the whole chain. A hydrophone recording of moving water can play into it or over it. Switch on gravity and the clouds fall into the sea — and the sea sloshes in the sound. Day, dusk and night change the light.
 
 ![Cloudfin](docs/screenshot.jpg)
 
