@@ -849,6 +849,19 @@ BassParams Processor::readBass() const
     b.ott = param ("ott"); b.ottTime = param ("otttime");
     b.mono = (int) param ("voices") == 0; b.legato = param ("legato") > 0.5f; b.glide = param ("glide"); b.bend = param ("bend");
     b.wheel = (int) param ("wheel"); b.vel = param ("vel"); b.width = param ("width"); b.level = param ("level");
+    auto lfo = [this] (const juce::String& x, BassParams::Lfo& l)
+    {
+        l.div = (int) param (x + "div"); l.sync = param (x + "sync") > 0.5f; l.hz = param (x + "hz"); l.shape = (int) param (x + "shape");
+        l.retrig = param (x + "retrig") > 0.5f; l.phase = param (x + "phase"); l.mode = (int) param (x + "mode"); l.skew = param (x + "skew"); l.smooth = param (x + "smooth");
+    };
+    lfo ("l2", b.l2); lfo ("l3", b.l3);
+    for (int k = 0; k < 16; ++k) b.steps[(size_t) k] = param ("stp" + juce::String (k + 1));
+    b.stepLen = (int) std::round (param ("steplen")); b.stepDiv = (int) param ("stepdiv"); b.stepGlide = param ("stepglide"); b.stepRetrig = param ("stepretrig") > 0.5f;
+    for (int k = 0; k < 8; ++k)
+    {
+        const juce::String x = "m" + juce::String (k + 1);
+        b.mods[(size_t) k] = { (int) param (x + "src"), (int) param (x + "dst"), param (x + "amt") };
+    }
     return b;
 }
 
@@ -874,6 +887,8 @@ void Processor::processSynth (juce::AudioBuffer<float>& buffer, juce::MidiBuffer
         else if (msg.isPitchWheel()) push ({ at, 2, 0, (float) (msg.getPitchWheelValue() - 8192) / 8192.0f });
         else if (msg.isController() && msg.getControllerNumber() == 1) push ({ at, 3, 0, msg.getControllerValue() / 127.0f });
         else if (msg.isAllNotesOff() || msg.isAllSoundOff()) push ({ at, 4, 0, 0 });
+        else if (msg.isChannelPressure()) push ({ at, 5, 0, msg.getChannelPressureValue() / 127.0f });
+        else if (msg.isAftertouch()) push ({ at, 5, 0, msg.getAfterTouchValue() / 127.0f });
     }
     std::stable_sort (ev.begin(), ev.begin() + ne, [] (const BassEvent& a, const BassEvent& b) { return a.sample < b.sample; });
     auto* L = buffer.getWritePointer (0); auto* R = buffer.getWritePointer (1);

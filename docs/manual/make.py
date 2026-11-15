@@ -385,9 +385,29 @@ flow = '''<svg class="flow" viewBox="0 0 700 170" font-family="IBM Plex Mono" fo
 <text x="230" y="125" font-size="10">sub bypasses filter, distortion, formant and comb</text></g>
 <g fill="#ffffff"><text x="140" y="16" font-size="10">wobble + mod env → cutoff, vowel, fm, drive, pitch, volume, comb</text></g></svg>'''
 WBSEC = [('osc a', 'a_'), ('osc b', 'b_')]
+WBMOD = {'div': 'rate, synced (1/64 … 16 bars)', 'sync': 'synced to tempo, or free (hz)', 'hz': 'rate when not synced', 'shape': 'sine · triangle · ramps · square · wow · yoy · random · smooth random',
+          'retrig': 'restart on each note (off: locked to the bar)', 'phase': 'start point', 'mode': 'loop, or one-shot (plays once per note and holds)', 'skew': 'moves the peak earlier or later',
+          'smooth': 'rounds off steps and edges'}
 def wb_desc(pid):
+    import re
     k = pid[2:] if pid[:2] in ('a_', 'b_') else pid
-    return WB.get(k, '')
+    if k in WB: return WB[k]
+    m = re.match(r'^l[23](.+)$', pid)
+    if m and m.group(1) in WBMOD: return WBMOD[m.group(1)]
+    if pid.startswith('stp'): return 'value of this step (draw them on the modulation page)'
+    if pid == 'steplen': return 'number of steps in the pattern'
+    if pid == 'stepdiv': return 'length of one step'
+    if pid == 'stepglide': return 'slide into the next step'
+    if pid == 'stepretrig': return 'restart the pattern on each note'
+    if pid.endswith('src'): return 'modulation source'
+    if pid.endswith('dst'): return 'what it moves'
+    if pid.endswith('amt'): return 'how much, either direction'
+    return ''
+def wb_skip(pid):
+    import re
+    if re.match(r'^stp([2-9]|1[0-5])$', pid): return True
+    if re.match(r'^m[2-8](src|dst|amt)$', pid): return True
+    return False
 add(divider('wb1 wub', 'dubstep and neuro bass', GROUND['wb1'], wire('#7fd3c8'), '#f6f6f0'))
 add(f'''<section class="page" id="wb1"><h2>wb1 wub</h2><p class="lead">{INTRO['wb1']}</p>{shot('wb1')}
 <h3>signal flow</h3><div class="dark">{flow}</div>
@@ -400,9 +420,29 @@ wobbles the same way; off, it runs with the bar. It moves seven destinations at 
 lfo can open the filter, shift the vowel and push the drive together. Shapes: sine, triangle, ramps, square, <b>wow</b> (opens fast, closes slowly),
 <b>yoy</b> (a big hump then a small one — the "yoy-yoy") and random steps. With <i>mod wheel</i> on <b>wobble depth</b> the wheel plays the
 wobble; on <b>wobble rate</b> it switches to faster divisions.</p>
+<h3>modulation</h3><p>The <b>modulation</b> tab (top right) holds everything that moves the sound beyond the wobble.</p>
+<img class="shot" src="img/wb1-mod.png" alt="wb1 modulation">
+<p><b>lfo 2</b> and <b>lfo 3</b>: tempo-synced from 1/64 up to 16 bars (or free in hz), with every wobble shape plus <i>smooth random</i>.
+<b>skew</b> bends the shape (early or late peak), <b>smooth</b> rounds it off, <b>retrigger</b> restarts it on each note (off: it runs with
+the bar), <b>one-shot</b> plays it once and holds the end — a ramp up over 4 bars in one-shot is a filter sweep that rises across a long note.
+The scope above each lfo shows the last seven seconds.</p>
+<p><b>steps</b>: sixteen values you draw, played at a tempo division with a glide between them — the programmed wub. Length 1–16 makes
+odd-length patterns against the bar.</p>
+<p>The <b>matrix</b> has eight slots: a source, a destination and an amount (−100 … +100%). Sources: wobble, lfo 2, lfo 3, steps, mod env,
+amp env, velocity, mod wheel, note, a random value per note, aftertouch. Destinations: cutoff (±6 octaves), resonance, vowel, formant shift,
+formant mix, fm, drive, pitch (±24 st), fine pitch, volume, comb tune and feedback, the shape of either oscillator, pulse width, detune, noise,
+sub, distortion mix — and the <b>rates</b> of the wobble, lfo 2, lfo 3 and the steps (±3 octaves), which is how the speeding-up wubs are made.
+Several slots can share a source or a destination; they add.</p>
+<table class="params">
+<tr><td class="n">slow sweep wob</td><td>a 1/8 wobble while lfo 2 (ramp up, 4 bars, one-shot) opens the cutoff and drive over the note</td></tr>
+<tr><td class="n">step wub</td><td>the steps play cutoff and vowel together, with glide</td></tr>
+<tr><td class="n">rate riser</td><td>lfo 2 ramps the wobble rate up two octaves over half a bar</td></tr>
+<tr><td class="n">neuro movement</td><td>smooth random on fm, a triangle on comb pitch, steps on vowel, a little random on cutoff</td></tr>
+<tr><td class="n">talking steps</td><td>an 8-step vowel pattern with long glides</td></tr>
+<tr><td class="n">pressure growl</td><td>aftertouch adds drive, the mod wheel opens the filter, velocity sets the fm</td></tr></table>
 <h3>the keyboard</h3><p>The keys along the bottom play wb1 in the standalone app or without a controller. Drag across them to hear glide and legato; &lt; and &gt; change octave.</p>
 <h3>recipes</h3><table class="params">{''.join(f'<tr><td class="n">{e(n)}</td><td>{t}</td></tr>' for n, t in WB_RECIPES)}</table>
-<h3>controls</h3>{ptable(params_rows('wb1', wb_desc))}{presets('wb1')}</section>''')
+<h3>controls</h3>{ptable(params_rows('wb1', wb_desc, wb_skip))}<p class="small">steps 2 – 15 and matrix slots 2 – 8 work like the ones shown; each is its own automatable parameter.</p>{presets('wb1')}</section>''')
 
 # ---- ms0 master -------------------------------------------------------------------------------------------
 MS = {

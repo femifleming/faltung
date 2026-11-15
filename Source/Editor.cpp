@@ -837,12 +837,161 @@ private:
     Processor& p; ui::Theme theme; int down = -1;
 };
 
+// ---- wb1 modulation page ----------------------------------------------------------------------------
+class Trace : public juce::Component
+{
+public:
+    Trace (std::function<float()> f, juce::Colour c, ui::Theme t) : get (std::move (f)), col (c), theme (t) {}
+    void tick() { hist[(size_t) pos] = get(); pos = (pos + 1) % kN; repaint(); }
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat();
+        g.setColour (theme.ink.withAlpha (0.08f)); g.fillRect (b);
+        juce::Path p;
+        for (int i = 0; i < kN; ++i)
+        {
+            const float v = hist[(size_t) ((pos + i) % kN)];
+            const float x = b.getX() + b.getWidth() * (float) i / (float) (kN - 1), y = b.getBottom() - 2 - v * (b.getHeight() - 4);
+            if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (col); g.strokePath (p, juce::PathStrokeType (1.6f));
+    }
+private:
+    static constexpr int kN = 220;
+    std::function<float()> get; juce::Colour col; ui::Theme theme;
+    std::array<float, kN> hist {}; int pos = 0;
+};
+
+class StepBars : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    StepBars (Processor& proc, ui::Theme t) : p (proc), theme (t)
+    {
+        for (int i = 0; i < 16; ++i) att.push_back (std::make_unique<juce::ParameterAttachment> (P (p, "stp" + juce::String (i + 1)), [this] (float) { repaint(); }, nullptr));
+        setTooltip ("draw the steps · alt-click: zero");
+        setMouseCursor (juce::MouseCursor::CrosshairCursor);
+    }
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat();
+        const float w = b.getWidth() / 16.0f;
+        const int len = (int) std::round (p.param ("steplen"));
+        const float ph = p.bass() ? p.bass()->showStepPh.load() : 0.0f;
+        const int cur = std::min (len - 1, (int) (ph * (float) len));
+        g.setColour (theme.ink.withAlpha (0.08f)); g.fillRect (b);
+        for (int i = 0; i < 16; ++i)
+        {
+            const float v = p.param ("stp" + juce::String (i + 1));
+            auto r = juce::Rectangle<float> (b.getX() + i * w + 2, b.getBottom() - v * (b.getHeight() - 4) - 2, w - 6, v * (b.getHeight() - 4));
+            g.setColour ((i == cur && p.bass() && p.bass()->activeVoices() > 0 ? juce::Colours::white : theme.fill).withAlpha (i < len ? 1.0f : 0.25f));
+            g.fillPath (ui::skewRect (r, 0.06f));
+        }
+    }
+    void mouseDown (const juce::MouseEvent& e) override { last = -1; mouseDrag (e); }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        const int i = juce::jlimit (0, 15, (int) (e.position.x / ((float) getWidth() / 16.0f)));
+        const float v = e.mods.isAltDown() ? 0.0f : juce::jlimit (0.0f, 1.0f, 1.0f - e.position.y / (float) getHeight());
+        if (i != last) { if (last >= 0) att[(size_t) last]->endGesture(); att[(size_t) i]->beginGesture(); last = i; }
+        att[(size_t) i]->setValueAsPartOfGesture (v);
+    }
+    void mouseUp (const juce::MouseEvent&) override { if (last >= 0) att[(size_t) last]->endGesture(); last = -1; }
+private:
+    Processor& p; ui::Theme theme; int last = -1;
+    std::vector<std::unique_ptr<juce::ParameterAttachment>> att;
+};
+
+class ModPage : public juce::Component
+{
+public:
+    ModPage (Processor& proc, ui::Theme t) : p (proc), theme (t),
+        tr2 ([this] { return p.bass() ? p.bass()->showL2.load() : 0.0f; }, juce::Colour (0xffef7a3c), t),
+        tr3 ([this] { return p.bass() ? p.bass()->showL3.load() : 0.0f; }, juce::Colour (0xffeba3ab), t),
+        trW ([this] { return p.bass() ? p.bass()->showWob.load() : 0.0f; }, juce::Colours::white, t),
+        trS ([this] { return p.bass() ? p.bass()->showSteps.load() : 0.0f; }, t.fill, t),
+        bars (proc, t)
+    {
+        auto add = [this] (Stage& s, const juce::String& id, const juce::String& label)
+        {
+            auto& prm = P (p, id);
+            juce::Component* c;
+            if (dynamic_cast<juce::AudioParameterChoice*> (&prm)) c = new ui::ChoiceBox (prm, theme, label);
+            else if (dynamic_cast<juce::AudioParameterBool*> (&prm)) c = new ui::ToggleBox (prm, theme, label);
+            else { auto* sl = new ui::ParamSlider (prm, theme, label); sl->setLabelWidth (58); c = sl; }
+            s.add (c);
+        };
+        for (int k = 2; k <= 3; ++k)
+        {
+            auto& st = k == 2 ? s2 : s3;
+            st = std::make_unique<Stage> ("lfo " + juce::String (k), theme);
+            st->add (k == 2 ? (juce::Component*) &tr2 : (juce::Component*) &tr3, 46, false);
+            const juce::String x = "l" + juce::String (k);
+            for (auto [id, lb] : { std::pair<const char*, const char*> { "shape", "shape" }, { "div", "rate" }, { "sync", "sync" }, { "hz", "free rate" }, { "retrig", "retrigger" },
+                                   { "mode", "mode" }, { "phase", "phase" }, { "skew", "skew" }, { "smooth", "smooth" } })
+                add (*st, x + id, lb);
+            addAndMakeVisible (*st);
+        }
+        ss = std::make_unique<Stage> ("steps", theme);
+        ss->add (&trS, 30, false);
+        ss->add (&bars, 96, false);
+        add (*ss, "steplen", "length"); add (*ss, "stepdiv", "rate"); add (*ss, "stepglide", "glide"); add (*ss, "stepretrig", "retrigger");
+        addAndMakeVisible (*ss);
+        sm = std::make_unique<Stage> ("matrix  (source > destination)", theme);
+        sm->add (&trW, 30, false);
+        for (int k = 1; k <= 8; ++k)
+        {
+            const juce::String x = "m" + juce::String (k);
+            auto* row = new Row (p, theme, x, k);
+            sm->add (row, 22);
+        }
+        addAndMakeVisible (*sm);
+    }
+    void resized() override
+    {
+        const int w = getWidth(), gap = 22;
+        const int cw = (w - 3 * gap) / 4;
+        s2->setBounds (0, 0, cw - 20, s2->wanted());
+        s3->setBounds (cw - 20 + gap, 0, cw - 20, s3->wanted());
+        ss->setBounds (2 * (cw - 20) + 2 * gap, 0, cw - 20, ss->wanted());
+        const int mx = 3 * (cw - 20) + 3 * gap;
+        sm->setBounds (mx, 0, w - mx, sm->wanted());
+    }
+    void tick() { tr2.tick(); tr3.tick(); trW.tick(); trS.tick(); bars.repaint(); }
+private:
+    struct Row : juce::Component
+    {
+        Row (Processor& p, ui::Theme t, const juce::String& x, int k) : theme (t), index (k),
+            src (P (p, x + "src"), t, " "), dst (P (p, x + "dst"), t, " "), amt (P (p, x + "amt"), t, " ")
+        {
+            src.labelW = 0; dst.labelW = 0; amt.setLabelWidth (0);
+            addAndMakeVisible (src); addAndMakeVisible (dst); addAndMakeVisible (amt);
+        }
+        void resized() override
+        {
+            const int w = getWidth() - 16;
+            src.setBounds (16, 0, (int) (w * 0.30f), getHeight());
+            dst.setBounds (16 + (int) (w * 0.32f), 0, (int) (w * 0.33f), getHeight());
+            amt.setBounds (16 + (int) (w * 0.66f), 0, w - (int) (w * 0.66f), getHeight());
+        }
+        void paint (juce::Graphics& g) override { g.setColour (theme.ink.withAlpha (0.6f)); g.setFont (ui::mono (9.5f)); g.drawText (juce::String (index), 0, 0, 14, getHeight(), juce::Justification::centredLeft); }
+        ui::Theme theme; int index; ui::ChoiceBox src, dst; ui::ParamSlider amt;
+    };
+    Processor& p; ui::Theme theme;
+    Trace tr2, tr3, trW, trS;
+    StepBars bars;
+    std::unique_ptr<Stage> s2, s3, ss, sm;
+};
+
 class SynthView : public View
 {
 public:
-    explicit SynthView (Processor& proc) : p (proc), pi (proc.pinfo), theme (themeFor (pi)), art (proc), presetBar (proc, theme), keys (proc, theme)
+    explicit SynthView (Processor& proc) : p (proc), pi (proc.pinfo), theme (themeFor (pi)), art (proc), presetBar (proc, theme), keys (proc, theme),
+        modPage (proc, theme), tabSynth ("synth", theme), tabMod ("modulation", theme)
     {
         addAndMakeVisible (art); addAndMakeVisible (presetBar); addAndMakeVisible (keys);
+        addChildComponent (modPage); addAndMakeVisible (tabSynth); addAndMakeVisible (tabMod);
+        tabSynth.onClick = [this] { setPage (0); };
+        tabMod.onClick = [this] { setPage (1); };
         const std::vector<std::vector<std::pair<juce::String, std::vector<juce::String>>>> cols = {
             { { "osc a", { "a_shape", "a_pw", "a_oct", "a_semi", "a_fine", "a_level", "a_uni", "a_detune", "a_spread" } },
               { "osc b", { "b_shape", "b_pw", "b_oct", "b_semi", "b_fine", "b_level", "b_uni", "b_detune", "b_spread", "fm" } } },
@@ -877,12 +1026,23 @@ public:
                 }
             }
         setSize (pi.w, pi.h);
+        setPage (0);
+    }
+    void setPage (int pg) override
+    {
+        page = pg;
+        for (auto& it : items) if (it.comp) it.comp->setVisible (pg == 0);
+        modPage.setVisible (pg == 1);
+        tabSynth.setLit (pg == 0); tabMod.setLit (pg == 1);
+        repaint();
     }
     void resized() override
     {
         const int w = getWidth();
         art.setBounds (0, 0, w, 212);
         presetBar.setBounds (w - 236, 14, 200, 20);
+        tabSynth.setBounds (w - 236, 40, 80, 20); tabMod.setBounds (w - 150, 40, 114, 20);
+        modPage.setBounds (36, 226, w - 72, getHeight() - 226 - 60);
         const int colW = (w - 72 - 3 * 28) / 4;
         std::array<int, 4> y { 226, 226, 226, 226 };
         headers.clear();
@@ -897,7 +1057,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.fillAll (theme.ground);
-        for (auto& [r, t] : headers)
+        if (page == 0) for (auto& [r, t] : headers)
         {
             g.setColour (theme.ink);
             g.setFont (ui::mono (11.0f, true));
@@ -906,7 +1066,7 @@ public:
             g.fillRect ((float) r.getX(), (float) r.getBottom(), (float) r.getWidth(), 1.0f);
         }
     }
-    void tick() override { art.tick(); }
+    void tick() override { art.tick(); if (page == 1) modPage.tick(); }
 private:
     struct Item { int col; juce::String title; juce::Component* comp; };
     Processor& p;
@@ -918,6 +1078,9 @@ private:
     std::vector<Item> items;
     juce::OwnedArray<juce::Component> owned;
     std::vector<std::pair<juce::Rectangle<int>, juce::String>> headers;
+    ModPage modPage;
+    ui::TextLink tabSynth, tabMod;
+    int page = 0;
 };
 
 // =================================================================================================

@@ -67,6 +67,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     juce::RangedAudioParameter& param;
     bool asTabs = false;   // draw every option as a row of tabs
+    int labelW = 64;
 
 private:
     Theme theme; juce::String label;

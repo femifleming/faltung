@@ -8,6 +8,7 @@ class View : public juce::Component
 {
 public:
     virtual void tick() {}
+    virtual void setPage (int) {}
 };
 
 class Editor : public juce::AudioProcessorEditor, private juce::Timer
@@ -19,6 +20,7 @@ public:
     void resized() override;
     /** advance the displays once (offline screenshots) */
     void tickForTest() { if (view) view->tick(); }
+    void pageForTest (int pg) { if (view) view->setPage (pg); }
 
 private:
     void timerCallback() override;

@@ -18,12 +18,13 @@ struct Transport
 
 /** tempo divisions shared by delay / filter lfo / micro, in quarter notes */
 struct Division { const char* name; double beats; };
-inline const std::array<Division, 15>& divisions()
+inline const std::array<Division, 19>& divisions()
 {
-    static const std::array<Division, 15> d { {
+    static const std::array<Division, 19> d { {
         { "1/64", 1.0 / 16 }, { "1/32", 1.0 / 8 }, { "1/32 d", 3.0 / 16 }, { "1/16 t", 1.0 / 6 }, { "1/16", 0.25 },
         { "3/32", 3.0 / 8 / 1.0 }, { "1/16 d", 0.375 }, { "1/8 t", 1.0 / 3 }, { "1/8", 0.5 }, { "1/8 d", 0.75 },
-        { "1/4 t", 2.0 / 3 }, { "1/4", 1.0 }, { "1/4 d", 1.5 }, { "1/2", 2.0 }, { "1 bar", 4.0 } } };
+        { "1/4 t", 2.0 / 3 }, { "1/4", 1.0 }, { "1/4 d", 1.5 }, { "1/2", 2.0 }, { "1 bar", 4.0 },
+        { "2 bars", 8.0 }, { "4 bars", 16.0 }, { "8 bars", 32.0 }, { "16 bars", 64.0 } } };
     return d;
 }
 
@@ -73,7 +74,7 @@ public:
     void process (float* L, float* R, int n, const DubParams& p, const Transport& tr)
     {
         float tSec = p.ms * 0.001f;
-        if (p.sync) tSec = (float) (divisions()[(size_t) std::clamp (p.division, 0, 14)].beats * 60.0 / std::max (20.0, tr.bpm));
+        if (p.sync) tSec = (float) (divisions()[(size_t) std::clamp (p.division, 0, 18)].beats * 60.0 / std::max (20.0, tr.bpm));
         tSec = clampf (tSec, 0.002f, 4.0f);
         shownTime.store (tSec);
         const float target = tSec * sr;
@@ -349,7 +350,7 @@ public:
             }
 
         // lfo phase from the host when playing, free-running otherwise
-        const double beats = divisions()[(size_t) std::clamp (p.lfoDiv, 0, 14)].beats;
+        const double beats = divisions()[(size_t) std::clamp (p.lfoDiv, 0, 18)].beats;
         const double bps = std::max (20.0, tr.bpm) / 60.0;
         if (tr.playing && tr.hasPpq) lfoPh = std::fmod (tr.ppq / beats, 1.0);
         const double inc = bps / beats / sr;
@@ -566,7 +567,7 @@ public:
     void process (float* L, float* R, int n, const MicroParams& p, const Transport& tr)
     {
         mixSm.target = p.mix;
-        const double beats = divisions()[(size_t) std::clamp (p.division, 0, 14)].beats;
+        const double beats = divisions()[(size_t) std::clamp (p.division, 0, 18)].beats;
         const double spb = 60.0 / std::max (20.0, tr.bpm) * sr;      // samples per beat
         const double stepS = beats * spb;
         const bool sync = tr.playing && tr.hasPpq;

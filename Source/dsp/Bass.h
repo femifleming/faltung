@@ -28,7 +28,32 @@ struct BassParams
     float ott = 0.3f, ottTime = 0.4f;
     bool mono = true, legato = true; float glide = 40, bend = 2; int wheel = 1; float vel = 0.3f;
     float width = 0.6f, level = -6;
+
+    // ---- modulation: two more lfos, a 16-step lfo, an 8-slot matrix --------------------------
+    struct Lfo { int div = 11; bool sync = true; float hz = 1.0f; int shape = 0; bool retrig = true; float phase = 0; int mode = 0; float skew = 0.5f, smooth = 0; };
+    Lfo l2, l3;
+    std::array<float, 16> steps { 1, 0.2f, 0.6f, 0.1f, 0.9f, 0.3f, 0.5f, 0, 1, 0.4f, 0.7f, 0.2f, 0.8f, 0.1f, 0.5f, 0.3f };
+    int stepLen = 16, stepDiv = 4; float stepGlide = 0.15f; bool stepRetrig = true;
+    struct Slot { int src = 0, dst = 0; float amt = 0; };
+    std::array<Slot, 8> mods;
 };
+
+// modulation sources and destinations (indices are stored in presets / sessions: append only)
+enum ModSrc { MS_OFF, MS_WOBBLE, MS_LFO2, MS_LFO3, MS_STEPS, MS_MENV, MS_AENV, MS_VEL, MS_WHEEL, MS_NOTE, MS_RANDOM, MS_PRESSURE, MS_COUNT };
+enum ModDst { MD_OFF, MD_CUTOFF, MD_RES, MD_VOWEL, MD_FMTSHIFT, MD_FM, MD_DRIVE, MD_PITCH, MD_VOLUME, MD_COMBTUNE, MD_COMBFB,
+              MD_AWAVE, MD_BWAVE, MD_PW, MD_DETUNE, MD_NOISE, MD_SUB, MD_DMIX, MD_WOBRATE, MD_L2RATE, MD_L3RATE, MD_FINE, MD_FMTMIX, MD_STEPRATE, MD_COUNT };
+inline const char* modSrcName (int i)
+{
+    static const char* n[MS_COUNT] = { "off", "wobble", "lfo 2", "lfo 3", "steps", "mod env", "amp env", "velocity", "mod wheel", "note", "random", "aftertouch" };
+    return n[std::clamp (i, 0, (int) MS_COUNT - 1)];
+}
+inline const char* modDstName (int i)
+{
+    static const char* n[MD_COUNT] = { "off", "cutoff", "resonance", "vowel", "formant shift", "fm", "drive", "pitch", "volume", "comb tune", "comb feedback",
+                                       "osc a wave", "osc b wave", "pulse width", "detune", "noise", "sub", "dist mix", "wobble rate", "lfo 2 rate", "lfo 3 rate",
+                                       "fine pitch", "formant mix", "steps rate" };
+    return n[std::clamp (i, 0, (int) MD_COUNT - 1)];
+}
 
 // ---- formant table: F1..F3 (Hz) and gains for a e i o u -----------------------------------------
 inline void vowelAt (float v, float f[3], float g[3])
@@ -187,6 +212,33 @@ inline float lfoShape (float ph, int shape, float sh)
 
 struct BassShared;
 
+/** running state of a modulation lfo */
+struct ModLfoState { float ph = 0, sh = 0, shPrev = 0, out = 0; bool done = false; };
+
+inline float skewPhase (float ph, float skew)
+{
+    skew = clampf (skew, 0.02f, 0.98f);
+    return ph < skew ? 0.5f * ph / skew : 0.5f + 0.5f * (ph - skew) / (1.0f - skew);
+}
+/** advance one sample and return 0..1 */
+inline float runModLfo (const BassParams::Lfo& l, ModLfoState& st, float inc, bool hostLocked, double hostPhase, Rng& rng, float smoothK)
+{
+    const float prev = st.ph;
+    if (hostLocked) st.ph = (float) hostPhase;
+    else if (! st.done)
+    {
+        st.ph += inc;
+        if (st.ph >= 1.0f) { if (l.mode == 1) { st.ph = 1.0f; st.done = true; } else st.ph -= std::floor (st.ph); }
+    }
+    if (st.ph < prev) { st.shPrev = st.sh; st.sh = rng.uni(); }
+    const float ph = skewPhase (std::min (st.ph, 0.99999f), l.skew);
+    float v;
+    if (l.shape == 8) { const float t = ph * ph * (3.0f - 2.0f * ph); v = lerp (st.shPrev, st.sh, t); }   // smooth random
+    else v = lfoShape (ph, l.shape, st.sh);
+    st.out += (v - st.out) * smoothK;
+    return st.out;
+}
+
 // =================================================================================================
 class BassVoice
 {
@@ -229,6 +281,10 @@ public:
             a.reset (rng, true); b.reset (rng, true);
             amp.on(); menv.on();
             lfoPh = p.wPhase;
+            if (p.l2.retrig) { l2s.ph = p.l2.phase; l2s.done = false; }
+            if (p.l3.retrig) { l3s.ph = p.l3.phase; l3s.done = false; }
+            if (p.stepRetrig) stepPh = 0;
+            noteRand = rng.bi();
             if (amp.v < 0.05f) { for (auto& ch : flt) for (auto& f : ch) f.reset(); for (auto& ch : fmt) for (auto& f : ch) f.reset(); }
         }
     }
@@ -239,7 +295,9 @@ public:
     void tick (const BassParams& p, const struct BassShared& s, float& outL, float& outR);
 
     float lfoPh = 0, lfoVal = 0, shVal = 0;
-    float lastWob = 0, lastMenv = 0;
+    float lastWob = 0, lastMenv = 0, lastL2 = 0, lastL3 = 0, lastSteps = 0;
+    ModLfoState l2s, l3s; float stepPh = 0, stepOut = 0, noteRand = 0;
+    std::array<float, MD_COUNT> lastMod {};
 
 private:
     float sr = 96000;
@@ -269,6 +327,7 @@ struct BassShared
     float vowel = 0, fm = 0, drive = 0, fmtMix = 0, combMix = 0, res = 0;
     float aLevel = 1, bLevel = 0, subLevel = 0.8f, noise = 0;
     float depthScale = 1;    // mod wheel → wobble depth
+    double ppq = 0; bool playing = false; float bpm = 120; float pressure = 0;
 };
 
 inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& outL, float& outR)
@@ -282,10 +341,11 @@ inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& ou
     }
     // wobble: own phase when retriggered, otherwise the host-synced one
     float wob;
+    auto rateMul = [&] (int d) { return std::exp2 (clampf (lastMod[(size_t) d], -1.0f, 1.0f) * 3.0f); };
     if (p.wRetrig)
     {
         const float prev = lfoPh;
-        lfoPh += s.lfoInc; if (lfoPh >= 1.0f) lfoPh -= 1.0f;
+        lfoPh += s.lfoInc * rateMul (MD_WOBRATE); if (lfoPh >= 1.0f) lfoPh -= std::floor (lfoPh);
         if (lfoPh < prev) shVal = rng.uni();
         wob = lfoShape (lfoPh, p.wShape, shVal);
     }
@@ -295,32 +355,76 @@ inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& ou
     const float me = menv.tick();
     lastWob = lfoVal; lastMenv = me;
 
-    const float pitchMod = s.bendSt + wob * p.wPitch + me * p.mPitch;
+    // ---- lfo 2, lfo 3, steps ------------------------------------------------------------------
+    auto lfoInc = [&] (const BassParams::Lfo& l, int rateDst)
+    {
+        const double hz = l.sync ? s.bpm / 60.0 / divisions()[(size_t) std::clamp (l.div, 0, 18)].beats : (double) l.hz;
+        return (float) (hz / sr) * rateMul (rateDst);
+    };
+    auto hostPh = [&] (const BassParams::Lfo& l)
+    {
+        const double beats = divisions()[(size_t) std::clamp (l.div, 0, 18)].beats;
+        const double v = s.ppq / beats + l.phase; return v - std::floor (v);
+    };
+    auto smoothK = [&] (float sm) { return sm <= 0.001f ? 1.0f : 1.0f - std::exp (-1.0f / (sm * sm * 0.25f * sr)); };
+    const float l2v = runModLfo (p.l2, l2s, lfoInc (p.l2, MD_L2RATE), ! p.l2.retrig && p.l2.sync && s.playing, hostPh (p.l2), rng, smoothK (p.l2.smooth));
+    const float l3v = runModLfo (p.l3, l3s, lfoInc (p.l3, MD_L3RATE), ! p.l3.retrig && p.l3.sync && s.playing, hostPh (p.l3), rng, smoothK (p.l3.smooth));
+    float stv;
+    {
+        const int len = std::clamp (p.stepLen, 1, 16);
+        const double beatsPerStep = divisions()[(size_t) std::clamp (p.stepDiv, 0, 18)].beats;
+        if (! p.stepRetrig && s.playing) { const double v = s.ppq / (beatsPerStep * len); stepPh = (float) (v - std::floor (v)); }
+        else { stepPh += (float) (s.bpm / 60.0 / (beatsPerStep * len) / sr) * rateMul (MD_STEPRATE); stepPh -= std::floor (stepPh); }
+        const float pos = stepPh * (float) len;
+        const int i0 = std::min (len - 1, (int) pos), i1 = (i0 + 1) % len;
+        const float fr = pos - (float) i0, g = clampf (p.stepGlide, 0.0f, 1.0f);
+        float v = p.steps[(size_t) i0];
+        if (g > 0.001f && fr > 1.0f - g) { const float t = (fr - (1.0f - g)) / g; v = lerp (v, p.steps[(size_t) i1], t * t * (3.0f - 2.0f * t)); }
+        stepOut += (v - stepOut) * 0.02f;   // de-click
+        stv = stepOut;
+    }
+    lastL2 = l2v; lastL3 = l3v; lastSteps = stv;
+
+    // ---- the matrix ------------------------------------------------------------------------------
+    std::array<float, MD_COUNT> md {};
+    {
+        const float src[MS_COUNT] = { 0.0f, wob, l2v, l3v, stv, me, amp.v, vel, s.wheel, clampf ((pitch - 60.0f) / 24.0f, -1.0f, 1.0f), noteRand, s.pressure };
+        for (const auto& sl : p.mods)
+            if (sl.src > 0 && sl.dst > 0 && sl.src < MS_COUNT && sl.dst < MD_COUNT) md[(size_t) sl.dst] += sl.amt * src[sl.src];
+        lastMod = md;
+    }
+    BassParams::Osc oa = p.a, ob = p.b;
+    oa.shape = clampf (oa.shape + md[MD_AWAVE] * 4.0f, 0.0f, 4.0f); ob.shape = clampf (ob.shape + md[MD_BWAVE] * 4.0f, 0.0f, 4.0f);
+    oa.pw = clampf (oa.pw + md[MD_PW] * 0.45f, 0.05f, 0.95f); ob.pw = clampf (ob.pw + md[MD_PW] * 0.45f, 0.05f, 0.95f);
+    oa.detune = clampf (oa.detune + md[MD_DETUNE], 0.0f, 1.0f); ob.detune = clampf (ob.detune + md[MD_DETUNE], 0.0f, 1.0f);
+
+    const float pitchMod = s.bendSt + wob * p.wPitch + me * p.mPitch + md[MD_PITCH] * 24.0f + md[MD_FINE];
     const float baseHz = 440.0f * std::exp2 ((pitch + pitchMod - 69.0f) / 12.0f);
     const float fA = baseHz * std::exp2 ((float) p.a.oct + (p.a.semi + p.a.fine * 0.01f) / 12.0f);
     const float fB = baseHz * std::exp2 ((float) p.b.oct + (p.b.semi + p.b.fine * 0.01f) / 12.0f);
 
     float bl, br, al, ar;
-    const float bMono = b.tick (p.b, fB, sr, 0.0f, bl, br);
-    const float fmIdx = clampf (s.fm + wob * p.wFm + me * p.mFm, 0.0f, 1.5f);
-    a.tick (p.a, fA, sr, fmIdx * fmIdx * 1.6f * bMono, al, ar);
-    const float nz = rng.bi() * s.noise;
+    const float bMono = b.tick (ob, fB, sr, 0.0f, bl, br);
+    const float fmIdx = clampf (s.fm + wob * p.wFm + me * p.mFm + md[MD_FM], 0.0f, 1.5f);
+    a.tick (oa, fA, sr, fmIdx * fmIdx * 1.6f * bMono, al, ar);
+    const float nz = rng.bi() * clampf (s.noise + md[MD_NOISE], 0.0f, 1.0f);
     float x[2] = { al * s.aLevel + bl * s.bLevel + nz, ar * s.aLevel + br * s.bLevel + nz };
 
     // control-rate updates (every 8 oversampled samples)
     if ((ctl++ & 7) == 0)
     {
-        const float oct = s.cutoffOct + wob * p.wCut + me * p.mCut + p.keytrack * (pitch - 60.0f) / 12.0f;
+        const float oct = s.cutoffOct + wob * p.wCut + me * p.mCut + p.keytrack * (pitch - 60.0f) / 12.0f + md[MD_CUTOFF] * 6.0f;
         const float fc = clampf (std::exp2 (oct), 20.0f, 20000.0f);
-        const float rq = p.fType == 0 ? 0.5f + s.res * s.res * 9.0f : 0.6f + s.res * s.res * 18.0f;
+        const float rs = clampf (s.res + md[MD_RES], 0.0f, 1.0f);
+        const float rq = p.fType == 0 ? 0.5f + rs * rs * 9.0f : 0.6f + rs * rs * 18.0f;
         for (int c = 0; c < 2; ++c)
         {
             flt[(size_t) c][0].set (fc, p.fType == 0 ? 0.54f : rq, sr);
             flt[(size_t) c][1].set (fc, rq, sr);
         }
-        const float v = clampf (s.vowel + wob * p.wVowel * 4.0f + me * p.mVowel * 4.0f, 0.0f, 4.0f);
+        const float v = clampf (s.vowel + wob * p.wVowel * 4.0f + me * p.mVowel * 4.0f + md[MD_VOWEL] * 4.0f, 0.0f, 4.0f);
         vowelAt (v, fmtF, fmtG);
-        const float shift = std::exp2 (p.fmtShift / 12.0f);
+        const float shift = std::exp2 ((p.fmtShift + md[MD_FMTSHIFT] * 12.0f) / 12.0f);
         const float q = 3.0f + p.fmtQ * 22.0f;
         for (int c = 0; c < 2; ++c)
             for (int k = 0; k < 3; ++k) fmt[(size_t) c][(size_t) k].set (fmtF[k] * shift, q * (1.0f + 0.5f * k), sr);
@@ -328,7 +432,8 @@ inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& ou
         for (auto& t : toneLp) t.set (toneHz, sr);
     }
 
-    const float drv = clampf (s.drive + wob * p.wDrive, 0.0f, 1.0f);
+    const float drv = clampf (s.drive + wob * p.wDrive + md[MD_DRIVE], 0.0f, 1.0f);
+    const float dmix = clampf (p.dMix + md[MD_DMIX], 0.0f, 1.0f);
     auto filter = [&] (int c, float in)
     {
         auto& F = flt[(size_t) c];
@@ -364,31 +469,33 @@ inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& ou
             default: { const float z = in * g; y = z / (1.0f + std::abs (z)) * 1.4f; break; }   // smooth
         }
         y = toneLp[(size_t) c].lp (y);
-        return lerp (in, y, p.dMix);
+        return lerp (in, y, dmix);
     };
 
-    const float combHz = baseHz * std::exp2 ((p.combTune + wob * p.wComb * 24.0f) / 12.0f);
+    const float combHz = baseHz * std::exp2 ((p.combTune + wob * p.wComb * 24.0f + md[MD_COMBTUNE] * 24.0f) / 12.0f);
+    const float combFb = clampf (p.combFb + md[MD_COMBFB] * 0.95f, -0.95f, 0.95f);
     const float combD = clampf (sr / std::max (20.0f, combHz), 2.0f, (float) (sr / 18.0f));
     const float av = amp.tick();
     const float velG = (1.0f - p.vel) + p.vel * vel;
-    const float wAmp = lerp (1.0f, wob, p.wAmp);
+    const float wAmp = lerp (1.0f, wob, p.wAmp) * clampf (1.0f + md[MD_VOLUME], 0.0f, 2.0f);
+    const float fmtMix = clampf (s.fmtMix + md[MD_FMTMIX], 0.0f, 1.0f);
     float y[2];
     for (int c = 0; c < 2; ++c)
     {
         float z = x[c];
         if (p.order == 0) z = dist (c, filter (c, z)); else z = filter (c, dist (c, z));
-        if (s.fmtMix > 0.001f)
+        if (fmtMix > 0.001f)
         {
             float f = 0;
             for (int k = 0; k < 3; ++k) f += fmt[(size_t) c][(size_t) k].tickBPn (z) * fmtG[k];
-            z = lerp (z, f * 1.6f, s.fmtMix);
+            z = lerp (z, f * 1.6f, fmtMix);
         }
         if (s.combMix > 0.001f)
         {
             const float d = comb[(size_t) c].read (combD);
-            const float o = z + p.combFb * d;
+            const float o = z + combFb * d;
             comb[(size_t) c].push (clampf (o, -4.0f, 4.0f));
-            z = lerp (z, o * (1.0f - std::abs (p.combFb) * 0.5f), s.combMix);
+            z = lerp (z, o * (1.0f - std::abs (combFb) * 0.5f), s.combMix);
         }
         y[c] = z * av * velG * wAmp;
     }
@@ -397,7 +504,7 @@ inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& ou
     subPh += subHz / sr; if (subPh >= 1.0) subPh -= 1.0;
     float sub = std::sin (kTwoPi * (float) subPh);
     if (p.subWave == 1) sub = std::tanh (sub * 3.0f) * 0.85f;
-    sub *= s.subLevel * av * velG * wAmp;
+    sub *= clampf (s.subLevel + md[MD_SUB], 0.0f, 1.5f) * av * velG * wAmp;
     outL = y[0] + sub; outR = y[1] + sub;
     if (! finite (outL) || ! finite (outR)) { outL = outR = 0; reset(); }
 }
@@ -409,7 +516,8 @@ class BassSynth
 {
 public:
     static constexpr int kVoices = 8;
-    std::atomic<float> showWob { 0 }, showEnv { 0 }, showVowel { 0 }, showLevel { 0 };
+    std::atomic<float> showWob { 0 }, showEnv { 0 }, showVowel { 0 }, showLevel { 0 }, showL2 { 0 }, showL3 { 0 }, showSteps { 0 }, showStepPh { 0 }, showCut { 0 };
+    std::array<std::atomic<float>, 4> showMod {};
 
     void prepare (float sampleRate)
     {
@@ -437,8 +545,8 @@ public:
 
         const float bpm = (float) std::max (20.0, tr.bpm);
         int div = p.wDiv;
-        if (p.wheel == 2) div = std::clamp (div - (int) std::round (wheel * 4.0f), 0, 14);  // wheel = faster wobble
-        const double beats = divisions()[(size_t) std::clamp (div, 0, 14)].beats;
+        if (p.wheel == 2) div = std::clamp (div - (int) std::round (wheel * 4.0f), 0, 18);  // wheel = faster wobble
+        const double beats = divisions()[(size_t) std::clamp (div, 0, 18)].beats;
         const float lfoInc = (float) (bpm / 60.0 / beats / osr);
         const bool sync = tr.playing && tr.hasPpq;
         const double ppqPerOs = bpm / 60.0 / osr;
@@ -466,6 +574,7 @@ public:
                 BassShared s;
                 s.hostLfo = lfoShape ((float) ph, p.wShape, hostSh);
                 s.lfoInc = lfoInc; s.bendSt = bend * p.bend; s.wheel = wheel;
+                s.ppq = tr.ppq + (i * 2 + k) * ppqPerOs; s.playing = sync; s.bpm = bpm; s.pressure = pressure;
                 s.depthScale = p.wheel == 1 ? wheel : 1.0f;
                 s.cutoffOct = cutSm.tick(); s.vowel = vowSm.tick(); s.fm = fmSm.tick(); s.drive = drvSm.tick();
                 s.fmtMix = fmtSm.tick(); s.combMix = combSm.tick(); s.res = resSm.tick();
@@ -495,6 +604,11 @@ public:
         for (auto& v : voices) if (v.active()) { w = v.lastWob; en = std::max (en, v.lastMenv); }
         if (! p.wRetrig) w = voices[0].lastWob;
         showWob.store (w); showEnv.store (en); showVowel.store (p.vowel); showLevel.store (peak);
+        const BassVoice* sv = &voices[0];
+        for (auto& v : voices) if (v.active()) { sv = &v; break; }
+        showL2.store (sv->lastL2); showL3.store (sv->lastL3); showSteps.store (sv->lastSteps); showStepPh.store (sv->stepPh);
+        for (int d = 0; d < 4; ++d) showMod[(size_t) d].store (0);
+        showCut.store (sv->lastMod[MD_CUTOFF]);
     }
 
     int activeVoices() const { int c = 0; for (auto& v : voices) c += v.active() ? 1 : 0; return c; }
@@ -507,7 +621,7 @@ private:
     bool first = true;
     Rng rng;
     double hostPh = 0, lastHostPh = 0; float hostSh = 0;
-    float bend = 0, wheel = 1.0f;
+    float bend = 0, wheel = 1.0f, pressure = 0;
     std::array<int, 16> held {}; int heldCount = 0;
     uint32_t clock = 0;
     // ott
@@ -613,6 +727,7 @@ private:
             }
             case 2: bend = e.v; break;
             case 3: wheel = e.v; break;
+            case 5: pressure = e.v; break;
             default: heldCount = 0; for (auto& v : voices) v.noteOff(); break;
         }
     }

@@ -1,5 +1,6 @@
 #include "Products.h"
 #include "dsp/Sequencer.h"
+#include "dsp/Bass.h"
 
 namespace fal
 {
@@ -259,6 +260,37 @@ void bassParams (L& l)
     l.f ("vel", "velocity", NR (0.0f, 1.0f), 0.3f, pct);
     l.f ("width", "width", NR (0.0f, 1.0f), 0.6f, pct);
     l.f ("level", "level", NR (-24.0f, 6.0f), -6.0f, dbText);
+    // ---- modulation --------------------------------------------------------------------------------
+    const juce::StringArray lfoShapes { "sine", "triangle", "ramp down", "ramp up", "square", "wow", "yoy", "random", "smooth random" };
+    for (int k = 2; k <= 3; ++k)
+    {
+        const juce::String x = "l" + juce::String (k), n = "lfo " + juce::String (k) + " ";
+        l.c (x + "div", n + "rate", divNames(), k == 2 ? 16 : 11);
+        l.b (x + "sync", n + "sync", true);
+        l.f (x + "hz", n + "free rate", NR (0.01f, 40.0f, 0.0f, 0.3f), 1.0f, [] (float v) { return juce::String (v, v < 1 ? 2 : 1) + " hz"; });
+        l.c (x + "shape", n + "shape", lfoShapes, k == 2 ? 3 : 0);
+        l.b (x + "retrig", n + "retrigger", k == 2);
+        l.f (x + "phase", n + "phase", NR (0.0f, 1.0f), 0.0f, pct);
+        l.c (x + "mode", n + "mode", { "loop", "one-shot" }, 0);
+        l.f (x + "skew", n + "skew", NR (0.0f, 1.0f), 0.5f, pct);
+        l.f (x + "smooth", n + "smooth", NR (0.0f, 1.0f), 0.0f, pct);
+    }
+    const float st[16] = { 1, 0.2f, 0.6f, 0.1f, 0.9f, 0.3f, 0.5f, 0, 1, 0.4f, 0.7f, 0.2f, 0.8f, 0.1f, 0.5f, 0.3f };
+    for (int k = 1; k <= 16; ++k) l.f ("stp" + juce::String (k), "step " + juce::String (k), NR (0.0f, 1.0f), st[k - 1], pct);
+    l.f ("steplen", "steps length", NR (1.0f, 16.0f, 1.0f), 16.0f, [] (float v) { return juce::String (juce::roundToInt (v)); });
+    l.c ("stepdiv", "steps rate", divNames(), 4);
+    l.f ("stepglide", "steps glide", NR (0.0f, 1.0f), 0.15f, pct);
+    l.b ("stepretrig", "steps retrigger", true);
+    juce::StringArray srcs, dsts;
+    for (int i = 0; i < MS_COUNT; ++i) srcs.add (modSrcName (i));
+    for (int i = 0; i < MD_COUNT; ++i) dsts.add (modDstName (i));
+    for (int k = 1; k <= 8; ++k)
+    {
+        const juce::String x = "m" + juce::String (k), n = "mod " + juce::String (k) + " ";
+        l.c (x + "src", n + "source", srcs, 0);
+        l.c (x + "dst", n + "destination", dsts, 0);
+        l.f (x + "amt", n + "amount", NR (-1.0f, 1.0f), 0.0f, [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v * 100)) + "%"; });
+    }
 }
 
 void masterParams (L& l)
@@ -696,6 +728,31 @@ const std::vector<Preset>& presets (Pid p)
                                   { "combmix", 0.3f }, { "wcomb", 0.4f }, { "ott", 0.8f } }),
             B ("talk box", { { "a_shape", 2 }, { "a_uni", 3 }, { "cutoff", 2400 }, { "wcut", 0 }, { "fmtmix", 1.0f }, { "fmtq", 0.8f }, { "mvowel", 0.8f }, { "md", 400 },
                              { "dmode", 3 }, { "ddrive", 0.3f }, { "ott", 0.4f } }),
+            B ("slow sweep wob", { { "a_shape", 2.3f }, { "b_shape", 3 }, { "b_oct", 2 }, { "b_level", 0.35f }, { "cutoff", 140 }, { "res", 0.4f },
+                                   { "wdiv", 8 }, { "wcut", 3.0f }, { "l2div", 16 }, { "l2shape", 3 }, { "l2mode", 1 }, { "l2retrig", 1 },
+                                   { "m1src", MS_LFO2 }, { "m1dst", MD_CUTOFF }, { "m1amt", 0.5f }, { "m2src", MS_LFO2 }, { "m2dst", MD_DRIVE }, { "m2amt", 0.35f }, { "ott", 0.3f } }),
+            B ("step wub", { { "a_shape", 2 }, { "a_uni", 2 }, { "a_detune", 0.12f }, { "cutoff", 180 }, { "wcut", 0 }, { "fmtmix", 0.6f },
+                             { "stepdiv", 4 }, { "stepglide", 0.35f },
+                             { "stp1", 1 }, { "stp2", 0.15f }, { "stp3", 0.7f }, { "stp4", 0.0f }, { "stp5", 0.9f }, { "stp6", 0.9f }, { "stp7", 0.2f }, { "stp8", 0.5f },
+                             { "stp9", 1 }, { "stp10", 0.0f }, { "stp11", 0.6f }, { "stp12", 0.3f }, { "stp13", 0.8f }, { "stp14", 0.1f }, { "stp15", 1 }, { "stp16", 0.4f },
+                             { "m1src", MS_STEPS }, { "m1dst", MD_CUTOFF }, { "m1amt", 0.75f }, { "m2src", MS_STEPS }, { "m2dst", MD_VOWEL }, { "m2amt", 0.6f },
+                             { "dmode", 3 }, { "ddrive", 0.4f }, { "ott", 0.45f } }),
+            B ("rate riser", { { "a_shape", 2 }, { "b_shape", 3 }, { "b_level", 0.3f }, { "cutoff", 160 }, { "wdiv", 6 }, { "wcut", 4.5f },
+                               { "l2div", 14 }, { "l2shape", 3 }, { "l2mode", 1 }, { "l2retrig", 1 },
+                               { "m1src", MS_LFO2 }, { "m1dst", MD_WOBRATE }, { "m1amt", 0.67f }, { "m2src", MS_LFO2 }, { "m2dst", MD_RES }, { "m2amt", 0.3f },
+                               { "dmode", 0 }, { "ddrive", 0.35f } }),
+            B ("neuro movement", { { "a_shape", 2 }, { "a_uni", 4 }, { "a_detune", 0.3f }, { "b_shape", 3 }, { "b_fine", 6 }, { "b_level", 0.3f }, { "fm", 0.2f },
+                                   { "cutoff", 1100 }, { "wcut", 0 }, { "fmtmix", 0.6f }, { "vowel", 1 }, { "combmix", 0.3f }, { "combfb", 0.55f },
+                                   { "l2div", 11 }, { "l2shape", 8 }, { "l2retrig", 0 }, { "l3div", 9 }, { "l3shape", 1 }, { "l3retrig", 0 },
+                                   { "m1src", MS_LFO2 }, { "m1dst", MD_FM }, { "m1amt", 0.45f }, { "m2src", MS_LFO3 }, { "m2dst", MD_COMBTUNE }, { "m2amt", 0.3f },
+                                   { "m3src", MS_STEPS }, { "m3dst", MD_VOWEL }, { "m3amt", 0.5f }, { "m4src", MS_LFO2 }, { "m4dst", MD_CUTOFF }, { "m4amt", 0.25f },
+                                   { "dmode", 2 }, { "ddrive", 0.45f }, { "ott", 0.8f } }),
+            B ("talking steps", { { "a_shape", 2.5f }, { "cutoff", 1600 }, { "wcut", 0 }, { "fmtmix", 1.0f }, { "fmtq", 0.7f }, { "stepdiv", 6 }, { "stepglide", 0.6f },
+                                  { "stp1", 0.0f }, { "stp2", 0.5f }, { "stp3", 1.0f }, { "stp4", 0.25f }, { "stp5", 0.75f }, { "stp6", 0.0f }, { "stp7", 0.5f }, { "stp8", 1.0f },
+                                  { "m1src", MS_STEPS }, { "m1dst", MD_VOWEL }, { "m1amt", 1.0f }, { "steplen", 8 }, { "dmode", 3 }, { "ddrive", 0.3f }, { "ott", 0.4f } }),
+            B ("pressure growl", { { "a_shape", 2 }, { "b_shape", 0 }, { "b_oct", 4 }, { "b_level", 0 }, { "fm", 0.25f }, { "cutoff", 400 }, { "wcut", 2.5f }, { "wheel", 0 },
+                                   { "m1src", MS_PRESSURE }, { "m1dst", MD_DRIVE }, { "m1amt", 0.6f }, { "m2src", MS_WHEEL }, { "m2dst", MD_CUTOFF }, { "m2amt", 0.45f },
+                                   { "m3src", MS_VEL }, { "m3dst", MD_FM }, { "m3amt", 0.3f }, { "dmode", 1 }, { "ddrive", 0.25f }, { "ott", 0.5f } }),
             B ("neuro stab", { { "voices", 1 }, { "a_shape", 4 }, { "a_uni", 5 }, { "a_detune", 0.35f }, { "cutoff", 200 }, { "wcut", 0 }, { "mcut", 4.0f }, { "md", 160 },
                                { "dmode", 1 }, { "ddrive", 0.6f }, { "ott", 0.8f }, { "ad", 300 }, { "as", 0 }, { "ar", 120 }, { "sub", 0.5f } }),
         };

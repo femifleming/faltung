@@ -160,7 +160,7 @@ void ChoiceBox::paint (juce::Graphics& g)
         return;
     }
     g.setColour (theme.ink);
-    const float lw = label.isEmpty() ? 0.0f : 64.0f;
+    const float lw = label.isEmpty() ? 0.0f : (float) labelW;
     g.drawText (label, b.removeFromLeft (lw), juce::Justification::centredLeft);
     g.setFont (mono (11.0f, true));
     g.drawText (param.getCurrentValueAsText(), b, juce::Justification::centredLeft);

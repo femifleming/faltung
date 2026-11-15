@@ -424,6 +424,19 @@ int main (int argc, char** argv)
             std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
             ed->setSize (pi.w, pi.h);
             if (auto* fe = dynamic_cast<Editor*> (ed.get())) for (int t = 0; t < 12; ++t) fe->tickForTest();
+            if (pi.id == Pid::wb1)
+                if (auto* fe = dynamic_cast<Editor*> (ed.get()))
+                {
+                    // second picture: the modulation page, after a held note so the scopes have moved
+                    proc->setCurrentProgram (12);   // "neuro movement"
+                    double r5; render (*proc, nullptr, 2.0, r5);
+                    fe->pageForTest (1);
+                    for (int t = 0; t < 200; ++t) { juce::MidiBuffer mb; juce::AudioBuffer<float> blk (2, 512); blk.clear(); if (t == 0) mb.addEvent (juce::MidiMessage::noteOn (1, 33, (juce::uint8) 110), 0); proc->processBlock (blk, mb); fe->tickForTest(); }
+                    juce::Image im2 = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
+                    const auto f2 = shotDir.getChildFile ("wb1-mod.png"); f2.deleteFile();
+                    juce::FileOutputStream os2 (f2); juce::PNGImageFormat png2; png2.writeImageToStream (im2, os2);
+                    fe->pageForTest (0);
+                }
             juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
             juce::PNGImageFormat png;
             const auto f = shotDir.getChildFile (juce::String (pi.code) + ".png");
