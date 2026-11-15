@@ -100,6 +100,115 @@ int main (int argc, char** argv)
     }
     if (wavDir != juce::File()) wavDir.createDirectory();
     for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--master" && i + 3 < argc)
+        {
+            // faltungTest --master in.wav <preset index> out.wav : the file through ms0, latency removed
+            juce::AudioFormatManager fm; fm.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (juce::File (argv[i + 1])));
+            if (! rd) return 1;
+            const int len = (int) rd->lengthInSamples; const double sr = rd->sampleRate;
+            juce::AudioBuffer<float> in (2, len); rd->read (&in, 0, len, 0, true, true);
+            Processor m (Pid::ms0);
+            m.setCurrentProgram (juce::String (argv[i + 2]).getIntValue());
+            m.setRateAndBufferSizeDetails (sr, 512); m.prepareToPlay (sr, 512);
+            const int lat = m.getLatencySamples(), total = len + lat;
+            juce::AudioBuffer<float> out (2, len), blk (2, 512);
+            for (int pos = 0; pos < total; pos += 512)
+            {
+                const int n = std::min (512, total - pos);
+                blk.setSize (2, n, false, false, true); blk.clear();
+                for (int c = 0; c < 2; ++c) if (pos < len) blk.copyFrom (c, 0, in, c, pos, std::min (n, len - pos));
+                juce::MidiBuffer mb; m.processBlock (blk, mb);
+                for (int k = 0; k < n; ++k) { const int o = pos + k - lat; if (o >= 0 && o < len) { out.setSample (0, o, blk.getSample (0, k)); out.setSample (1, o, blk.getSample (1, k)); } }
+            }
+            auto stats = [&] (const juce::AudioBuffer<float>& b, const char* name)
+            {
+                Loudness lu; lu.prepare (sr); TruePeak a1, a2; float tp = 0;
+                for (int pos = 0; pos < len; pos += 4800) lu.process (b.getReadPointer (0) + pos, b.getReadPointer (1) + pos, std::min (4800, len - pos));
+                for (int k = 0; k < len; ++k) tp = std::max (tp, std::max (a1.push (b.getSample (0, k)), a2.push (b.getSample (1, k))));
+                std::cout << name << ": integrated " << lu.integrated.load() << " lufs, lra " << lu.range.load() << " lu, true peak " << gainToDb (tp) << " dbtp\n";
+            };
+            std::cout << "preset: " << m.getProgramName (m.getCurrentProgram()) << ", latency " << lat << " samples\n";
+            stats (in, "in "); stats (out, "out");
+            writeWav (juce::File (argv[i + 3]), out, sr);
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--analyze")
+        {
+            // measure mixes the way ms0 sees them: loudness, peaks, spectrum by region (mid / side), width by band
+            juce::AudioFormatManager fm; fm.registerBasicFormats();
+            const float regions[11] = { 20, 40, 80, 160, 350, 700, 1500, 4000, 8000, 16000, 24000 };
+            const char* rn[10] = { "subsonic", "sub", "body", "low-mid", "box", "mid", "presence", "detail", "air", "ext" };
+            std::cout << "file,len_s,sr,lufs_i,lra,tp_dbtp,peak_db,rms_db,crest_db,plr,corr,dc_db,below30_db,above16k_db,w_sub,w_lowmid,w_midhigh,w_high";
+            for (auto* r : rn) std::cout << ",M_" << r; for (auto* r : rn) std::cout << ",S_" << r; std::cout << "\n";
+            for (int f = i + 1; f < argc; ++f)
+            {
+                juce::File file (argv[f]);
+                std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (file));
+                if (! rd) continue;
+                const double sr = rd->sampleRate; const int len = (int) rd->lengthInSamples;
+                juce::AudioBuffer<float> buf (2, len);
+                rd->read (&buf, 0, len, 0, true, true);
+                if (rd->numChannels == 1) buf.copyFrom (1, 0, buf, 0, 0, len);
+                Loudness lu; lu.prepare (sr);
+                TruePeak tpl, tpr; float tp = 0, pk = 0; double ss = 0, dcl = 0, dcr = 0, lr = 0, ll = 0, rr = 0;
+                std::vector<float> st;
+                const float* L = buf.getReadPointer (0); const float* R = buf.getReadPointer (1);
+                const int blk = (int) (sr * 0.1);
+                for (int pos = 0; pos < len; pos += blk)
+                {
+                    const int n = std::min (blk, len - pos);
+                    lu.process (L + pos, R + pos, n);
+                    if (pos > (int) (3 * sr)) st.push_back (lu.shortTerm.load());
+                }
+                for (int k = 0; k < len; ++k)
+                {
+                    tp = std::max (tp, std::max (tpl.push (L[k]), tpr.push (R[k])));
+                    pk = std::max (pk, std::max (std::abs (L[k]), std::abs (R[k])));
+                    ss += (double) L[k] * L[k] + (double) R[k] * R[k]; dcl += L[k]; dcr += R[k];
+                    lr += (double) L[k] * R[k]; ll += (double) L[k] * L[k]; rr += (double) R[k] * R[k];
+                }
+                // loudness range (EBU: 10th to 95th percentile of gated short-term values)
+                std::vector<float> g; for (float v : st) if (v > -70) g.push_back (v);
+                std::sort (g.begin(), g.end());
+                float lra = 0;
+                if (g.size() > 10)
+                {
+                    double e = 0; for (float v : g) e += std::pow (10.0, v / 10.0); const float rel = (float) (10 * std::log10 (e / g.size())) - 20.0f;
+                    std::vector<float> h; for (float v : g) if (v > rel) h.push_back (v);
+                    if (h.size() > 10) lra = h[(size_t) (h.size() * 0.95)] - h[(size_t) (h.size() * 0.10)];
+                }
+                // averaged mid / side power spectra
+                const int order = 15, N = 1 << order; juce::dsp::FFT fft (order);
+                std::vector<float> win ((size_t) N), bm ((size_t) 2 * N), bs ((size_t) 2 * N);
+                for (int k = 0; k < N; ++k) win[(size_t) k] = 0.5f - 0.5f * std::cos (kTwoPi * k / (N - 1));
+                std::vector<double> pm ((size_t) N / 2 + 1, 0.0), ps ((size_t) N / 2 + 1, 0.0); int frames = 0;
+                for (int pos = 0; pos + N <= len; pos += N / 2)
+                {
+                    std::fill (bm.begin(), bm.end(), 0.0f); std::fill (bs.begin(), bs.end(), 0.0f);
+                    for (int k = 0; k < N; ++k) { bm[(size_t) k] = 0.5f * (L[pos + k] + R[pos + k]) * win[(size_t) k]; bs[(size_t) k] = 0.5f * (L[pos + k] - R[pos + k]) * win[(size_t) k]; }
+                    fft.performFrequencyOnlyForwardTransform (bm.data(), true); fft.performFrequencyOnlyForwardTransform (bs.data(), true);
+                    for (int k = 0; k <= N / 2; ++k) { pm[(size_t) k] += (double) bm[(size_t) k] * bm[(size_t) k]; ps[(size_t) k] += (double) bs[(size_t) k] * bs[(size_t) k]; }
+                    ++frames;
+                }
+                auto band = [&] (const std::vector<double>& v, float lo, float hi) { double e = 0; for (int k = 1; k <= N / 2; ++k) { const double fr = k * sr / N; if (fr >= lo && fr < hi) e += v[(size_t) k]; } return e; };
+                double tot = 0; for (int k = 1; k <= N / 2; ++k) tot += pm[(size_t) k] + ps[(size_t) k];
+                auto rel = [&] (double e) { return 10.0 * std::log10 (e / tot + 1e-20); };
+                auto width = [&] (float lo, float hi) { const double m = band (pm, lo, hi), sd = band (ps, lo, hi); return std::sqrt (sd / (m + sd + 1e-30)); };
+                const double rms = std::sqrt (ss / (2.0 * len));
+                std::cout << file.getFileName() << "," << len / sr << "," << sr << "," << lu.integrated.load() << "," << lra << "," << gainToDb (tp) << "," << gainToDb (pk)
+                          << "," << gainToDb ((float) rms) << "," << gainToDb (pk) - gainToDb ((float) rms) << "," << gainToDb (tp) - lu.integrated.load()
+                          << "," << lr / std::sqrt (ll * rr + 1e-30) << "," << gainToDb ((float) std::abs ((dcl + dcr) / (2.0 * len)))
+                          << "," << rel (band (pm, 1, 30) + band (ps, 1, 30)) << "," << rel (band (pm, 16000, 24000) + band (ps, 16000, 24000))
+                          << "," << width (20, 80) << "," << width (80, 350) << "," << width (350, 4000) << "," << width (4000, 20000);
+                for (int r = 0; r < 10; ++r) std::cout << "," << rel (band (pm, regions[r], regions[r + 1]));
+                for (int r = 0; r < 10; ++r) std::cout << "," << rel (band (ps, regions[r], regions[r + 1]));
+                std::cout << "\n" << std::flush;
+            }
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
         if (juce::String (argv[i]) == "--fircheck")
         {
             const int N = 8192;
@@ -118,6 +227,20 @@ int main (int argc, char** argv)
             double e = 0, ref = 0; const int lat = PartConv::B + N / 2;
             for (int k = lat + 100; k < 20000; ++k) { const double dd = z[(size_t) k] - y[(size_t) (k - lat)]; e += dd * dd; ref += (double) y[(size_t) (k - lat)] * y[(size_t) (k - lat)]; }
             std::cout << "conv random residual " << 10 * std::log10 (e / ref + 1e-30) << " dB\n";
+            for (int f : { 2, 4, 8 })
+                for (float hz : { 100.0f, 1000.0f, 10000.0f, 18000.0f })
+                {
+                    OverN o; o.prepare (4096);
+                    std::vector<float> in (4096), up ((size_t) 4096 * 8), out (4096);
+                    double e2 = 0, r2 = 0; const int lat2 = OverN::latencyFor (f);
+                    for (int blk = 0; blk < 8; ++blk)
+                    {
+                        for (int k = 0; k < 4096; ++k) in[(size_t) k] = std::sin (kTwoPi * hz * (blk * 4096 + k) / 48000.0f);
+                        o.up (in.data(), 4096, f, up.data()); o.down (up.data(), 4096 * f, f, out.data());
+                        if (blk > 1) for (int k = 0; k < 4096; ++k) { const float ref2 = std::sin (kTwoPi * hz * (blk * 4096 + k - lat2) / 48000.0f); e2 += (out[(size_t) k] - ref2) * (out[(size_t) k] - ref2); r2 += ref2 * ref2; }
+                    }
+                    std::cout << "oversampling " << f << "x round trip at " << hz << " hz: residual " << 10 * std::log10 (e2 / r2 + 1e-30) << " dB\n";
+                }
             return 0;
         }
     for (int i = 1; i < argc; ++i)
@@ -244,7 +367,7 @@ int main (int argc, char** argv)
         {
             // null test: everything neutral → output must equal the input delayed by the reported latency
             Processor m (Pid::ms0);
-            for (auto id : { "mbon", "dynon", "glueon", "limon", "saton", "ambon" }) m.setParam (id, 0.0f);
+            for (auto id : { "mbon", "dynon", "glueon", "limon", "saton", "ambon", "limos", "dcon" }) m.setParam (id, 0.0f);
             for (int b = 1; b <= 4; ++b) m.setParam ("b" + juce::String (b) + "width", 1.0f);
             m.setParam ("match", 0.0f);
             double rt2; auto o = render (m, &loop, 4.0, rt2);
@@ -267,6 +390,19 @@ int main (int argc, char** argv)
             for (int c = 0; c < 2; ++c) for (int k = h.getLatencySamples() + 4800; k < hot.getNumSamples(); ++k) pk = std::max (pk, std::abs (hot.getSample (c, k)));
             std::cout << "  limiter: +18 db into -1 dbtp ceiling, sample peak " << juce::Decibels::gainToDecibels (pk) << " dB\n";
             check (pk <= juce::Decibels::decibelsToGain (-0.99f), "ms0 limiter ceiling");
+            // true-peak compliance at every oversampling setting (measured with 4x interpolation)
+            for (int os = 0; os < 4; ++os)
+            {
+                Processor t (Pid::ms0);
+                t.setParam ("limgain", 18.0f); t.setParam ("ceiling", -1.0f); t.setParam ("limos", (float) os);
+                t.setParam ("clipon", os == 3 ? 1.0f : 0.0f);
+                auto o2 = render (t, &loop, 4.0, rt2);
+                TruePeak a1, a2; float tpk = 0;
+                for (int k = 0; k < o2.getNumSamples(); ++k) tpk = std::max (tpk, std::max (a1.push (o2.getSample (0, k)), a2.push (o2.getSample (1, k))));
+                const char* nm[4] = { "off", "2x", "4x", "8x + clipper" };
+                std::cout << "  limiter os " << nm[os] << ": true peak " << juce::Decibels::gainToDecibels (tpk) << " dBTP, " << (int) rt2 << "x realtime\n";
+                check (tpk <= juce::Decibels::decibelsToGain (-0.95f), juce::String ("ms0 true peak, os ") + nm[os]);
+            }
         }
 
         // state round trip

@@ -29,13 +29,14 @@ product() {   # product <folder name> <target> <file name>
             done ;;
         Windows)
             cp "$A/Standalone/$file.exe" "$P/"
-            [ -f "$A/VST/$file.dll" ] && cp "$A/VST/$file.dll" "$P/" ;;
+            [ -f "$A/VST/$file.dll" ] && cp "$A/VST/$file.dll" "$P/" || true ;;
         Linux)
             cp "$A/Standalone/$file" "$P/"
-            [ -d "$A/LV2/$file.lv2" ] && cp -R "$A/LV2/$file.lv2" "$P/"
-            [ -f "$A/VST/lib$file.so" ] && cp "$A/VST/lib$file.so" "$P/$file.so"
-            [ -f "$A/VST/$file.so" ] && cp "$A/VST/$file.so" "$P/" ;;
+            [ -d "$A/LV2/$file.lv2" ] && cp -R "$A/LV2/$file.lv2" "$P/" || true
+            [ -f "$A/VST/lib$file.so" ] && cp "$A/VST/lib$file.so" "$P/$file.so" || true
+            [ -f "$A/VST/$file.so" ] && cp "$A/VST/$file.so" "$P/" || true ;;
     esac
+    return 0   # optional formats above may be missing; that is not a failure
 }
 
 for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do

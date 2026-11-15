@@ -369,19 +369,19 @@ class Stage : public juce::Component
 public:
     Stage (juce::String t, ui::Theme th) : title (std::move (t)), theme (th) {}
     void setSwitch (juce::RangedAudioParameter& prm) { sw = std::make_unique<ui::ToggleBox> (prm, theme, "on"); addAndMakeVisible (*sw); }
-    void add (juce::Component* c, int h = 17) { items.add (c); heights.push_back (h); addAndMakeVisible (c); }
-    void addGap() { items.add (nullptr); heights.push_back (7); }
-    void clearItems() { items.clear(); heights.clear(); }
+    void add (juce::Component* c, int h = 17, bool own = true) { if (own) owned.add (c); items.push_back (c); heights.push_back (h); addAndMakeVisible (c); }
+    void addGap() { items.push_back (nullptr); heights.push_back (7); }
+    void clearItems() { for (auto* c : items) if (c) removeChildComponent (c); items.clear(); heights.clear(); owned.clear(); }
     int topPad = 0;
     int wanted() const { int h = 22 + topPad; for (size_t i = 0; i < heights.size(); ++i) h += heights[i] + 1; return h; }
     void resized() override
     {
         if (sw) sw->setBounds (getWidth() - 56, 0, 56, 16);
         int y = 22 + topPad;
-        for (int i = 0; i < items.size(); ++i)
+        for (size_t i = 0; i < items.size(); ++i)
         {
-            if (auto* c = items[i]) c->setBounds (0, y, getWidth(), heights[(size_t) i]);
-            y += heights[(size_t) i] + 1;
+            if (auto* c = items[i]) c->setBounds (0, y, getWidth(), heights[i]);
+            y += heights[i] + 1;
         }
     }
     std::vector<int> heights;
@@ -391,7 +391,8 @@ public:
         g.drawText (title, 0, 0, getWidth() - 60, 16, juce::Justification::centredLeft);
         g.setColour (theme.fill.withAlpha (0.7f)); g.fillRect (0, 17, getWidth(), 1);
     }
-    juce::OwnedArray<juce::Component> items;
+    std::vector<juce::Component*> items;
+    juce::OwnedArray<juce::Component> owned;
 private:
     juce::String title; ui::Theme theme; std::unique_ptr<ui::ToggleBox> sw;
 };
@@ -401,11 +402,18 @@ class MasterView : public View
 public:
     explicit MasterView (Processor& proc) : p (proc), pi (proc.pinfo), theme (makeTheme (proc.pinfo)), analyser (proc, theme), imager (proc, theme),
         presetBar (proc, theme), listen (P (proc, "listen"), theme, " "), bypass (P (proc, "bypass"), theme, "compare"),
-        match (P (proc, "match"), theme, "level-matched"), reset ("reset meters", theme)
+        match (P (proc, "match"), theme, "level-matched"), reset ("reset meters", theme),
+        abA ("a", theme), abB ("b", theme), abCopy ("copy", theme), goTarget ("go to target", theme)
     {
         listen.asTabs = true;
         for (auto* c : std::initializer_list<juce::Component*> { &analyser, &imager, &presetBar, &listen, &bypass, &match, &reset }) addAndMakeVisible (c);
         reset.onClick = [this] { if (auto* m = p.master()) m->resetMeters(); };
+        for (auto* c : std::initializer_list<juce::Component*> { &abA, &abB, &abCopy }) addAndMakeVisible (c);
+        abA.onClick = [this] { p.abSwitch (0); refreshAb(); };
+        abB.onClick = [this] { p.abSwitch (1); refreshAb(); };
+        abCopy.onClick = [this] { p.abCopy(); };
+        goTarget.onClick = [this] { p.goToTarget(); };
+        refreshAb();
         analyser.onSelect = [this] (int k) { selectBand (k); };
 
         // eq band editor (rebuilt on selection)
@@ -435,19 +443,25 @@ public:
         }
         mb = std::make_unique<Stage> ("multiband + imaging", theme); mb->setSwitch (P (p, "mbon"));
         addS (*mb, "x1", "x-over 1"); addS (*mb, "x2", "x-over 2"); addS (*mb, "x3", "x-over 3"); addS (*mb, "imgon", "imaging"); addS (*mb, "air", "air");
+        addS (*mb, "midlvl", "mid level"); addS (*mb, "sidelvl", "side level");
         mb->addGap();
         mb->add (new BandTable (p, theme), 16 + 7 * 18);
-        sat = std::make_unique<Stage> ("saturation  (2x)", theme); sat->setSwitch (P (p, "saton"));
+        sat = std::make_unique<Stage> ("saturation  (4x)", theme); sat->setSwitch (P (p, "saton"));
         addS (*sat, "satcurve", "curve"); addS (*sat, "satfocus", "focus"); addS (*sat, "satdrive", "drive"); addS (*sat, "satmix", "mix");
         amb = std::make_unique<Stage> ("ambience  (parallel)", theme); amb->setSwitch (P (p, "ambon"));
         addS (*amb, "amblevel", "level"); addS (*amb, "ambsize", "size"); addS (*amb, "ambdecay", "decay"); addS (*amb, "ambhp", "high-pass"); addS (*amb, "amblp", "low-pass"); addS (*amb, "ambwidth", "width");
         glue = std::make_unique<Stage> ("glue", theme); glue->setSwitch (P (p, "glueon"));
         addS (*glue, "gthr", "threshold"); addS (*glue, "gratio", "ratio"); addS (*glue, "gatt", "attack"); addS (*glue, "grel", "release"); addS (*glue, "gauto", "auto release"); addS (*glue, "gmakeup", "makeup"); addS (*glue, "gmix", "mix");
+        clip = std::make_unique<Stage> ("clipper  (oversampled)", theme); clip->setSwitch (P (p, "clipon"));
+        addS (*clip, "clipdrive", "drive"); addS (*clip, "clipsoft", "softness");
         lim = std::make_unique<Stage> ("true-peak limiter", theme); lim->setSwitch (P (p, "limon"));
-        addS (*lim, "limgain", "gain"); addS (*lim, "ceiling", "ceiling"); addS (*lim, "limrel", "release"); addS (*lim, "limauto", "auto release"); addS (*lim, "lookahead", "lookahead");
+        addS (*lim, "limgain", "gain"); addS (*lim, "ceiling", "ceiling"); addS (*lim, "limos", "oversample"); addS (*lim, "limrel", "release");
+        addS (*lim, "limauto", "auto release"); addS (*lim, "lookahead", "lookahead"); addS (*lim, "limlink", "stereo link");
         io = std::make_unique<Stage> ("input / output", theme);
-        addS (*io, "trim", "input"); addS (*io, "out", "output"); addS (*io, "dither", "dither"); addS (*io, "shaping", "shaping");
-        for (auto* s : { dyn.get(), mb.get(), sat.get(), amb.get(), glue.get(), lim.get(), io.get() }) addAndMakeVisible (s);
+        addS (*io, "trim", "input"); addS (*io, "balance", "balance"); addS (*io, "dcon", "dc filter"); addS (*io, "target", "target");
+        io->add (&goTarget, 17, false);
+        addS (*io, "out", "output"); addS (*io, "dither", "dither"); addS (*io, "shaping", "shaping");
+        for (auto* s : { dyn.get(), mb.get(), sat.get(), amb.get(), clip.get(), glue.get(), lim.get(), io.get() }) addAndMakeVisible (s);
         selectBand (0);
         setSize (pi.w, pi.h);
     }
@@ -495,6 +509,7 @@ public:
         bypass.setBounds (684, 13, 110, 22);
         match.setBounds (796, 13, 140, 22);
         presetBar.setBounds (w - 236, 13, 200, 22);
+        abA.setBounds (w - 236 - 150, 13, 34, 22); abB.setBounds (w - 236 - 114, 13, 34, 22); abCopy.setBounds (w - 236 - 78, 13, 60, 22);
         analyser.setBounds (36, 52, w - 36 - 36 - 300 - 16, 360);
         imager.setBounds (w - 36 - 300, 52, 300, 360);
         const int top = 430, colW = (w - 72 - 4 * 22) / 5;
@@ -506,10 +521,11 @@ public:
         dyn->setBounds (col (1), top, colW, dyn->wanted());
         mb->setBounds (col (2), top, colW, mb->wanted());
         sat->setBounds (col (3), top, colW, sat->wanted());
-        amb->setBounds (col (3), top + sat->wanted() + 14, colW, amb->wanted());
+        amb->setBounds (col (3), top + sat->wanted() + 12, colW, amb->wanted());
+        clip->setBounds (col (3), top + sat->wanted() + amb->wanted() + 24, colW, clip->wanted());
         glue->setBounds (col (4), top, colW, glue->wanted());
         lim->setBounds (col (4), top + glue->wanted() + 14, colW, lim->wanted());
-        io->setBounds (col (0), top + 250, colW, io->wanted());
+        io->setBounds (col (0), top + 196, colW, io->wanted());
         reset.setBounds (w - 36 - 110, 410, 110, 18);
     }
 
@@ -532,9 +548,14 @@ public:
             const auto& o = m->outMeter;
             auto lu = [] (float v) { return v < -99 ? juce::String ("-") : juce::String (v, 1); };
             g.setFont (ui::mono (10.5f));
-            const juce::String txt = "m " + lu (o.momentary.load()) + "   s " + lu (o.shortTerm.load()) + "   i " + lu (o.integrated.load()) + " lufs     tp "
-                                   + lu (m->truePeak.load()) + " dbtp     glue " + juce::String (m->glueGr.load(), 1) + "   limit " + juce::String (m->limGr.load(), 1) + " db"
-                                   + "     latency " + juce::String (1000.0 * m->latency() / std::max (1.0, p.getSampleRate()), 0) + " ms";
+            const float iv = o.integrated.load(), tpv = m->truePeak.load();
+            juce::String tgt;
+            const int ti = (int) p.param ("target");
+            if (ti > 0 && iv > -70) { const float d = Processor::targetLufs (ti) - iv; tgt = "   to target " + juce::String (d > 0 ? "+" : "") + juce::String (d, 1); }
+            const juce::String txt = "m " + lu (o.momentary.load()) + "  s " + lu (o.shortTerm.load()) + "  i " + lu (iv) + " lufs  lra " + juce::String (o.range.load(), 1)
+                                   + tgt + "    tp " + lu (tpv) + " dbtp  plr " + (iv > -70 ? juce::String (tpv - iv, 1) : juce::String ("-"))
+                                   + "    glue " + juce::String (m->glueGr.load(), 1) + "  limit " + juce::String (m->limGr.load(), 1) + " db"
+                                   + "    latency " + juce::String (1000.0 * m->latency() / std::max (1.0, p.getSampleRate()), 0) + " ms";
             g.drawText (txt, juce::Rectangle<float> (36, 414, (float) getWidth() - 72, 14), juce::Justification::centredLeft);
             // gain reduction bars
             const float lg = m->limGr.load();
@@ -616,8 +637,9 @@ private:
     ui::PresetBar presetBar;
     ui::ChoiceBox listen;
     ui::ToggleBox bypass, match;
-    ui::TextLink reset;
+    ui::TextLink reset, abA, abB, abCopy, goTarget;
+    void refreshAb() { abA.setLit (p.abCurrent == 0); abB.setLit (p.abCurrent == 1); }
     juce::OwnedArray<ui::TextLink> tabs;
-    std::unique_ptr<Stage> eqStage, dyn, mb, sat, amb, glue, lim, io;
+    std::unique_ptr<Stage> eqStage, dyn, mb, sat, amb, clip, glue, lim, io;
     int band = 0;
 };

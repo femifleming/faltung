@@ -3708,6 +3708,31 @@
         "def": "on"
       },
       {
+        "id": "dcon",
+        "name": "dc filter",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "balance",
+        "name": "balance",
+        "type": "float",
+        "min": "l 100",
+        "max": "r 100",
+        "def": "c"
+      },
+      {
+        "id": "target",
+        "name": "loudness target",
+        "choices": "off, -8 lufs, -9 lufs (club), -10 lufs, -11 lufs, -12 lufs, -14 lufs (streaming), -16 lufs (apple), -18 lufs (dynamic), -23 lufs (broadcast)",
+        "type": "choice",
+        "min": "off",
+        "max": "-23 lufs (broadcast)",
+        "def": "off"
+      },
+      {
         "id": "eqon",
         "name": "eq on",
         "type": "bool",
@@ -4594,6 +4619,22 @@
         "def": "0%"
       },
       {
+        "id": "midlvl",
+        "name": "mid level",
+        "type": "float",
+        "min": "-12.0 db",
+        "max": "+12.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "sidelvl",
+        "name": "side level",
+        "type": "float",
+        "min": "-12.0 db",
+        "max": "+12.0 db",
+        "def": "0.0 db"
+      },
+      {
         "id": "saton",
         "name": "saturation on",
         "type": "bool",
@@ -4756,12 +4797,53 @@
         "def": "100%"
       },
       {
+        "id": "clipon",
+        "name": "clipper on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "clipdrive",
+        "name": "clipper drive",
+        "type": "float",
+        "min": "0.0 db",
+        "max": "+12.0 db",
+        "def": "+1.0 db"
+      },
+      {
+        "id": "clipsoft",
+        "name": "clipper softness",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "50%"
+      },
+      {
         "id": "limon",
         "name": "limiter on",
         "type": "bool",
         "min": "off",
         "max": "on",
         "def": "on"
+      },
+      {
+        "id": "limos",
+        "name": "limiter oversampling",
+        "choices": "off, 2x, 4x, 8x",
+        "type": "choice",
+        "min": "off",
+        "max": "8x",
+        "def": "4x"
+      },
+      {
+        "id": "limlink",
+        "name": "limiter stereo link",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
       },
       {
         "id": "limgain",
@@ -4838,6 +4920,7 @@
       "mono-safe low end",
       "loud club",
       "vinyl pre-master",
+      "dreamstate (from your mixes)",
       "16-bit export"
     ]
   }

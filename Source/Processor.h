@@ -75,6 +75,13 @@ public:
     BassSynth* bass() { return bassFx.get(); }
     MasterChain* master() { return masterFx.get(); }
     MasterParams readMaster() const;
+    // A / B comparison of complete settings (ms0)
+    int abCurrent = 0;
+    void abSwitch (int slot);
+    void abCopy();
+    /** raise / lower limiter gain so the integrated loudness meets the target */
+    bool goToTarget();
+    static float targetLufs (int index);
     /** synth keyboard in the editor: velocity 0 = note off */
     void uiNote (int note, float velocity) { uiTrigger (note, velocity); }
     void swingLearn (bool start);
@@ -138,6 +145,7 @@ private:
             }
         }
     };
+    std::array<juce::ValueTree, 2> abState;
     juce::CriticalSection designLock;
     bool masterReady = false;
     std::unique_ptr<Designer> designer;

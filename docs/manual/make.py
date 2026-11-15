@@ -420,6 +420,11 @@ MS = {
  'satdrive': 'drive into the curve (level-compensated)', 'satmix': 'parallel: dry / saturated',
  'ambon': 'ambience on', 'amblevel': 'level of the parallel room, keep it very quiet', 'ambsize': 'room size', 'ambdecay': 'tail length', 'ambhp': 'high-pass on the room', 'amblp': 'low-pass on the room', 'ambwidth': 'stereo width of the room',
  'glueon': 'glue on', 'gthr': 'threshold', 'gratio': 'ratio', 'gatt': 'attack', 'grel': 'release', 'gauto': 'program-dependent release', 'gmakeup': 'makeup gain', 'gmix': 'parallel mix',
+ 'dcon': 'removes dc offset (a 3 hz high-pass, far below anything musical)', 'balance': 'left / right balance at the input',
+ 'target': 'a loudness goal; the meter line shows how far the integrated loudness is from it', 'midlvl': 'level of the centre after imaging', 'sidelvl': 'level of the sides after imaging',
+ 'clipon': 'clipper on', 'clipdrive': 'gain into the clipper; it clips at the ceiling, the limiter catches the rest', 'clipsoft': '0% hard clip … 100% very soft knee',
+ 'limos': 'off · 2x · 4x · 8x: the clipper and limiter run at this rate, so peaks between samples are caught where they happen and the clipping does not alias. Latency does not change between settings',
+ 'limlink': '100% both channels share one gain (stable image); lower lets each side limit on its own',
  'limon': 'limiter on', 'limgain': 'drive into the limiter', 'ceiling': 'maximum true peak (inter-sample peaks included)', 'limrel': 'release', 'limauto': 'fast release after short peaks, slower when held', 'lookahead': 'attack window (latency stays fixed at 5 ms)',
  'out': 'output level (before dither)', 'dither': 'TPDF dither for 24 or 16 bit export; off for 32-bit float', 'shaping': 'first-order noise shaping (pushes dither noise up in frequency)',
 }
@@ -438,6 +443,7 @@ MS_PRESETS = [
  ('mono-safe low end', 'everything under 110 hz mono, low-mids half width, side high-pass at 120 hz'),
  ('loud club', 'firmer bands, soft-clip saturation focused on the ends, glue, +7 db into the limiter with a short lookahead'),
  ('vinyl pre-master', 'high- and low-pass, everything under 150 hz mono, low-mids narrowed, ceiling -1.5 dbtp, no limiting gain'),
+ ('dreamstate (from your mixes)', 'made from the analysis of your ten mixes: 15 hz linear-phase high-pass, side cut at 300 hz, a little centre cut at 460 hz, side air, dynamic mid band at 250 hz and side band at 320 hz, sub mono, very gentle bands, no glue, a light soft clipper, 8× oversampled limiter at -1 dbtp with +2 db'),
  ('16-bit export', 'transparent, with 16-bit TPDF dither and noise shaping for CD / 16-bit delivery'),
 ]
 msflow = """<svg class="flow" viewBox="0 0 700 120" font-family="IBM Plex Mono" font-size="10"><g fill="none" stroke="#5aaad8" stroke-width="1.3">""" + \
@@ -471,15 +477,35 @@ the correlation.</li>
 <li><b>saturation</b> only for definition (a low end that should be heard on small speakers). Focus <i>ends</i> keeps it out of 200 hz – 2 khz.</li>
 <li><b>ambience</b> — a very quiet, filtered room — only if the mix lacks a sense of space. Often reducing competing information creates more space than adding a room.</li>
 <li><b>glue</b> 0.5 – 1.5 db, or none.</li>
-<li><b>limiter</b>: ceiling -1 dbtp, ideally 1 – 2 db of reduction or less. Don't chase a loudness number.</li>
+<li><b>clipper</b> (optional, 1 – 3 db) then <b>limiter</b>: ceiling -1 dbtp, oversampling 4× or 8×, ideally 1 – 2 db of reduction or less. Don't chase a loudness number.</li>
 <li>Check everything with <b>compare</b> (level-matched): each stage must improve separation, depth or translation, or it goes. The best chain is often short.</li></ol>
+<h3>the limiter section</h3><p>Gain → <b>clipper</b> → <b>limiter</b>, both running <b>oversampled</b> (2×, 4× or 8×, linear-phase
+half-band filters), then a short <b>true-peak safety</b> stage at the normal rate that catches anything the down-sampling filters add back.
+The limiter never acts late: a sliding minimum plus a box-car average over the look-ahead window guarantees the gain is already down when
+a peak arrives. Release is program dependent in auto (fast after short peaks, slower when it is held). Measured on a drum loop pushed
+18 db into it, the output stays at -1.000 dbtp with oversampling off, 2× and 4×, and -0.999 dbtp at 8× with the clipper. A clipper before
+the limiter is the usual way to get loudness with fewer audible limiter movements; keep it at 1 – 3 db.</p>
+<h3>a / b, compare and the target</h3><p><b>a</b> and <b>b</b> hold two complete settings; click to switch, <b>copy</b> copies the current one to the
+other. <b>compare</b> plays the input instead (level-matched when <i>level-matched</i> is on). Choose a <b>target</b> (−14 lufs for streaming,
+−9 for club …), play the whole song once so the integrated loudness is measured, then <b>go to target</b> sets the limiter gain to reach it.
+For your music the target is often <i>off</i>: loudness range matters more than a number.</p>
 <h3>the imager</h3><p>Click it to switch between three views. <b>Polar sample</b> (as in Ozone Imager): every sample is a dot; mono material
 stands on the vertical line, hard left and right on the diagonals, out-of-phase material lies along the horizontal. Dots outside the
 diagonals mean more side than mid. <b>Polar level</b>: the energy at each angle as rays. <b>Lissajous</b>: the classic goniometer. Below: the
 <b>correlation</b> (+1 mono, 0 wide, below 0 phase trouble that will vanish in mono) and, for each band, the measured width (orange) against
 the width you set (white mark). The same per-band width bars appear in the analyser under each band.</p>
-<h3>meters</h3><p>The line under the analyser: momentary, short-term and integrated loudness (BS.1770 / EBU R128, gated), true peak (4×
-interpolated), gain reduction of glue and limiter, and the latency. <b>reset meters</b> clears the integrated loudness and peak hold.</p>
+<h3>meters</h3><p>The line under the analyser: momentary, short-term and integrated loudness (BS.1770 / EBU R128, gated), <b>lra</b> (loudness
+range, EBU Tech 3342), the distance to the target, true peak (4× interpolated), <b>plr</b> (peak to loudness ratio — how much dynamic punch is
+left), gain reduction of glue and limiter, and the latency. <b>reset meters</b> clears integrated loudness, loudness range and peak hold.</p>
+<h3>your mixes</h3><p>ms0 was tuned on the ten final mixes in <i>Sadnoise_Cloudfin_Dreamstate / final wavs</i>, measured with its own meters:</p>
+<table class="params"><tr><th>what</th><th>found</th><th>what ms0 does about it</th></tr>
+<tr><td class="n">true peak</td><td>five tracks above 0 dbtp: track 9 +3.7, track 10 +2.3, track 1 +2.1, track 12 +0.7, track 4 +0.4</td><td>oversampled limiter + true-peak safety at -1 dbtp</td></tr>
+<tr><td class="n">loudness</td><td>-10.8 … -15.7 lufs, lra 6 – 13 lu, crest 11 – 18 db: very dynamic</td><td>gentle presets, lra and plr meters, target usually off</td></tr>
+<tr><td class="n">extreme lows</td><td>much energy under 30 hz (track 9, 4, 11, 1)</td><td>dc filter; a 15 hz linear-phase high-pass in the dreamstate preset that leaves 20 – 40 hz alone</td></tr>
+<tr><td class="n">wide sub</td><td>sub side-width 0.50 (track 5), 0.41 (track 10), 0.30 (track 1)</td><td>sub band at 0% width: the low end survives mono and club systems</td></tr>
+<tr><td class="n">very wide overall</td><td>correlation 0.26 (track 8), 0.48 (track 5), 0.49 (track 12)</td><td>the imager, per-band width, mid / side levels</td></tr>
+<tr><td class="n">side low-mid mud</td><td>side energy at 160 – 350 hz high in tracks 5, 8, 12</td><td>a side cut at 300 hz and a dynamic side band at 320 hz</td></tr></table>
+<p>Track 9 through <b>dreamstate (from your mixes)</b>: -15.7 → -14.9 lufs, loudness range 12.8 → 11.4 lu, true peak +3.69 → -1.00 dbtp.</p>
 <h3>presets</h3><table class="params">{''.join(f'<tr><td class="n">{e(n)}</td><td>{e(t)}</td></tr>' for n, t in MS_PRESETS)}</table>
 <p class="small">Presets never change listen, compare or input trim.</p>
 <h3>controls</h3>{ptable(params_rows('ms0', ms_desc, skip=lambda pid: pid[0] in 'eb' and pid[1:2].isdigit() and pid[1] not in '1'))}

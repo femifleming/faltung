@@ -227,14 +227,15 @@ struct MasterParams
     struct Eq { bool on = false; int type = 0; float freq = 1000, gain = 0, q = 0.7f; int ch = 0; };   // type: bell, low shelf, high shelf, notch · ch: stereo, mid, side
     struct Dyn { bool on = false; int ch = 1; float freq = 400, q = 1.5f, thr = -30, range = -4, attack = 10, release = 120; };
     struct Band { float thr = -18, ratio = 1.5f, attack = 30, release = 160, gain = 0, width = 1; bool solo = false; };
-    float trim = 0; int listen = 0; bool bypass = false, match = true;
+    float trim = 0; int listen = 0; bool bypass = false, match = true; bool dcOn = true; float balance = 0;
     bool eqOn = true; std::array<Eq, 8> eq; bool hpOn = false; float hpF = 22; int hpOrd = 2; int hpCh = 0; bool lpOn = false; float lpF = 20000; int lpOrd = 2; int lpCh = 0;
     bool dynOn = true; std::array<Dyn, 2> dyn;
-    bool mbOn = true; float x1 = 80, x2 = 350, x3 = 4000; std::array<Band, 4> mb; bool imgOn = true; float air = 0;
+    bool mbOn = true; float x1 = 80, x2 = 350, x3 = 4000; std::array<Band, 4> mb; bool imgOn = true; float air = 0, midLvl = 0, sideLvl = 0;
     bool satOn = false; int satCurve = 0, satFocus = 0; float satDrive = 3, satMix = 1;
     bool ambOn = false; float ambLevel = -30, ambSize = 0.3f, ambDecay = 0.6f, ambHp = 300, ambLp = 10000, ambWidth = 1;
     bool glueOn = true; float gThr = -16, gRatio = 2, gAtt = 20, gRel = 150; bool gAuto = true; float gMakeup = 0, gMix = 1;
-    bool limOn = true; float limGain = 0, ceiling = -1, limRel = 120; bool limAuto = true; float lookahead = 3;
+    bool clipOn = false; float clipDrive = 0, clipSoft = 0.5f;
+    bool limOn = true; float limGain = 0, ceiling = -1, limRel = 120; bool limAuto = true; float lookahead = 3; int limOs = 4; float limLink = 1;
     int dither = 0; bool shaping = false; float out = 0;
 };
 
@@ -278,76 +279,6 @@ private:
     }
 };
 
-/** BS.1770-4 loudness: momentary (400 ms), short-term (3 s), integrated (gated) */
-class Loudness
-{
-public:
-    void prepare (double sampleRate)
-    {
-        sr = sampleRate;
-        auto shelf = [&] (Biquad& b)
-        {
-            const double f0 = 1681.974450955533, G = 3.999843853973347, Q = 0.7071752369554196;
-            const double K = std::tan (kPi * f0 / sr), Vh = std::pow (10.0, G / 20.0), Vb = std::pow (Vh, 0.4996667741545416);
-            const double a0 = 1 + K / Q + K * K;
-            b.b0 = (float) ((Vh + Vb * K / Q + K * K) / a0); b.b1 = (float) (2 * (K * K - Vh) / a0); b.b2 = (float) ((Vh - Vb * K / Q + K * K) / a0);
-            b.a1 = (float) (2 * (K * K - 1) / a0); b.a2 = (float) ((1 - K / Q + K * K) / a0);
-        };
-        auto hp = [&] (Biquad& b)
-        {
-            const double f0 = 38.13547087602444, Q = 0.5003270373238773, K = std::tan (kPi * f0 / sr), a0 = 1 + K / Q + K * K;
-            b.b0 = 1; b.b1 = -2; b.b2 = 1; b.a1 = (float) (2 * (K * K - 1) / a0); b.a2 = (float) ((1 - K / Q + K * K) / a0);
-        };
-        for (int c = 0; c < 2; ++c) { shelf (s1[(size_t) c]); hp (s2[(size_t) c]); s1[(size_t) c].reset(); s2[(size_t) c].reset(); }
-        blockLen = (int) std::round (sr * 0.1);
-        reset();
-    }
-    void reset()
-    {
-        acc = 0; cnt = 0; ring.fill (0); ringN = 0; ringI = 0; hist.fill (0); histE.fill (0);
-        momentary.store (-100); shortTerm.store (-100); integrated.store (-100);
-    }
-    void process (const float* L, const float* R, int n)
-    {
-        for (int i = 0; i < n; ++i)
-        {
-            const float l = s2[0].tick (s1[0].tick (L[i])), r = s2[1].tick (s1[1].tick (R[i]));
-            acc += (double) l * l + (double) r * r;
-            if (++cnt >= blockLen) step();
-        }
-    }
-    std::atomic<float> momentary { -100 }, shortTerm { -100 }, integrated { -100 };
-private:
-    double sr = 48000, acc = 0; int cnt = 0, blockLen = 4800;
-    std::array<Biquad, 2> s1, s2;
-    std::array<double, 30> ring {}; int ringN = 0, ringI = 0;
-    std::array<int, 800> hist {}; std::array<double, 800> histE {};
-    static float lufs (double meanSq) { return meanSq <= 1.0e-12 ? -100.0f : (float) (-0.691 + 10.0 * std::log10 (meanSq)); }
-    void step()
-    {
-        ring[(size_t) ringI] = acc / cnt; ringI = (ringI + 1) % 30; ringN = std::min (30, ringN + 1);
-        acc = 0; cnt = 0;
-        auto mean = [&] (int k) { double s = 0; const int m = std::min (k, ringN); for (int j = 1; j <= m; ++j) s += ring[(size_t) ((ringI - j + 30) % 30)]; return m > 0 ? s / m : 0.0; };
-        const double m4 = mean (4);
-        momentary.store (lufs (m4)); shortTerm.store (lufs (mean (30)));
-        if (ringN >= 4)
-        {
-            const float l = lufs (m4);
-            if (l > -70.0f) { const int b = std::clamp ((int) ((l + 70.0f) * 10.0f), 0, 799); hist[(size_t) b]++; histE[(size_t) b] += m4; }
-            // gating: absolute -70, relative -10 below the ungated mean
-            double e = 0; long c = 0;
-            for (int b = 0; b < 800; ++b) { e += histE[(size_t) b]; c += hist[(size_t) b]; }
-            if (c > 0)
-            {
-                const float rel = lufs (e / (double) c) - 10.0f;
-                double e2 = 0; long c2 = 0;
-                for (int b = std::max (0, (int) ((rel + 70.0f) * 10.0f)); b < 800; ++b) { e2 += histE[(size_t) b]; c2 += hist[(size_t) b]; }
-                if (c2 > 0) integrated.store (lufs (e2 / (double) c2));
-            }
-        }
-    }
-};
-
 /** 4× windowed-sinc interpolation for true-peak detection; output is delayed by `latency` samples */
 class TruePeak
 {
@@ -383,6 +314,237 @@ private:
     std::array<float, 32> buf {}; int i = 0;
 };
 
+/** a half-band stage (2x up / down) with T taps; latency (T-1) samples at the higher rate, round trip */
+class Halfband
+{
+public:
+    explicit Halfband (int taps = 63, double beta = 9.0) : T (taps), h ((size_t) taps), up ((size_t) 128, 0.0f), dn ((size_t) 128, 0.0f)
+    {
+        const int M = T / 2; double sum = 0;
+        auto i0 = [] (double z) { double s = 1, t = 1; for (int j = 1; j < 30; ++j) { t *= (z / (2 * j)) * (z / (2 * j)); s += t; } return s; };
+        for (int n = 0; n < T; ++n)
+        {
+            const double k = n - M, sinc = k == 0 ? 1.0 : std::sin (kPi * 0.5 * k) / (kPi * 0.5 * k);
+            const double x = 2.0 * n / (T - 1) - 1.0;
+            h[(size_t) n] = (float) (0.5 * sinc * i0 (beta * std::sqrt (std::max (0.0, 1 - x * x))) / i0 (beta));
+            sum += h[(size_t) n];
+        }
+        for (auto& c : h) c = (float) (c / sum);
+    }
+    void reset() { std::fill (up.begin(), up.end(), 0.0f); std::fill (dn.begin(), dn.end(), 0.0f); ui = di = 0; }
+    void upsample (float x, float& y0, float& y1) { push (up, ui, x * 2.0f); y0 = conv (up, ui); push (up, ui, 0.0f); y1 = conv (up, ui); }
+    /** keeps the even phase, so the round trip is exactly (T - 1) / 2 base samples */
+    float downsample (float a, float b) { push (dn, di, a); const float y = conv (dn, di); push (dn, di, b); return y; }
+private:
+    int T; std::vector<float> h, up, dn; int ui = 0, di = 0;
+    static void push (std::vector<float>& b, int& i, float x) { b[(size_t) (i & 127)] = x; ++i; }
+    float conv (const std::vector<float>& b, int i) const { float y = 0; for (int k = 0; k < T; ++k) y += h[(size_t) k] * b[(size_t) ((i - 1 - k) & 127)]; return y; }
+};
+
+/** 1x / 2x / 4x / 8x oversampling with cascaded linear-phase half-bands. Latency (base samples): 0 / 31 / 39 / 43. */
+class OverN
+{
+public:
+    static int latencyFor (int f) { return f >= 8 ? 43 : (f >= 4 ? 39 : (f >= 2 ? 31 : 0)); }
+    OverN() : st { Halfband (63, 9.0), Halfband (33, 7.0), Halfband (33, 7.0) } {}
+    void prepare (int maxBlock) { bufA.assign ((size_t) maxBlock * 8 + 8, 0.0f); bufB.assign ((size_t) maxBlock * 8 + 8, 0.0f); reset(); }
+    void reset() { for (auto& x : st) x.reset(); }
+    static int stagesFor (int f) { return f >= 8 ? 3 : (f >= 4 ? 2 : (f >= 2 ? 1 : 0)); }
+    /** n base samples → n * f samples in out */
+    void up (const float* in, int n, int f, float* out)
+    {
+        const int S = stagesFor (f);
+        if (S == 0) { std::copy_n (in, n, out); return; }
+        const float* src = in; int len = n;
+        for (int s = 0; s < S; ++s)
+        {
+            float* dst = s == S - 1 ? out : (s % 2 == 0 ? bufA.data() : bufB.data());
+            for (int i = 0; i < len; ++i) st[(size_t) s].upsample (src[i], dst[2 * i], dst[2 * i + 1]);
+            src = dst; len *= 2;
+        }
+    }
+    /** nOs oversampled samples → nOs / f base samples in out */
+    void down (const float* in, int nOs, int f, float* out)
+    {
+        const int S = stagesFor (f);
+        if (S == 0) { std::copy_n (in, nOs, out); return; }
+        const float* src = in; int len = nOs;
+        for (int s = S - 1, k = 0; s >= 0; --s, ++k)
+        {
+            float* dst = s == 0 ? out : (k % 2 == 0 ? bufA.data() : bufB.data());
+            for (int i = 0; i < len / 2; ++i) dst[i] = st[(size_t) s].downsample (src[2 * i], src[2 * i + 1]);
+            src = dst; len /= 2;
+        }
+    }
+private:
+    std::array<Halfband, 3> st;
+    std::vector<float> bufA, bufB;
+};
+
+/** look-ahead peak limiter: sliding minimum + box-car (never late), program-dependent release, stereo link,
+    optional 4x true-peak detection. Runs at whatever rate it is prepared for. */
+class PeakLimiter
+{
+public:
+    void prepare (int lookMaxSamples, bool truePeakDetect)
+    {
+        lookMax = std::max (1, lookMaxSamples); tpOn = truePeakDetect;
+        lat = lookMax + (tpOn ? TruePeak::latency : 0);
+        for (auto& d : dl) d.prepare (lat + 8);
+        for (int c = 0; c < 2; ++c) { mq[(size_t) c].assign ((size_t) (lookMax + 4), { 0, 1.0f }); head[(size_t) c] = tail[(size_t) c] = 0; box[(size_t) c].assign ((size_t) (lookMax + 2), 1.0f); boxSum[(size_t) c] = 0; g[(size_t) c] = 1.0f; tp[(size_t) c].reset(); dpk[(size_t) c].assign ((size_t) (TruePeak::latency + 2), 0.0f); }
+        idx = 0; boxI = 0; boxWin = -1;
+    }
+    int latency() const { return lat; }
+    float grDb = 0;
+    void process (float* L, float* R, int n, bool on, float ceil, int win, float relCoefFast, float relCoefSlow, bool autoRel, float link)
+    {
+        win = std::clamp (win, 1, lookMax);
+        float* io[2] = { L, R };
+        float maxGr = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            float need[2];
+            for (int c = 0; c < 2; ++c)
+            {
+                const float x = io[c][i];
+                dl[(size_t) c].push (x);
+                const float pk = tpOn ? tp[(size_t) c].push (x) : std::abs (x);
+                need[c] = (on && pk > ceil) ? ceil / pk : 1.0f;
+            }
+            const float lk = std::min (need[0], need[1]);
+            ++idx;
+            if (win != boxWin || boxI % 4096 == 0)
+            {
+                boxWin = win;
+                for (int c = 0; c < 2; ++c) { boxSum[(size_t) c] = 0; for (int k = 0; k < win; ++k) boxSum[(size_t) c] += box[(size_t) c][(size_t) k]; }
+            }
+            for (int c = 0; c < 2; ++c)
+            {
+                const float nd = need[c] + (lk - need[c]) * link;
+                auto& q = mq[(size_t) c]; int& hd = head[(size_t) c]; int& tl = tail[(size_t) c]; const int cap = (int) q.size();
+                while (tl != hd && q[(size_t) ((tl - 1 + cap) % cap)].second >= nd) tl = (tl - 1 + cap) % cap;
+                q[(size_t) tl] = { idx, nd }; tl = (tl + 1) % cap;
+                while (q[(size_t) hd].first <= idx - (lookMax + 1)) hd = (hd + 1) % cap;
+                const float hold = q[(size_t) hd].second;
+                boxSum[(size_t) c] += hold - box[(size_t) c][(size_t) (boxI % win)];
+                box[(size_t) c][(size_t) (boxI % win)] = hold;
+                const float target = (float) (boxSum[(size_t) c] / win);
+                float& gc = g[(size_t) c];
+                if (target < gc) gc = target;
+                else { const float k = autoRel ? (gc < 0.89f ? relCoefSlow : relCoefFast) : relCoefFast; gc = std::min (target, target + k * (gc - target)); }
+                const float y = dl[(size_t) c].readInt (lat + 1) * gc;
+                io[c][i] = on ? clampf (y, -ceil, ceil) : y;
+                maxGr = std::max (maxGr, -gainToDb (gc));
+            }
+            ++boxI;
+        }
+        grDb = maxGr;
+    }
+private:
+    int lookMax = 1, lat = 1; bool tpOn = false;
+    std::array<DelayLine, 2> dl;
+    std::array<std::vector<std::pair<long long, float>>, 2> mq;
+    std::array<int, 2> head {}, tail {};
+    std::array<std::vector<float>, 2> box;
+    std::array<double, 2> boxSum {};
+    std::array<float, 2> g { 1.0f, 1.0f };
+    std::array<TruePeak, 2> tp;
+    std::array<std::vector<float>, 2> dpk;
+    long long idx = 0; int boxI = 0, boxWin = -1;
+};
+
+/** BS.1770-4 loudness: momentary (400 ms), short-term (3 s), integrated (gated) */
+class Loudness
+{
+public:
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        auto shelf = [&] (Biquad& b)
+        {
+            const double f0 = 1681.974450955533, G = 3.999843853973347, Q = 0.7071752369554196;
+            const double K = std::tan (kPi * f0 / sr), Vh = std::pow (10.0, G / 20.0), Vb = std::pow (Vh, 0.4996667741545416);
+            const double a0 = 1 + K / Q + K * K;
+            b.b0 = (float) ((Vh + Vb * K / Q + K * K) / a0); b.b1 = (float) (2 * (K * K - Vh) / a0); b.b2 = (float) ((Vh - Vb * K / Q + K * K) / a0);
+            b.a1 = (float) (2 * (K * K - 1) / a0); b.a2 = (float) ((1 - K / Q + K * K) / a0);
+        };
+        auto hp = [&] (Biquad& b)
+        {
+            const double f0 = 38.13547087602444, Q = 0.5003270373238773, K = std::tan (kPi * f0 / sr), a0 = 1 + K / Q + K * K;
+            b.b0 = 1; b.b1 = -2; b.b2 = 1; b.a1 = (float) (2 * (K * K - 1) / a0); b.a2 = (float) ((1 - K / Q + K * K) / a0);
+        };
+        for (int c = 0; c < 2; ++c) { shelf (s1[(size_t) c]); hp (s2[(size_t) c]); s1[(size_t) c].reset(); s2[(size_t) c].reset(); }
+        blockLen = (int) std::round (sr * 0.1);
+        reset();
+    }
+    void reset()
+    {
+        acc = 0; cnt = 0; ring.fill (0); ringN = 0; ringI = 0; hist.fill (0); histE.fill (0); stHist.fill (0); stSkip = 0; range.store (0);
+        momentary.store (-100); shortTerm.store (-100); integrated.store (-100);
+    }
+    void process (const float* L, const float* R, int n)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const float l = s2[0].tick (s1[0].tick (L[i])), r = s2[1].tick (s1[1].tick (R[i]));
+            acc += (double) l * l + (double) r * r;
+            if (++cnt >= blockLen) step();
+        }
+    }
+    std::atomic<float> momentary { -100 }, shortTerm { -100 }, integrated { -100 }, range { 0 };
+private:
+    std::array<int, 800> stHist {}; int stSkip = 0;
+    double sr = 48000, acc = 0; int cnt = 0, blockLen = 4800;
+    std::array<Biquad, 2> s1, s2;
+    std::array<double, 30> ring {}; int ringN = 0, ringI = 0;
+    std::array<int, 800> hist {}; std::array<double, 800> histE {};
+    static float lufs (double meanSq) { return meanSq <= 1.0e-12 ? -100.0f : (float) (-0.691 + 10.0 * std::log10 (meanSq)); }
+    void step()
+    {
+        ring[(size_t) ringI] = acc / cnt; ringI = (ringI + 1) % 30; ringN = std::min (30, ringN + 1);
+        acc = 0; cnt = 0;
+        auto mean = [&] (int k) { double s = 0; const int m = std::min (k, ringN); for (int j = 1; j <= m; ++j) s += ring[(size_t) ((ringI - j + 30) % 30)]; return m > 0 ? s / m : 0.0; };
+        const double m4 = mean (4);
+        momentary.store (lufs (m4)); shortTerm.store (lufs (mean (30)));
+        // loudness range (EBU Tech 3342): short-term values, gated -70 / -20, 10th → 95th percentile
+        if (ringN >= 30 && ++stSkip % 2 == 0)
+        {
+            const float stv = lufs (mean (30));
+            if (stv > -70.0f) stHist[(size_t) std::clamp ((int) ((stv + 70.0f) * 10.0f), 0, 799)]++;
+            double e = 0; long c = 0;
+            for (int b = 0; b < 800; ++b) if (stHist[(size_t) b]) { e += stHist[(size_t) b] * std::pow (10.0, (b * 0.1 - 70.0) / 10.0); c += stHist[(size_t) b]; }
+            if (c > 20)
+            {
+                const int gateBin = std::max (0, (int) (((float) (10.0 * std::log10 (e / c)) - 20.0f + 70.0f) * 10.0f));
+                long n2 = 0; for (int b = gateBin; b < 800; ++b) n2 += stHist[(size_t) b];
+                long acc2 = 0; int lo = -1, hi = -1;
+                for (int b = gateBin; b < 800; ++b)
+                {
+                    acc2 += stHist[(size_t) b];
+                    if (lo < 0 && acc2 >= (long) (0.10 * n2)) lo = b;
+                    if (hi < 0 && acc2 >= (long) (0.95 * n2)) hi = b;
+                }
+                if (lo >= 0 && hi >= 0) range.store ((hi - lo) * 0.1f);
+            }
+        }
+        if (ringN >= 4)
+        {
+            const float l = lufs (m4);
+            if (l > -70.0f) { const int b = std::clamp ((int) ((l + 70.0f) * 10.0f), 0, 799); hist[(size_t) b]++; histE[(size_t) b] += m4; }
+            // gating: absolute -70, relative -10 below the ungated mean
+            double e = 0; long c = 0;
+            for (int b = 0; b < 800; ++b) { e += histE[(size_t) b]; c += hist[(size_t) b]; }
+            if (c > 0)
+            {
+                const float rel = lufs (e / (double) c) - 10.0f;
+                double e2 = 0; long c2 = 0;
+                for (int b = std::max (0, (int) ((rel + 70.0f) * 10.0f)); b < 800; ++b) { e2 += histE[(size_t) b]; c2 += hist[(size_t) b]; }
+                if (c2 > 0) integrated.store (lufs (e2 / (double) c2));
+            }
+        }
+    }
+};
+
 /** lock-free ring of recent samples for the editor (analyser, vectorscope) */
 struct ScopeRing
 {
@@ -412,7 +574,7 @@ public:
     ScopeRing preMS, postMS, postLR;
 
     int firLen() const { return N; }
-    int latency() const { return 2 * (PartConv::B + N / 2) + Over2::latency + limDelay; }
+    int latency() const { return latencyNoDry(); }
 
     void prepare (double sampleRate, int)
     {
@@ -425,14 +587,19 @@ public:
         for (auto& d : dlyA) d.prepare (stageLat + 8);
         for (auto& d : dlyB) d.prepare (stageLat + 8);
         lookMax = (int) std::ceil (0.005 * sr);
-        limDelay = lookMax + TruePeak::latency;
+        lookS = (int) std::ceil (0.0015 * sr);
+        static const int fs[4] = { 1, 2, 4, 8 };
+        for (int k = 0; k < 4; ++k) limF[(size_t) k].prepare (lookMax * fs[k], fs[k] == 1);
+        safety.prepare (lookS, true);
+        limDelay = lookMax + 43 + safety.latency();
+        for (auto& d : limPad) d.prepare (64);
+        for (auto& o : limOver) o.prepare (4096);
+        for (auto& o : satOver) o.prepare (4096);
+        osL.assign (4096 * 8 + 8, 0.0f); osR.assign (4096 * 8 + 8, 0.0f); osT.assign (4096 * 8 + 8, 0.0f);
         for (auto& d : dlyDry) d.prepare (latencyNoDry() + 8);
-        for (auto& d : satDry) d.prepare (Over2::latency + 8);
-        mq.assign ((size_t) (lookMax + 4), { 0, 1.0f });
-        for (auto& d : limDl) d.prepare (limDelay + 8);
-        minQ.assign ((size_t) (lookMax + 2), 1.0f); boxBuf.assign ((size_t) (lookMax + 2), 1.0f);
-        for (auto& o : over) o.reset();
-        for (auto& t : tp) t.reset();
+        for (auto& d : satDry) d.prepare (kSatOs + 8);
+        for (auto& d : dcIn) { d.reset(); d.r = 1.0f - kTwoPi * 3.0f / (float) sr; }
+        midSm.prepare ((float) sr, 20.0f); sideSm.prepare ((float) sr, 20.0f); midSm.snap (1.0f); sideSm.snap (1.0f);
         for (auto& t : tpOut) t.reset();
         room.prepare ((float) sr);
         glue.prepare ((float) sr);
@@ -443,7 +610,6 @@ public:
         trimSm.snap (1.0f); outSm.snap (1.0f); limGainSm.snap (1.0f); firstBlock = true;
         airAp.fill (Allpass()); { int lens[4] = { 113, 173, 241, 337 }; for (int k = 0; k < 4; ++k) airAp[(size_t) k].prepare ((int) (lens[k] * sr / 48000.0)); }
         bandEnv.fill (0); bandGrDb.fill (0); dynEnv.fill (0); dynGrDb.fill (0);
-        limG = 1.0f; boxSum = 0; boxI = 0; boxWin = -1; mqHead = mqTail = 0; samplesIn = 0;
         corrLR = corrLL = corrRR = 0; tpHold = 0;
         lastHashA = lastHashB = 0;
         rng.seed (12345);
@@ -512,7 +678,8 @@ public:
         for (int i = 0; i < n; ++i)
         {
             const float g = trimSm.tick();
-            L[i] *= g; R[i] *= g;
+            L[i] *= g * std::min (1.0f, 1.0f - p.balance); R[i] *= g * std::min (1.0f, 1.0f + p.balance);
+            if (p.dcOn) { L[i] = dcIn[0].tick (L[i]); R[i] = dcIn[1].tick (R[i]); }
             dlyDry[0].push (L[i]); dlyDry[1].push (R[i]);
             M[(size_t) i] = 0.5f * (L[i] + R[i]); S[(size_t) i] = 0.5f * (L[i] - R[i]);
             preMS.push (M[(size_t) i], S[(size_t) i]);
@@ -565,6 +732,7 @@ public:
             wd[(size_t) b] = p.imgOn ? p.mb[(size_t) b].width : 1.0f;
         }
         std::array<double, 4> eM {}, eS {};
+        midSm.target = dbToGain (p.imgOn ? p.midLvl : 0.0f); sideSm.target = dbToGain (p.imgOn ? p.sideLvl : 0.0f);
         for (int i = 0; i < n; ++i)
         {
             dlyB[0].push (eqM[(size_t) i]); dlyB[1].push (eqS[(size_t) i]);
@@ -602,6 +770,8 @@ public:
                 if (anySolo && ! p.mb[(size_t) b].solo) continue;
                 om += m2; os += s2;
             }
+            const float mg = midSm.tick(), sg = sideSm.tick();
+            om *= mg; os *= sg;
             L[i] = om + os; R[i] = om - os;
         }
         for (int b = 0; b < 4; ++b)
@@ -612,24 +782,32 @@ public:
             bandWidth[(size_t) b].store (0.8f * bandWidth[(size_t) b].load() + 0.2f * w);
         }
 
-        // ---- saturation (2× oversampled, focus by emphasis) ---------------------------------------
+        // ---- saturation (4× oversampled, focus by emphasis) --------------------------------------
         setupSat (p);
-        const float drive = dbToGain (p.satDrive);
-        for (int i = 0; i < n; ++i)
         {
+            const float drive = dbToGain (p.satDrive);
             float* io[2] = { L, R };
             for (int c = 0; c < 2; ++c)
             {
-                const float x = io[c][i];
-                satDry[(size_t) c].push (x);
-                const float dry = satDry[(size_t) c].readInt (Over2::latency + 1);
-                float pre = x;
-                for (auto& f : satPre[(size_t) c]) pre = f.tick (pre);
-                float u0, u1; over[(size_t) c].upsample (pre, u0, u1);
-                const float y0 = curve (u0 * drive, p.satCurve) / drive, y1 = curve (u1 * drive, p.satCurve) / drive;
-                float y = over[(size_t) c].downsample (y0, y1);
-                for (auto& f : satPost[(size_t) c]) y = f.tick (y);
-                io[c][i] = p.satOn ? lerp (dry, y, p.satMix) : dry;
+                float* x = io[c];
+                for (int i = 0; i < n; ++i)
+                {
+                    satDry[(size_t) c].push (x[i]);
+                    satDryBuf[(size_t) i] = satDry[(size_t) c].readInt (kSatOs + 1);
+                    float pre = x[i];
+                    for (auto& f : satPre[(size_t) c]) pre = f.tick (pre);
+                    satIn[(size_t) i] = pre;
+                }
+                satOver[(size_t) c].up (satIn.data(), n, 4, osT.data());
+                for (int i = 0; i < n * 4; ++i) osT[(size_t) i] = curve (osT[(size_t) i] * drive, p.satCurve) / drive;
+                satOver[(size_t) c].down (osT.data(), n * 4, 4, satIn.data());
+                for (int i = 0; i < n; ++i)
+                {
+                    float y = satIn[(size_t) i];
+                    for (auto& f : satPost[(size_t) c]) y = f.tick (y);
+                    const float dry = satDryBuf[(size_t) i];
+                    x[i] = p.satOn ? lerp (dry, y, p.satMix) : dry;
+                }
             }
         }
 
@@ -719,25 +897,29 @@ private:
     static constexpr int kMax = 8192;
     std::array<float, kMax> M {}, S {}, eqM {}, eqS {}, bpM {}, bpS {}, aL {}, aR {};
     std::array<std::array<std::array<float, kMax>, 2>, 3> lp {};
-    std::array<DelayLine, 2> dlyA, dlyB, dlyDry, satDry, limDl;
+    std::array<DelayLine, 2> dlyA, dlyB, dlyDry, satDry;
     std::array<float, 4> bandEnv {}, bandGrDb {};
     std::array<float, 2> dynEnv {}, dynGrDb {};
     std::array<Allpass, 4> airAp;
-    std::array<Over2, 2> over;
     std::array<std::array<Biquad, 2>, 2> satPre, satPost;
     int satFocusSet = -1;
     Room room; Glue glue;
     std::array<std::array<Svf, 2>, 2> ambF;
-    std::array<TruePeak, 2> tp, tpOut;
-    std::vector<float> minQ, boxBuf; int mqHead = 0, mqTail = 0; double boxSum = 0; int boxI = 0, boxWin = -1; long long samplesIn = 0;
-    std::vector<std::pair<long long, float>> mq;   // monotone queue (index, g)
-    float limG = 1.0f;
+    std::array<TruePeak, 2> tpOut;
+    std::array<PeakLimiter, 4> limF; PeakLimiter safety; int lookS = 72;
+    std::array<OverN, 2> limOver, satOver;
+    std::array<DelayLine, 2> limPad;
+    std::vector<float> osL, osR, osT;
+    std::array<float, kMax> satIn {}, satDryBuf {};
+    std::array<DcBlock, 2> dcIn;
+    Smooth midSm, sideSm;
     bool firstBlock = true;
     Smooth matchSm, bypSm, trimSm, outSm, limGainSm;
     double corrLR = 0, corrLL = 0, corrRR = 0; float tpHold = 0;
     Rng rng; std::array<float, 2> ditherErr {};
 
-    int latencyNoDry() const { return 2 * (PartConv::B + N / 2) + Over2::latency + limDelay; }
+    int latencyNoDry() const { return 2 * (PartConv::B + N / 2) + kSatOs + limDelay; }
+    static constexpr int kSatOs = 39;   // OverN::latencyFor (4)
     std::vector<PartConv*> allConvs()
     {
         std::vector<PartConv*> v { &convA[0], &convA[1] };
@@ -795,49 +977,46 @@ private:
         }
     }
 
+    /** limiter section: gain → clipper and limiter at 1x / 2x / 4x / 8x → down → pad → true-peak safety */
     void limiter (float* L, float* R, int n, const MasterParams& p)
     {
+        static const int fs[4] = { 1, 2, 4, 8 };
+        const int fi = p.limOs >= 8 ? 3 : (p.limOs >= 4 ? 2 : (p.limOs >= 2 ? 1 : 0)), f = fs[fi];
         limGainSm.target = dbToGain (p.limOn ? p.limGain : 0.0f);
+        for (int i = 0; i < n; ++i) { const float g0 = limGainSm.tick(); L[i] *= g0; R[i] *= g0; }
         const float ceil = dbToGain (p.ceiling);
-        const int win = juce::jlimit (1, lookMax, (int) std::round (p.lookahead * 0.001 * sr));
-        const float relFast = tcoef (std::max (5.0f, p.limRel * 0.25f), (float) sr), relSlow = tcoef (std::max (20.0f, p.limRel * 2.0f), (float) sr);
-        const float rel = tcoef (std::max (5.0f, p.limRel), (float) sr);
-        if ((int) mq.size() != lookMax + 4) mq.assign ((size_t) (lookMax + 4), { 0, 1.0f });
-        float maxGr = 0;
+        limOver[0].up (L, n, f, osL.data()); limOver[1].up (R, n, f, osR.data());
+        const int nOs = n * f;
+        if (p.clipOn)
+        {
+            const float drive = dbToGain (p.clipDrive), k = clampf (p.clipSoft, 0.0f, 1.0f);
+            for (int i = 0; i < nOs; ++i) { osL[(size_t) i] = clip (osL[(size_t) i] * drive, ceil, k); osR[(size_t) i] = clip (osR[(size_t) i] * drive, ceil, k); }
+        }
+        const double osr = sr * f;
+        const int win = std::max (1, (int) std::round (p.lookahead * 0.001 * osr));
+        const float fast = tcoef (std::max (5.0f, p.limRel * 0.3f), (float) osr), slow = tcoef (std::max (20.0f, p.limRel * 2.0f), (float) osr);
+        const float rel = tcoef (std::max (5.0f, p.limRel), (float) osr);
+        auto& lim = limF[(size_t) fi];
+        lim.process (osL.data(), osR.data(), nOs, p.limOn, ceil, win, p.limAuto ? fast : rel, p.limAuto ? slow : rel, p.limAuto, p.limLink);
+        limOver[0].down (osL.data(), nOs, f, L); limOver[1].down (osR.data(), nOs, f, R);
+        // pad to the 8x latency so the plug-in latency never changes
+        const int pad = 43 - (OverN::latencyFor (f) + (f == 1 ? TruePeak::latency : 0));
         for (int i = 0; i < n; ++i)
         {
-            const float g0 = limGainSm.tick();
-            const float l = L[i] * g0, r = R[i] * g0;
-            limDl[0].push (l); limDl[1].push (r);
-            // inter-sample peak of the sample TruePeak::latency back
-            const float pk = std::max (tp[0].push (l), tp[1].push (r));
-            const float need = (p.limOn && pk > ceil) ? ceil / pk : 1.0f;
-            ++samplesIn;
-            // sliding minimum over lookMax + 1 (monotone deque in a ring)
-            const int cap = (int) mq.size();
-            while (mqTail != mqHead && mq[(size_t) ((mqTail - 1 + cap) % cap)].second >= need) mqTail = (mqTail - 1 + cap) % cap;
-            mq[(size_t) mqTail] = { samplesIn, need }; mqTail = (mqTail + 1) % cap;
-            while (mq[(size_t) mqHead].first <= samplesIn - (lookMax + 1)) mqHead = (mqHead + 1) % cap;
-            const float hold = mq[(size_t) mqHead].second;
-            // box-car smoothing over the attack window
-            if (win != boxWin || boxI % 4096 == 0) { boxWin = win; boxSum = 0; for (int k = 0; k < win; ++k) boxSum += boxBuf[(size_t) k]; }
-            boxSum += hold - boxBuf[(size_t) (boxI % win)];
-            boxBuf[(size_t) (boxI % win)] = hold; ++boxI;
-            const float target = (float) (boxSum / win);
-            // release: program dependent when auto (fast for short peaks, slow when held)
-            if (target < limG) limG = target;
-            else
-            {
-                const float k = p.limAuto ? (limG < 0.89f ? relSlow : relFast) : rel;
-                limG = std::min (target, target + k * (limG - target));
-            }
-            const float dl = limDl[0].readInt (limDelay + 1), dr = limDl[1].readInt (limDelay + 1);
-            float yl = dl * limG, yr = dr * limG;
-            if (p.limOn) { yl = clampf (yl, -ceil, ceil); yr = clampf (yr, -ceil, ceil); }
-            L[i] = yl; R[i] = yr;
-            maxGr = std::max (maxGr, -gainToDb (limG));
+            limPad[0].push (L[i]); limPad[1].push (R[i]);
+            L[i] = limPad[0].readInt (pad + 1); R[i] = limPad[1].readInt (pad + 1);
         }
-        limGr.store (maxGr);
+        // final true-peak safety (catches what the down-sampling filters add back)
+        safety.process (L, R, n, p.limOn, ceil, lookS, tcoef (40.0f, (float) sr), tcoef (40.0f, (float) sr), false, 1.0f);
+        limGr.store (std::max (lim.grDb, safety.grDb));
+    }
+    static float clip (float x, float t, float k)
+    {
+        const float a = std::abs (x), knee = t * (1.0f - k * 0.5f);
+        if (a <= knee) return x;
+        if (k <= 0.001f) return std::copysign (std::min (a, t), x);
+        const float span = t - knee;
+        return std::copysign (knee + span * std::tanh ((a - knee) / span), x);
     }
 
     float dither (float x, int c, const MasterParams& p)

@@ -750,7 +750,7 @@ void Processor::setCurrentProgram (int i)
     if (i < 0 || i >= (int) pr.size()) return;
     currentProgram = i;
     // a preset is complete: everything it does not mention goes back to its default
-    static const juce::StringArray keep { "pattern", "run", "bpm", "master", "loopbeats", "listen", "bypass", "match", "trim" };
+    static const juce::StringArray keep { "pattern", "run", "bpm", "master", "loopbeats", "listen", "bypass", "match", "trim", "target", "balance" };
     for (auto* prm : getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
             if (! keep.contains (r->getParameterID()) && std::abs (r->getValue() - r->getDefaultValue()) > 1.0e-6f)
@@ -772,6 +772,14 @@ void Processor::getStateInformation (juce::MemoryBlock& dest)
         const juce::SpinLock::ScopedLockType sl (bankLock);
         if (pid == Pid::kt1) xml->createNewChildElement ("bank")->addTextElement (kitBank.toString());
         if (pid == Pid::kt2) xml->createNewChildElement ("bank")->addTextElement (loopBank.toString());
+    }
+    if (pid == Pid::ms0)
+    {
+        auto* ab = xml->createNewChildElement ("ab");
+        ab->setAttribute ("current", abCurrent);
+        for (int k = 0; k < 2; ++k)
+            if (abState[(size_t) k].isValid())
+                if (auto x = abState[(size_t) k].createXml()) { auto* e = ab->createNewChildElement ("slot"); e->setAttribute ("index", k); e->addChildElement (x.release()); }
     }
     if (pid == Pid::kt2)
         if (auto s = getSample())
@@ -804,6 +812,13 @@ void Processor::setStateInformation (const void* data, int size)
         if (s) setSample (s);
         else if (juce::File (samplePath).existsAsFile()) loadSample (juce::File (samplePath));
     }
+    if (auto* ab = xml->getChildByName ("ab"))
+    {
+        abCurrent = ab->getIntAttribute ("current", 0);
+        for (auto* e : ab->getChildWithTagNameIterator ("slot"))
+            if (auto* t = e->getFirstChildElement()) abState[(size_t) juce::jlimit (0, 1, e->getIntAttribute ("index"))] = juce::ValueTree::fromXml (*t);
+    }
+    xml->deleteAllChildElementsWithTagName ("ab");
     xml->deleteAllChildElementsWithTagName ("bank");
     xml->deleteAllChildElementsWithTagName ("sample");
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
@@ -875,6 +890,7 @@ MasterParams Processor::readMaster() const
     auto I = [this] (const juce::String& id) { return (int) param (id); };
     static const int orders[4] = { 2, 4, 8, 16 };
     m.trim = param ("trim"); m.listen = I ("listen"); m.bypass = b ("bypass"); m.match = b ("match");
+    m.dcOn = b ("dcon"); m.balance = param ("balance");
     m.eqOn = b ("eqon");
     for (int k = 0; k < 8; ++k)
     {
@@ -900,7 +916,7 @@ MasterParams Processor::readMaster() const
         d.thr = param (x + "thr"); d.ratio = param (x + "ratio"); d.attack = param (x + "att"); d.release = param (x + "rel");
         d.gain = param (x + "gain"); d.width = param (x + "width"); d.solo = b (x + "solo");
     }
-    m.imgOn = b ("imgon"); m.air = param ("air");
+    m.imgOn = b ("imgon"); m.air = param ("air"); m.midLvl = param ("midlvl"); m.sideLvl = param ("sidelvl");
     m.satOn = b ("saton"); m.satCurve = I ("satcurve"); m.satFocus = I ("satfocus"); m.satDrive = param ("satdrive"); m.satMix = param ("satmix");
     m.ambOn = b ("ambon"); m.ambLevel = param ("amblevel"); m.ambSize = param ("ambsize"); m.ambDecay = param ("ambdecay");
     m.ambHp = param ("ambhp"); m.ambLp = param ("amblp"); m.ambWidth = param ("ambwidth");
@@ -908,8 +924,46 @@ MasterParams Processor::readMaster() const
     m.gAuto = b ("gauto"); m.gMakeup = param ("gmakeup"); m.gMix = param ("gmix");
     m.limOn = b ("limon"); m.limGain = param ("limgain"); m.ceiling = param ("ceiling"); m.limRel = param ("limrel");
     m.limAuto = b ("limauto"); m.lookahead = param ("lookahead");
+    static const int osf[4] = { 1, 2, 4, 8 };
+    m.limOs = osf[std::clamp (I ("limos"), 0, 3)]; m.limLink = param ("limlink");
+    m.clipOn = b ("clipon"); m.clipDrive = param ("clipdrive"); m.clipSoft = param ("clipsoft");
     m.out = param ("out"); m.dither = I ("dither"); m.shaping = b ("shaping");
     return m;
+}
+
+
+// ---- ms0: A / B and loudness target --------------------------------------------------------------------
+static const juce::StringArray kAbSkip { "listen", "bypass", "match", "target" };
+
+void Processor::abSwitch (int slot)
+{
+    if (slot == abCurrent) return;
+    abState[(size_t) abCurrent] = apvts.copyState();
+    if (abState[(size_t) slot].isValid())
+        for (const auto& child : abState[(size_t) slot])
+        {
+            const auto id = child.getProperty ("id").toString();
+            if (id.isEmpty() || kAbSkip.contains (id)) continue;
+            setParam (id, (float) child.getProperty ("value"));
+        }
+    abCurrent = slot;
+}
+void Processor::abCopy() { abState[(size_t) (1 - abCurrent)] = apvts.copyState(); }
+
+float Processor::targetLufs (int index)
+{
+    static const float t[10] = { 0, -8, -9, -10, -11, -12, -14, -16, -18, -23 };
+    return t[std::clamp (index, 0, 9)];
+}
+bool Processor::goToTarget()
+{
+    if (! masterFx) return false;
+    const int ti = (int) param ("target");
+    const float integrated = masterFx->outMeter.integrated.load();
+    if (ti == 0 || integrated < -70.0f) return false;
+    setParam ("limgain", juce::jlimit (0.0f, 18.0f, param ("limgain") + targetLufs (ti) - integrated));
+    masterFx->resetMeters();
+    return true;
 }
 
 } // namespace fal

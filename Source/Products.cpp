@@ -273,6 +273,9 @@ void masterParams (L& l)
     l.c ("listen", "listen", { "stereo", "mono", "side", "swap" }, 0);
     on ("bypass", "compare (bypass)", false);
     on ("match", "level-matched compare", true);
+    on ("dcon", "dc filter", true);
+    l.f ("balance", "balance", NR (-1.0f, 1.0f), 0.0f, [] (float v) { const int p = juce::roundToInt (v * 100); return p == 0 ? juce::String ("c") : (p < 0 ? "l " + juce::String (-p) : "r " + juce::String (p)); });
+    l.c ("target", "loudness target", { "off", "-8 lufs", "-9 lufs (club)", "-10 lufs", "-11 lufs", "-12 lufs", "-14 lufs (streaming)", "-16 lufs (apple)", "-18 lufs (dynamic)", "-23 lufs (broadcast)" }, 0);
     // eq
     on ("eqon", "eq on", true);
     const float f0[8] = { 40, 120, 300, 700, 1500, 3500, 8000, 14000 };
@@ -328,6 +331,8 @@ void masterParams (L& l)
     }
     on ("imgon", "imaging on", true);
     l.f ("air", "air (top-band width)", NR (0.0f, 1.0f), 0.0f, pct);
+    l.f ("midlvl", "mid level", NR (-12.0f, 12.0f), 0.0f, db);
+    l.f ("sidelvl", "side level", NR (-12.0f, 12.0f), 0.0f, db);
     // saturation
     on ("saton", "saturation on", false);
     l.c ("satcurve", "saturation curve", { "tape", "tube", "soft clip", "smooth" }, 0);
@@ -352,7 +357,12 @@ void masterParams (L& l)
     l.f ("gmakeup", "glue makeup", NR (-6.0f, 12.0f), 0.0f, db);
     l.f ("gmix", "glue mix", NR (0.0f, 1.0f), 1.0f, pct);
     // limiter + output
+    on ("clipon", "clipper on", false);
+    l.f ("clipdrive", "clipper drive", NR (0.0f, 12.0f), 1.0f, db);
+    l.f ("clipsoft", "clipper softness", NR (0.0f, 1.0f), 0.5f, pct);
     on ("limon", "limiter on", true);
+    l.c ("limos", "limiter oversampling", { "off", "2x", "4x", "8x" }, 2);
+    l.f ("limlink", "limiter stereo link", NR (0.0f, 1.0f), 1.0f, pct);
     l.f ("limgain", "limiter gain", NR (0.0f, 18.0f), 0.0f, db);
     l.f ("ceiling", "ceiling (true peak)", NR (-6.0f, 0.0f), -1.0f, [] (float v) { return juce::String (v, 1) + " dbtp"; });
     l.f ("limrel", "limiter release", NR (10.0f, 1000.0f, 0.0f, 0.4f), 120.0f, ms);
@@ -725,6 +735,16 @@ const std::vector<Preset>& presets (Pid p)
             Mp ("vinyl pre-master", { { "hpon", 1 }, { "hpfreq", 25 }, { "lpon", 1 }, { "lpfreq", 18000 },
                 { "x1", 150 }, { "b1width", 0 }, { "b2width", 0.75f }, { "b3width", 1 }, { "b4width", 1 },
                 { "ceiling", -1.5f }, { "limgain", 0 } }),
+            Mp ("dreamstate (from your mixes)", { { "hpon", 1 }, { "hpfreq", 15 }, { "hpslope", 0 },
+                { "e3on", 1 }, { "e3freq", 300 }, { "e3gain", -2.0f }, { "e3q", 0.8f }, { "e3ch", 2 },
+                { "e4on", 1 }, { "e4freq", 460 }, { "e4gain", -1.0f }, { "e4q", 1.0f }, { "e4ch", 1 },
+                { "e8on", 1 }, { "e8freq", 10000 }, { "e8gain", 1.0f }, { "e8ch", 2 },
+                { "d1on", 1 }, { "d1ch", 1 }, { "d1freq", 250 }, { "d1q", 1.2f }, { "d1thr", -28 }, { "d1range", -3 },
+                { "d2on", 1 }, { "d2ch", 2 }, { "d2freq", 320 }, { "d2q", 1.0f }, { "d2thr", -32 }, { "d2range", -3 },
+                { "x1", 90 }, { "b1ratio", 1.3f }, { "b2ratio", 1.3f }, { "b3ratio", 1.25f }, { "b4ratio", 1.2f },
+                { "b1width", 0 }, { "b2width", 0.85f }, { "b3width", 1.0f }, { "b4width", 1.1f },
+                { "glueon", 0 }, { "clipon", 1 }, { "clipdrive", 1.0f }, { "clipsoft", 0.6f },
+                { "limgain", 2.0f }, { "ceiling", -1.0f }, { "limos", 3 }, { "limrel", 160 } }),
             Mp ("16-bit export", { { "mbon", 0 }, { "glueon", 0 }, { "dynon", 0 }, { "b1width", 1 }, { "b2width", 1 }, { "b3width", 1 }, { "b4width", 1 },
                 { "dither", 2 }, { "shaping", 1 } }),
         };
