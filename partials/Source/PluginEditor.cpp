@@ -936,20 +936,38 @@ public:
         auto envPt = [this] (int i) -> Pt* { auto& c = td().env.c; return (int) c.pts.size() > i ? &c.pts[(size_t) i] : nullptr; };
         auto seg = [this, envPt] (int i) { auto* a = envPt (i); auto* b = envPt (i + 1); return (a && b) ? b->x - a->x : 0.0f; };
         auto setSeg = [this, envPt] (int i, float v) { auto* a = envPt (i); auto* b = envPt (i + 1); if (! a || ! b) return; const float d = (a->x + v) - b->x; auto& c = td().env.c; for (int k = i + 1; k < (int) c.pts.size(); ++k) c.pts[(size_t) k].x += d; curveChanged(); };
-        // the four knobs scale what is drawn, and spring back when let go
+        // attack / decay / sustain / release as real values: times 1 ms … 10 s (beats when tempo is on), sustain 0 … 100 %.
+        // They read and write the drawn curve, and switch the envelope on when touched.
+        auto ensureAdsr = [this]
+        {
+            auto& en = td().env;
+            if (en.c.pts.size() < 4) { en.adsr (0.002f, 0.3f, 1.0f, 0.15f); }
+            if (! en.on) en.on = true;
+        };
+        auto t2v = [] (float sec) { return clamp01 (std::log (juce::jmax (0.001f, sec) / 0.001f) / std::log (10000.0f)); };
+        auto v2t = [] (float v) { return 0.001f * std::pow (10000.0f, clamp01 (v)); };
         static const char* an[4] = { "attack", "decay", "sustain", "release" };
         for (int k = 0; k < 4; ++k)
         {
-            auto* r = valueRow (an[k], F, -1, 1, 0, [this, k] { return envKnob[k]; },
-                                [this, k, setSeg, envPt] (float v)
+            auto* r = valueRow (an[k], F, 0, 1, k == 2 ? 1.0f : (k == 0 ? t2v (0.002f) : (k == 1 ? t2v (0.3f) : t2v (0.15f))),
+                                [this, k, seg, envPt, t2v]
                                 {
-                                    envKnob[k] = v;
-                                    if (k == 2) { if (auto* p = envPt (2)) { p->y = clamp01 (envBase[2] * (1.0f + v)); curveChanged(); } }
-                                    else setSeg (k == 3 ? 2 : k, envBase[k] * std::pow (4.0f, v));
+                                    if (k == 2) { auto* p = envPt (2); return p ? p->y : 1.0f; }
+                                    return t2v (seg (k == 3 ? 2 : k));
                                 },
-                                [k] (float v) { return "x" + juce::String (k == 2 ? 1.0f + v : std::pow (4.0f, v), 2); });
-            r->begin = [this, k, seg, envPt] { envBase[k] = k == 2 ? (envPt (2) ? envPt (2)->y : 0.0f) : seg (k == 3 ? 2 : k); };
-            r->end = [this, k] { envKnob[k] = 0.0f; };
+                                [this, k, setSeg, envPt, ensureAdsr, v2t] (float v)
+                                {
+                                    ensureAdsr();
+                                    if (k == 2) { if (auto* p = envPt (2)) { p->y = clamp01 (v); if (auto* q = envPt (1)) juce::ignoreUnused (q); curveChanged(); } }
+                                    else setSeg (k == 3 ? 2 : k, v2t (v));
+                                },
+                                [this, k, v2t] (float v)
+                                {
+                                    if (k == 2) return juce::String (juce::roundToInt (v * 100.0f)) + "%";
+                                    const float t = v2t (v);
+                                    if (td().env.tempo) return juce::String (t, 2) + " beats";
+                                    return t < 1.0f ? juce::String (juce::roundToInt (t * 1000.0f)) + " ms" : juce::String (t, 2) + " s";
+                                });
             add (envSec, r);
         }
         add (envSec, valueRow ("tempo", B, 0, 1, 0, [this] { return td().env.tempo ? 1.0f : 0.0f; }, [this] (float v) { td().env.tempo = v > 0.5f; curveChanged(); }));

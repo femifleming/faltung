@@ -161,11 +161,11 @@ table([
  ('Bend a line', 'Drag the small circle in the middle of a segment. Cmd-drag for fine steps. Right-click the circle to straighten.'),
  ('Right-click a point', 'Segment type (hold, smooth, curves, stairs, pulse, wave...), sustain / loop end (S), loop start (L), arpeggiator break.'),
  ('snap / slide / lock', 'Snap to the grid; moving a point moves everything after it; lock against changes.'),
- ('attack, decay, sustain, release', 'Stretch or shrink that part of the drawn envelope while you drag. They spring back to x1.00 when you let go.'),
+ ('attack, decay, sustain, release', 'The envelope of the chosen target as real values: attack, decay and release from 1 ms to 10 s (in beats when tempo is on), sustain 0 – 100 %. They move the points of the drawn curve, so the drawing and the values always agree. Touching one switches that envelope on.'),
  ('tempo / global', 'Tempo: times are in beats. Global: all notes share one envelope or LFO, restarted by each new note.'),
  ('smooth', 'Rounds off sudden jumps of the target.'),
  ('options', 'Reset, flip, normalize, decimate, smooth up, scale levels, draw per harmonic (bars), make all loop, follow an audio file, create a step sequence.'),
- ('Volume envelope off', 'The note simply starts and stops with the key.'),
+ ('Volume envelope', 'On from the start in every new sound: 2 ms attack, 300 ms decay, 100 % sustain, 150 ms release. Switched off, a note simply starts and stops with the key.'),
 ])
 
 h1('The IMG page')
@@ -219,7 +219,7 @@ table([
  ('A/B as stereo sides', 'Load the same stereo sound into A and B: A carries the middle, B the sides, and the A/B mix sets the width.'),
  ('partials', 'Fewer partials uses less processor and loses the top end.'),
  ('precision', 'How often the shaping is recalculated: Average about every 5 ms, High 2.7 ms, Perfect 1.3 ms. "HQ when rendering" uses Perfect for offline bounces.'),
- ('VOICES mono', 'Off; a repeated note cuts itself (Kill same); any new note cuts all (Kill all); or sends them into release (Release all).'),
+ ('VOICES mono', 'Off (16-voice polyphony, the default); a repeated note cuts itself (Kill same); any new note cuts all (Kill all); or sends them into release (Release all). Glide legato also makes overlapping notes share one voice; leave it off for chords. The voice count is shown at the bottom right of the ENV page.'),
 ])
 
 h1('Good to know')
@@ -231,10 +231,10 @@ table([
 ])
 
 css = '''
-@font-face{font-family:Inter;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/Inter-Regular.ttf");font-weight:400}
-@font-face{font-family:Inter;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/Inter-Medium.ttf");font-weight:600}
-@font-face{font-family:Plex;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/IBMPlexMono-Regular.ttf");font-weight:400}
-@font-face{font-family:Plex;src:url("file:///Users/femishonugafleming/partials/Resources/fonts/IBMPlexMono-Medium.ttf");font-weight:600}
+@font-face{font-family:Inter;src:url("file://" + FONTDIR + "/Inter-Regular.ttf");font-weight:400}
+@font-face{font-family:Inter;src:url("file://" + FONTDIR + "/Inter-Medium.ttf");font-weight:600}
+@font-face{font-family:Plex;src:url("file://" + FONTDIR + "/IBMPlexMono-Regular.ttf");font-weight:400}
+@font-face{font-family:Plex;src:url("file://" + FONTDIR + "/IBMPlexMono-Medium.ttf");font-weight:600}
 *{box-sizing:border-box;margin:0;padding:0}
 @page{size:A4;margin:14mm 13mm}
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#eef4f7}
@@ -268,6 +268,8 @@ for f in os.listdir(os.path.join(HERE, 'fig')):
     g = Image.open(src).convert('L')
     out_img = Image.new('RGB', g.size); out_img.putdata([LUT[v] for v in g.getdata()]); out_img.save(dst)
 out = [l.replace('src="fig/', 'src="figl/') for l in out]
+FONTDIR = os.path.abspath (os.path.join (HERE, '..', '..', 'Resources', 'fonts'))
+css = css.replace ('" + FONTDIR + "', FONTDIR)
 html = f'<!doctype html><meta charset="utf-8"><title>Partials manual</title><style>{css}</style>' + '\n'.join(out)
 open(os.path.join(HERE, 'manual.html'), 'w').write(html)
 missing = [l for l in out if 'src="' in l and not os.path.exists(os.path.join(HERE, l.split('src="')[1].split('"')[0]))]

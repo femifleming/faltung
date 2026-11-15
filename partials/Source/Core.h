@@ -443,6 +443,7 @@ struct PartData
         for (int i = 0; i < UNIT::Count; ++i) unitOrder[i] = i;
         for (auto& t : tg) t = TargetDef();
         tg[TG::Volume].env.adsr (0.002f, 0.3f, 1.0f, 0.15f);
+        tg[TG::Volume].env.on = true;   // the amp envelope plays from the start, so attack / decay / sustain / release always do something
         image.reset();
         for (int s = 0; s < SH::Count; ++s) defaultShape (s);
         renderAll();

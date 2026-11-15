@@ -257,6 +257,54 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    { // polyphony: a held chord, an 8-note cluster, notes that overlap
+        auto sineRig = [] (Rig& r) { auto& d = r.p.edit (0); d.shape[SH::Timbre1].raw.assign ((size_t) NH, 0.0f); d.shape[SH::Timbre1].raw[0] = 0.5f; d.shape[SH::Timbre1].pts.clear(); r.p.commit (0); };
+        Rig r; sineRig (r);
+        auto b = r.render ({ { 60, 0.0f, 1.5f }, { 64, 0.0f, 1.5f }, { 67, 0.0f, 1.5f } }, 1.6f);
+        auto sp = spectrum (b, (int) (0.4 * SR));
+        float m1, m2, m3;
+        const float h1 = peakHz (sp, 240, 290, &m1), h2 = peakHz (sp, 310, 350, &m2), h3 = peakHz (sp, 370, 410, &m3);
+        check (std::abs (h1 - 261.63f) < 1 && std::abs (h2 - 329.63f) < 1 && std::abs (h3 - 392.0f) < 1 && std::min (m1, std::min (m2, m3)) > 0.5f * std::max (m1, std::max (m2, m3)),
+               "chord C E G: " + juce::String (h1, 1) + " / " + juce::String (h2, 1) + " / " + juce::String (h3, 1) + " Hz, levels " + juce::String (m1, 3) + " " + juce::String (m2, 3) + " " + juce::String (m3, 3));
+        {
+            Rig rd;   // the default patch, untouched
+            auto bd = rd.render ({ { 48, 0.0f, 1.5f }, { 55, 0.1f, 1.5f }, { 64, 0.2f, 1.5f } }, 1.6f);
+            auto sd = spectrum (bd, (int) (0.6 * SR));
+            float a1, a2, a3;
+            const float f1 = peakHz (sd, 125, 136, &a1), f2 = peakHz (sd, 190, 202, &a2), f3 = peakHz (sd, 322, 337, &a3);
+            check (std::abs (f1 - 130.8f) < 1.5f && std::abs (f2 - 196.0f) < 1.5f && std::abs (f3 - 329.6f) < 1.5f && std::min (a1, std::min (a2, a3)) > 0.01f,
+                   "default patch, staggered chord C3 G3 E4: " + juce::String (f1, 1) + " / " + juce::String (f2, 1) + " / " + juce::String (f3, 1) + " Hz, levels " + juce::String (a1, 3) + " " + juce::String (a2, 3) + " " + juce::String (a3, 3));
+        }
+        Rig r2; sineRig (r2);
+        std::vector<std::array<float, 3>> cl; for (int k = 0; k < 8; ++k) cl.push_back ({ (float) (48 + k * 5), 0.0f, 1.5f });
+        auto b2 = r2.render (cl, 1.6f); auto sp2 = spectrum (b2, (int) (0.4 * SR));
+        int found = 0;
+        for (int k = 0; k < 8; ++k) { const float f = 440.0f * std::exp2 ((48 + k * 5 - 69) / 12.0f); float m; const float h = peakHz (sp2, f * 0.97f, f * 1.03f, &m); if (std::abs (h - f) < 1.5f && m > 0.02f) ++found; }
+        check (found == 8, "8-note cluster: " + juce::String (found) + " of 8 notes sound");
+        Rig r3; sineRig (r3);
+        auto b3 = r3.render ({ { 60, 0.0f, 2.0f }, { 67, 0.5f, 2.0f } }, 2.1f); auto sp3 = spectrum (b3, (int) (1.0 * SR));
+        float ma, mb; peakHz (sp3, 250, 270, &ma); peakHz (sp3, 380, 400, &mb);
+        check (ma > 0.5f * mb, "an earlier held note keeps sounding when a new one starts (" + juce::String (ma, 3) + " vs " + juce::String (mb, 3) + ")");
+    }
+    { // the volume envelope: attack and release shape the sound when it is on
+        auto envRig = [] (Rig& r, float a, float d, float s, float rl, bool on)
+        {
+            auto& dt = r.p.edit (0); dt.tg[TG::Volume].env.adsr (a, d, s, rl); dt.tg[TG::Volume].env.on = on; r.p.commit (0);
+        };
+        Rig a; envRig (a, 0.6f, 0.2f, 1.0f, 0.1f, true);
+        auto ba = a.render ({ { 60, 0.0f, 1.0f } }, 1.2f);
+        const float early = rms (ba, (int) (0.05 * SR), 2400), late = rms (ba, (int) (0.7 * SR), 2400);
+        check (early < 0.3f * late, "attack 0.6 s: level at 50 ms is " + juce::String (20 * std::log10 (early / late + 1e-9f), 1) + " dB below the held level");
+        Rig rl; envRig (rl, 0.005f, 0.2f, 1.0f, 1.5f, true);
+        auto br = rl.render ({ { 60, 0.0f, 0.5f } }, 2.5f);
+        const float held = rms (br, (int) (0.3 * SR), 2400), after = rms (br, (int) (1.0 * SR), 2400);
+        check (after > 0.2f * held, "release 1.5 s: 0.5 s after note-off the sound is " + juce::String (20 * std::log10 (after / held + 1e-9f), 1) + " dB");
+        Rig sd; envRig (sd, 0.005f, 0.3f, 0.2f, 0.1f, true);
+        auto bs = sd.render ({ { 60, 0.0f, 1.5f } }, 1.6f);
+        const float pk = rms (bs, (int) (0.01 * SR), 480), sus = rms (bs, (int) (1.0 * SR), 2400);
+        check (sus < 0.45f * pk && sus > 0.05f * pk, "decay to sustain 20%: sustain level " + juce::String (20 * std::log10 (sus / pk + 1e-9f), 1) + " dB under the peak");
+    }
+
     { // a single sine partial: pitch and level
         Rig r;
         auto& d = r.p.edit (0); d.shape[SH::Timbre1].raw.assign ((size_t) NH, 0.0f); d.shape[SH::Timbre1].raw[0] = 0.5f; d.shape[SH::Timbre1].pts.clear(); r.p.commit (0);
