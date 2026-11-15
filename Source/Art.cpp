@@ -60,9 +60,67 @@ void Art::mouseDown (const juce::MouseEvent& e)
     p.uiTrigger (open ? 1 : 0, 0.6f + 0.4f * (1.0f - (float) e.y / (float) std::max (1, getHeight())));
 }
 
+void Art::resized()
+{
+    if (pi.style == Style::Mirror && getWidth() > 0 && getHeight() > 0)
+    {
+        tree.build ((uint32_t) ((int) pi.id * 7919 + 17), getWidth(), getHeight(), getWidth() > 900 ? 5 : 4, getWidth() > 900 ? 9 : 8);
+        tree.setColours (Colour (pi.ground), Colour (pi.accent));
+    }
+}
+
+void Art::paintMirror (juce::Graphics& g, Rectangle<float> b)
+{
+    if (treeImg.isValid())
+    {
+        g.setImageResamplingQuality (juce::Graphics::mediumResamplingQuality);
+        g.drawImage (treeImg, b);
+        // let the tree sink into the ground where the controls are, as on the sleeves
+        juce::ColourGradient fade (Colour (pi.ground).withAlpha (0.0f), 0.0f, b.getHeight() * 0.38f, Colour (pi.ground).withAlpha (0.78f), 0.0f, b.getHeight() * 0.72f, false);
+        g.setGradientFill (fade); g.fillRect (b);
+    }
+    if (! sleeveText) return;
+    const Colour ink (pi.accent);
+    g.setColour (ink);
+    g.setFont (ui::cond (15.0f));
+    g.drawText ("faltung deep", Rectangle<float> (34, 28, 240, 18), juce::Justification::centredLeft);
+    g.drawText (juce::String (pi.code).toUpperCase() + " " + juce::String (pi.name).toUpperCase(), Rectangle<float> (34, 46, 240, 18), juce::Justification::centredLeft);
+    g.setFont (ui::cond (15.0f, true));
+    g.drawText ("FDP" + juce::String ((int) pi.id + 1).paddedLeft ('0', 3), Rectangle<float> (34, 90, 120, 18), juce::Justification::centredLeft);
+    // Side A: the current preset, Side B: what it is
+    const float ax = b.getWidth() * 0.34f, bx = b.getWidth() * 0.6f;
+    g.setFont (ui::cond (15.0f));
+    g.drawText ("Side A", Rectangle<float> (ax, 28, 200, 18), juce::Justification::centredLeft);
+    g.drawText ("1.   " + p.getProgramName (p.getCurrentProgram()), Rectangle<float> (ax, 46, 240, 18), juce::Justification::centredLeft);
+    g.drawText ("Side B", Rectangle<float> (bx, 28, 200, 18), juce::Justification::centredLeft);
+    g.drawFittedText (juce::String ("1.   ") + pi.blurb, juce::Rectangle<int> ((int) bx, 46, (int) (b.getWidth() - bx - 60), 36), juce::Justification::topLeft, 2);
+    // credits along the right edge: the first few values, as on the back of a sleeve
+    juce::String cred;
+    int n = 0;
+    for (auto* prm : p.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
+        {
+            if (n > 0) cred << "   " << ui::U ("\xc2\xb7") << "   ";
+            cred << r->getName (20) << " " << r->getCurrentValueAsText();
+            if (++n >= 5) break;
+        }
+    juce::Graphics::ScopedSaveState ss (g);
+    g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::halfPi, b.getRight() - 16.0f, 40.0f));
+    g.setFont (ui::light (10.0f));
+    g.setColour (ink.withAlpha (0.85f));
+    g.drawText (cred, Rectangle<float> (b.getRight() - 16.0f, 40.0f - 10.0f, b.getHeight() - 80.0f, 12.0f), juce::Justification::centredLeft, true);
+}
+
 void Art::tick()
 {
     time += 1.0f / 30.0f;
+    if (pi.style == Style::Mirror)
+    {
+        const float lv = std::sqrt (juce::jlimit (0.0f, 1.0f, p.outLevel.load()));
+        levelSm += (lv - levelSm) * (lv > levelSm ? 0.35f : 0.05f);
+        float fl = 0; for (auto f : flash) fl = std::max (fl, f);
+        treeImg = tree.render (time, levelSm, fl).createCopy();
+    }
     for (int i = 0; i < 16; ++i)
     {
         const int h = p.hitCount[(size_t) i].load();
@@ -114,6 +172,7 @@ void Art::paint (juce::Graphics& g)
         case Style::Snd:   paintSnd (g, b); break;
         case Style::Oval:  paintOval (g, b); break;
         case Style::Stdio: paintStdio (g, b); break;
+        case Style::Mirror: paintMirror (g, b); return;
     }
     paintTitle (g, b);
 }

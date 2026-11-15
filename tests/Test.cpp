@@ -2,6 +2,7 @@
 //   faltungTest [--wav dir] [--screenshots dir] [--only kt1]
 #include "Processor.h"
 #include "Editor.h"
+#include "MirrorTree.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
 using namespace fal;
@@ -100,6 +101,19 @@ int main (int argc, char** argv)
     }
     if (wavDir != juce::File()) wavDir.createDirectory();
     for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--tree" && i + 2 < argc)
+        {
+            // faltungDeepTest --tree out.png <product index> [w h] : a still of the mirrored tree, for the manual
+            const int idx = juce::String (argv[i + 2]).getIntValue();
+            const int w = i + 4 < argc ? juce::String (argv[i + 3]).getIntValue() : 1600, h = i + 4 < argc ? juce::String (argv[i + 4]).getIntValue() : 1000;
+            MirrorTree t; t.build ((uint32_t) (idx * 7919 + 17), w, h, 5, 10); t.setColours (juce::Colour (info (idx).ground), juce::Colour (info (idx).accent));
+            juce::Image im (juce::Image::RGB, w, h, true);
+            { juce::Graphics g (im); g.setImageResamplingQuality (juce::Graphics::highResamplingQuality); g.drawImage (t.render (3.0f, 0.35f, 0.0f), juce::Rectangle<float> (0, 0, (float) w, (float) h)); }
+            juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1])); f.deleteFile();
+            juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (im, os);
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
         if (juce::String (argv[i]) == "--pack" && i + 1 < argc)
         {
             // faltungTest --pack <dir> : one-shot sample pack rendered from the bundle's own engines (24-bit / 44.1 kHz)
@@ -152,17 +166,36 @@ int main (int argc, char** argv)
             {
                 const auto& vi = vtypeInfo (fo.t);
                 const auto& pr = presets (fo.pid);
-                for (int m = 0; m < 4; ++m)
-                {
-                    // start from the preset that uses this model (else the default sound)
-                    VoiceParams base = defaultVoice (fo.t); base.model = m;
+                // faltung: one folder per engine model, starting from the preset that uses it;
+                // faltung deep: one folder per deep preset
+                std::vector<std::pair<juce::String, VoiceParams>> bases;
+                if (kDeep)
                     for (auto& p : pr)
                     {
-                        bool isModel = false; for (auto& [id, v] : p.values) if (id == "model" && (int) v == m) isModel = true;
-                        if (! isModel) continue;
-                        for (auto& [id, v] : p.values) for (int sl = 0; sl < kSlots; ++sl) if (id == vi.slot[(size_t) sl]) base.s[(size_t) sl] = v;
-                        break;
+                        VoiceParams b = defaultVoice (fo.t);
+                        for (auto& [id, v] : p.values)
+                        {
+                            if (id == "model") b.model = (int) v;
+                            for (int sl = 0; sl < kSlots; ++sl) if (id == vi.slot[(size_t) sl]) b.s[(size_t) sl] = v;
+                        }
+                        bases.push_back ({ p.name, b });
                     }
+                else
+                    for (int m = 0; m < 4; ++m)
+                    {
+                        VoiceParams b = defaultVoice (fo.t); b.model = m;
+                        for (auto& p : pr)
+                        {
+                            bool isModel = false; for (auto& [id, v] : p.values) if (id == "model" && (int) v == m) isModel = true;
+                            if (! isModel) continue;
+                            for (auto& [id, v] : p.values) for (int sl = 0; sl < kSlots; ++sl) if (id == vi.slot[(size_t) sl]) b.s[(size_t) sl] = v;
+                            break;
+                        }
+                        bases.push_back ({ vi.models[(size_t) m], b });
+                    }
+                for (auto& [label, base0] : bases)
+                {
+                    VoiceParams base = base0;
                     base.level = 48.0f / 54.0f; base.pan = 0; base.vel = 0;
                     const int variations = fo.t == VType::Hat ? 8 : 10;
                     for (int k = 0; k < variations; ++k)
@@ -178,7 +211,7 @@ int main (int argc, char** argv)
                             }
                         }
                         const bool tonal = fo.t == VType::Kick || fo.t == VType::Tom || fo.t == VType::Perc || fo.t == VType::Rim;
-                        juce::String name = juce::String ("faltung ") + vi.name + " " + vi.models[(size_t) m] + " " + juce::String (k + 1).paddedLeft ('0', 2);
+                        juce::String name = juce::String (kDeep ? "faltung deep " : "faltung ") + vi.name + " " + label + " " + juce::String (k + 1).paddedLeft ('0', 2);
                         if (tonal) name << " (" << noteName (tuneHz (fo.t, vp.s[0])) << ")";
                         auto run = [&] (const VoiceParams& v2, const juce::String& nm, const char* sub)
                         {
@@ -190,10 +223,10 @@ int main (int argc, char** argv)
                         {
                             VoiceParams cl = vp; cl.s[1] = juce::jlimit (0.0f, 0.45f, cl.s[1]);
                             VoiceParams op = vp; op.s[1] = juce::jlimit (0.55f, 0.85f, 0.6f + (vp.s[1] - 0.3f) * 0.5f);
-                            run (cl, name.replace ("hat ", "hat closed "), "closed");
-                            run (op, name.replace ("hat ", "hat open "), "open");
+                            run (cl, name.replace ("hat ", "hat closed "), kDeep ? label.toRawUTF8() : "closed");
+                            run (op, name.replace ("hat ", "hat open "), kDeep ? label.toRawUTF8() : "open");
                         }
-                        else run (vp, name, vi.models[(size_t) m]);
+                        else run (vp, name, label.toRawUTF8());
                         if (k < 2 && (fo.t == VType::Rim || fo.t == VType::Clap || fo.t == VType::Snare || fo.t == VType::Perc || fo.t == VType::Click)) forProcessing.push_back ({ fo.t, vp });
                     }
                 }
@@ -221,7 +254,7 @@ int main (int argc, char** argv)
                             for (int pos = 0; pos < b.getNumSamples(); pos += 512) r.process (b.getWritePointer (0) + pos, b.getWritePointer (1) + pos, std::min (512, b.getNumSamples() - pos), rp);
                         }
                         auto o = finish (b, false);
-                        const juce::String nm = juce::String ("faltung ") + vtypeInfo (t).name + (fx == 0 ? " dub " : " room ") + juce::String (k + 1).paddedLeft ('0', 2);
+                        const juce::String nm = juce::String (kDeep ? "faltung deep " : "faltung ") + vtypeInfo (t).name + (fx == 0 ? " dub " : " room ") + juce::String (k + 1).paddedLeft ('0', 2);
                         save (root.getChildFile ("09 dub and room").getChildFile (fx == 0 ? "dub (dl4)" : "room (rv5)").getChildFile (nm + ".wav"), o); ++count;
                     }
                     ++k;
@@ -235,9 +268,9 @@ int main (int argc, char** argv)
                     {
                         Processor w (Pid::wb1);
                         w.setCurrentProgram (pr);
-                        FakeHead head; head.bpm = 140; w.setPlayHead (&head);
+                        FakeHead head; head.bpm = kDeep ? 122 : 140; w.setPlayHead (&head);
                         w.setRateAndBufferSizeDetails (sr, 512); w.prepareToPlay (sr, 512);
-                        const double gate = len == 0 ? 0.35 : 60.0 / 140.0 * 4.0;
+                        const double gate = len == 0 ? (kDeep ? 0.5 : 0.35) : 60.0 / (kDeep ? 122.0 : 140.0) * 4.0;
                         const int total = (int) ((gate + 1.5) * sr);
                         juce::AudioBuffer<float> out (2, total), blk (2, 512);
                         for (int pos = 0; pos < total; pos += 512)
@@ -245,17 +278,19 @@ int main (int argc, char** argv)
                             const int n = std::min (512, total - pos);
                             blk.setSize (2, n, false, false, true); blk.clear();
                             juce::MidiBuffer mb;
-                            if (pos == 0) mb.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 110), 0);
+                            const int key = kDeep ? (len == 0 ? 60 : 48) : 36;
+                            if (pos == 0) mb.addEvent (juce::MidiMessage::noteOn (1, key, (juce::uint8) 110), 0);
                             const int off = (int) (gate * sr);
-                            if (off >= pos && off < pos + n) mb.addEvent (juce::MidiMessage::noteOff (1, 36), off - pos);
+                            if (off >= pos && off < pos + n) mb.addEvent (juce::MidiMessage::noteOff (1, key), off - pos);
                             w.processBlock (blk, mb);
                             for (int c = 0; c < 2; ++c) out.copyFrom (c, pos, blk, c, 0, n);
                             head.ppq += n / sr * head.bpm / 60.0;
                         }
                         w.setPlayHead (nullptr);
                         auto o = finish (out, false);
-                        const juce::String nm = "faltung bass " + probe.getProgramName (pr) + (len == 0 ? " stab" : " 1 bar 140") + " (C1)";
-                        save (root.getChildFile ("10 bass (wb1)").getChildFile (nm + ".wav"), o); ++count;
+                        const juce::String nm = kDeep ? "faltung deep " + probe.getProgramName (pr) + (len == 0 ? " short (C3)" : " 1 bar 122 (C2)")
+                                                      : "faltung bass " + probe.getProgramName (pr) + (len == 0 ? " stab" : " 1 bar 140") + " (C1)";
+                        save (root.getChildFile (kDeep ? "10 stabs and bass (sb1)" : "10 bass (wb1)").getChildFile (nm + ".wav"), o); ++count;
                     }
             }
             std::cout << count << " one-shots written to " << root.getFullPathName() << "\n";
@@ -511,6 +546,7 @@ int main (int argc, char** argv)
     for (int i = 0; i < kNumProducts; ++i)
     {
         const auto& pi = info (i);
+        if (kDeep && (Pid) i == Pid::ms0) continue;   // not part of faltung deep
         if (only.isNotEmpty() && only != pi.code) continue;
         std::cout << pi.code << " " << pi.name << "\n";
         auto proc = std::make_unique<Processor> ((Pid) i);
@@ -554,6 +590,33 @@ int main (int argc, char** argv)
                 writeWav (wavDir.getChildFile (juce::String (pi.code) + "-preset-" + proc->getProgramName (pr).replaceCharacter (' ', '_') + ".wav"), o, 48000.0);
         }
 
+        if (pi.id == Pid::wb1)
+        {
+            // one key, a whole chord: C3 on "minor 9" must sound C Eb G Bb D
+            Processor c (Pid::wb1);
+            c.setParam ("chord", 9.0f); c.setParam ("voices", 1.0f); c.setParam ("wcut", 0.0f); c.setParam ("cutoff", 8000.0f);
+            c.setParam ("a_shape", 0.0f); c.setParam ("b_level", 0.0f); c.setParam ("sub", 0.0f); c.setParam ("fmtmix", 0.0f); c.setParam ("ddrive", 0.0f);
+            c.setRateAndBufferSizeDetails (48000.0, 512); c.prepareToPlay (48000.0, 512);
+            juce::AudioBuffer<float> o (2, 48000), blk (2, 512);
+            for (int pos = 0; pos < 48000; pos += 512)
+            {
+                blk.clear(); juce::MidiBuffer mb; if (pos == 0) mb.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+                c.processBlock (blk, mb); for (int ch = 0; ch < 2; ++ch) o.copyFrom (ch, pos, blk, ch, 0, std::min (512, 48000 - pos));
+            }
+            const int N = 16384; juce::dsp::FFT fft (14); std::vector<float> x ((size_t) N * 2, 0.0f);
+            for (int k = 0; k < N; ++k) x[(size_t) k] = o.getSample (0, 20000 + k) * (0.5f - 0.5f * std::cos (kTwoPi * k / (N - 1)));
+            fft.performFrequencyOnlyForwardTransform (x.data(), true);
+            int found = 0;
+            for (int semi : { 0, 3, 7, 10, 14 })
+            {
+                const float f = 261.63f * std::exp2 (semi / 12.0f); const int bin = (int) std::round (f * N / 48000.0f);
+                float pk = 0, floor_ = 0; for (int k = bin - 2; k <= bin + 2; ++k) pk = std::max (pk, x[(size_t) k]);
+                for (int k = bin + 6; k <= bin + 12; ++k) floor_ += x[(size_t) k] / 7.0f;
+                if (pk > 8.0f * floor_ + 1.0e-3f) ++found;
+            }
+            std::cout << "  chord: one key on minor 9 sounds " << found << " of 5 chord tones\n";
+            check (found == 5, "wb1 chord");
+        }
         if (pi.id == Pid::ms0)
         {
             // null test: everything neutral → output must equal the input delayed by the reported latency

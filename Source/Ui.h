@@ -10,6 +10,9 @@ inline juce::String U (const char* s) { return juce::String::fromUTF8 (s); }
 // ---- type -----------------------------------------------------------------------------------------
 juce::Font sans (float size, bool medium = false);
 juce::Font mono (float size, bool medium = false);
+/** faltung deep: condensed DIN-like (Barlow Condensed) and light text (Barlow) */
+juce::Font cond (float size, bool medium = false);
+juce::Font light (float size);
 
 /** text colour for a ground */
 inline juce::Colour inkFor (juce::Colour ground)
@@ -25,6 +28,7 @@ inline juce::Colour edgeFor (juce::Colour ground)
 struct Theme
 {
     juce::Colour ground, ink, fill, edge;
+    bool mirror = false;   // faltung deep look
 };
 
 // ---- a parallelogram, the house shape -------------------------------------------------------------

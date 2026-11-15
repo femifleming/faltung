@@ -13,6 +13,30 @@ using NR = juce::NormalisableRange<float>;
 
 const ProductInfo& info (Pid p)
 {
+   #if FALTUNG_DEEP
+    // faltung deep: the deep house suite. Mirror look: a moving mirrored tree in one duotone per plug-in (dark, light)
+    static const ProductInfo d[kNumProducts] = {
+        { Pid::kt1, "kt1", "kit",    "deep house drum machine, eight voices + sequencer", Kind::Machine, Style::Mirror, 0xff1d3772, 0xffd8e3f7, VType::Kick,  1000, 640 },
+        { Pid::kt2, "kt2", "loop",   "loop slicer for breaks and chopped grooves",   Kind::Machine, Style::Mirror, 0xff33441c, 0xffe3ecc9, VType::Kick, 1000, 640 },
+        { Pid::bd1, "bd1", "kick",   "round, warm deep house kicks",                 Kind::Module,  Style::Mirror, 0xff5a2414, 0xfff3d6c8, VType::Kick,  760, 480 },
+        { Pid::sd2, "sd2", "snare",  "soft snares and brushes",                      Kind::Module,  Style::Mirror, 0xff2e3566, 0xffdfe2f7, VType::Snare, 760, 480 },
+        { Pid::rm3, "rm3", "rim",    "wooden rims and sticks",                       Kind::Module,  Style::Mirror, 0xff3b2c2a, 0xfff2dcd6, VType::Rim,   760, 480 },
+        { Pid::hh4, "hh4", "hats",   "hats and shakers",                             Kind::Module,  Style::Mirror, 0xff1f3d52, 0xffd5e6ef, VType::Hat,   760, 480 },
+        { Pid::cp6, "cp6", "clap",   "soft claps and snaps",                         Kind::Module,  Style::Mirror, 0xff5b3416, 0xfff1dcc4, VType::Clap,  760, 480 },
+        { Pid::pc7, "pc7", "perc",   "congas, bongos, bells",                        Kind::Module,  Style::Mirror, 0xff2c4a34, 0xffdbead9, VType::Perc,  760, 480 },
+        { Pid::cl8, "cl8", "dust",   "vinyl dust, ticks and pops",                   Kind::Module,  Style::Mirror, 0xff26355c, 0xffe1e8f6, VType::Click, 760, 480 },
+        { Pid::tm9, "tm9", "tom",    "deep toms",                                    Kind::Module,  Style::Mirror, 0xff4a1e1a, 0xfff0d6cf, VType::Tom,   760, 480 },
+        { Pid::mc3, "mc3", "micro",  "micro-sampling for chopped textures",          Kind::Effect,  Style::Mirror, 0xff2b2e5c, 0xffdfe0f5, VType::Kick,  760, 480 },
+        { Pid::dl4, "dl4", "dub",    "tape echo for chords and percussion",          Kind::Effect,  Style::Mirror, 0xff183d4a, 0xffd3e9ec, VType::Kick,  760, 480 },
+        { Pid::rv5, "rv5", "room",   "warm rooms and plates",                        Kind::Effect,  Style::Mirror, 0xff40331f, 0xffefe2cc, VType::Kick,  760, 480 },
+        { Pid::sw6, "sw6", "swing",  "the swing of a drum machine, on any audio",    Kind::Effect,  Style::Mirror, 0xff3b2450, 0xffeadcf2, VType::Kick,  760, 480 },
+        { Pid::fl7, "fl7", "filter", "dj isolator and warm sweep",                   Kind::Effect,  Style::Mirror, 0xff2f4316, 0xffe5efcf, VType::Kick,  760, 480 },
+        { Pid::gl8, "gl8", "glue",   "bus compressor and tape",                      Kind::Effect,  Style::Mirror, 0xff2a323c, 0xffe1e6eb, VType::Kick,  760, 480 },
+        { Pid::wb1, "sb1", "stabs",  "chord stabs, organs and sub bass",             Kind::Synth,   Style::Mirror, 0xff14123f, 0xfff0dfe6, VType::Kick, 1100, 760 },
+        { Pid::ms0, "ms0", "master", "(not part of faltung deep)",                   Kind::Effect,  Style::Mirror, 0xff1a242c, 0xff5aaad8, VType::Kick, 1320, 880 },
+    };
+    return d[(int) p];
+   #endif
     static const ProductInfo t[kNumProducts] = {
         { Pid::kt1, "kt1", "kit",    "eight-voice drum synth + microtime sequencer", Kind::Machine, Style::Snd,   0xffc9b53b, 0xffd8c64e, VType::Kick,  1000, 640 },
         { Pid::kt2, "kt2", "loop",   "loop slicer + sequencer, cut-ups from any break", Kind::Machine, Style::Oval, 0xfff4f2ec, 0xff2f7fd1, VType::Kick, 1000, 640 },
@@ -38,6 +62,12 @@ const ProductInfo& info (Pid p)
 
 const KitVoiceInfo& kitVoice (int v)
 {
+   #if FALTUNG_DEEP
+    static const KitVoiceInfo d[kKitVoices] = {
+        { "bd1", VType::Kick,  0xff5e8f6a, 36 }, { "rm2", VType::Rim,   0xff8dbb7a, 37 }, { "cp3", VType::Clap, 0xff8ec3e6, 38 }, { "ch4", VType::Hat, 0xff6e80c8, 39 },
+        { "oh5", VType::Hat,   0xffee8e6e, 40 }, { "sh6", VType::Hat,   0xff97adc4, 41 }, { "cg7", VType::Perc, 0xfff6c590, 42 }, { "tm8", VType::Tom, 0xffcfe6f0, 43 } };
+    return d[std::clamp (v, 0, kKitVoices - 1)];
+   #endif
     static const KitVoiceInfo k[kKitVoices] = {
         { "bd1", VType::Kick,  0xff5e8f6a, 36 },
         { "sd2", VType::Snare, 0xff8dbb7a, 37 },
@@ -88,6 +118,28 @@ juce::String slotText (VType t, int slot, float v)
         default: break;
     }
     return juce::String (v, 2);
+}
+
+VoiceParams kitDefaultVoice (int v)
+{
+   #if FALTUNG_DEEP
+    VoiceParams p = defaultVoice (kitVoice (v).type);
+    auto set = [&] (int model, std::array<float, 8> sl, float level, float pan) { p.model = model; p.s = sl; p.level = level; p.pan = pan; p.vel = 0.5f; };
+    switch (v)
+    {
+        case 0: set (1, { 0.30f, 0.55f, 0.22f, 0.45f, 0.10f, 0.32f, 0.42f, 0.12f }, 0.86f, 0.0f); break;     // round kick
+        case 1: set (1, { 0.52f, 0.20f, 0.45f, 0.62f, 0.05f, 0.10f, 0.45f, 0.00f }, 0.72f, -0.18f); break;   // wooden rim
+        case 2: set (2, { 0.35f, 0.45f, 0.35f, 0.70f, 0.35f, 0.55f, 0.22f, 0.05f }, 0.76f, 0.04f); break;    // soft room clap
+        case 3: set (0, { 0.45f, 0.22f, 0.18f, 0.55f, 0.45f, 0.05f, 0.42f, 0.00f }, 0.64f, 0.12f); break;    // closed hat
+        case 4: set (0, { 0.42f, 0.55f, 0.15f, 0.50f, 0.50f, 0.05f, 0.40f, 0.00f }, 0.66f, -0.08f); break;   // open hat
+        case 5: set (1, { 0.62f, 0.20f, 0.05f, 0.00f, 0.95f, 0.00f, 0.40f, 0.00f }, 0.56f, 0.25f); break;    // shaker
+        case 6: set (0, { 0.30f, 0.36f, 0.45f, 0.65f, 0.08f, 0.20f, 0.40f, 0.00f }, 0.74f, -0.28f); break;   // conga
+        default: set (0, { 0.25f, 0.50f, 0.30f, 0.70f, 0.10f, 0.25f, 0.45f, 0.05f }, 0.74f, 0.20f); break;  // tom
+    }
+    return p;
+   #else
+    return defaultVoice (kitVoice (v).type);
+   #endif
 }
 
 const VoiceParams& defaultVoice (VType t)
@@ -260,6 +312,8 @@ void bassParams (L& l)
     l.f ("vel", "velocity", NR (0.0f, 1.0f), 0.3f, pct);
     l.f ("width", "width", NR (0.0f, 1.0f), 0.6f, pct);
     l.f ("level", "level", NR (-24.0f, 6.0f), -6.0f, dbText);
+    { juce::StringArray ch; for (int i = 0; i < 15; ++i) ch.add (chordName (i)); l.c ("chord", "chord", ch, 0); }
+    l.c ("voicing", "chord voicing", { "close", "open", "drop 2" }, 0);
     // ---- modulation --------------------------------------------------------------------------------
     const juce::StringArray lfoShapes { "sine", "triangle", "ramp down", "ramp up", "square", "wow", "yoy", "random", "smooth random" };
     for (int k = 2; k <= 3; ++k)
@@ -453,7 +507,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                     const auto& kv = kitVoice (v);
                     const auto pre = kitPrefix (v);
                     const juce::String np = juce::String (kv.id) + " ";
-                    voiceParams (l, kv.type, pre, np, defaultVoice (kv.type));
+                    voiceParams (l, kv.type, pre, np, kitDefaultVoice (v));
                     trackCtl (l, pre, np);
                 }
             }
@@ -596,9 +650,112 @@ V voiceV (VType t, const juce::String& pre, int model, std::array<float, 8> s, f
 V cat (std::initializer_list<V> parts) { V r; for (auto& p : parts) r.insert (r.end(), p.begin(), p.end()); return r; }
 }
 
+#if FALTUNG_DEEP
+static const std::vector<Preset>& deepPresets (Pid p)
+{
+    static std::vector<Preset> T[kNumProducts];
+    static bool built = false;
+    if (! built)
+    {
+        auto M = [] (VType t, const char* name, int model, std::array<float, 8> sl) { return Preset { name, voiceV (t, "", model, sl), {} }; };
+        T[(int) Pid::bd1] = { M (VType::Kick, "deep round", 1, { 0.30f, 0.55f, 0.22f, 0.45f, 0.10f, 0.32f, 0.42f, 0.12f }),
+                              M (VType::Kick, "lofi 909", 2, { 0.38f, 0.45f, 0.45f, 0.25f, 0.05f, 0.40f, 0.30f, 0.32f }),
+                              M (VType::Kick, "soft sine", 3, { 0.26f, 0.60f, 0.08f, 0.55f, 0.00f, 0.22f, 0.55f, 0.05f }),
+                              M (VType::Kick, "dusty tok", 0, { 0.36f, 0.38f, 0.30f, 0.30f, 0.40f, 0.35f, 0.30f, 0.25f }),
+                              M (VType::Kick, "long thud", 1, { 0.24f, 0.72f, 0.18f, 0.60f, 0.05f, 0.30f, 0.50f, 0.15f }) };
+        T[(int) Pid::sd2] = { M (VType::Snare, "brush", 2, { 0.40f, 0.55f, 0.08f, 0.15f, 0.78f, 0.00f, 0.32f, 0.00f }),
+                              M (VType::Snare, "soft tuned", 0, { 0.42f, 0.35f, 0.25f, 0.65f, 0.40f, 0.15f, 0.40f, 0.05f }),
+                              M (VType::Snare, "808 warm", 3, { 0.45f, 0.38f, 0.30f, 0.65f, 0.45f, 0.10f, 0.45f, 0.10f }) };
+        T[(int) Pid::rm3] = { M (VType::Rim, "wooden rim", 1, { 0.52f, 0.20f, 0.45f, 0.62f, 0.05f, 0.10f, 0.45f, 0.00f }),
+                              M (VType::Rim, "deep tok", 2, { 0.38f, 0.26f, 0.50f, 0.55f, 0.10f, 0.25f, 0.45f, 0.00f }),
+                              M (VType::Rim, "soft rimshot", 0, { 0.50f, 0.16f, 0.55f, 0.50f, 0.15f, 0.05f, 0.55f, 0.08f }),
+                              M (VType::Rim, "stick", 1, { 0.70f, 0.12f, 0.65f, 0.40f, 0.05f, 0.00f, 0.75f, 0.00f }) };
+        T[(int) Pid::hh4] = { M (VType::Hat, "warm hats", 0, { 0.45f, 0.22f, 0.18f, 0.55f, 0.45f, 0.05f, 0.42f, 0.00f }),
+                              M (VType::Hat, "shaker", 1, { 0.62f, 0.20f, 0.05f, 0.00f, 0.95f, 0.00f, 0.40f, 0.00f }),
+                              M (VType::Hat, "noise hats", 1, { 0.50f, 0.26f, 0.15f, 0.10f, 0.80f, 0.00f, 0.55f, 0.00f }),
+                              M (VType::Hat, "tick hats", 3, { 0.55f, 0.10f, 0.40f, 0.45f, 0.45f, 0.00f, 0.55f, 0.00f }) };
+        T[(int) Pid::cp6] = { M (VType::Clap, "soft room clap", 2, { 0.35f, 0.45f, 0.35f, 0.70f, 0.35f, 0.55f, 0.22f, 0.05f }),
+                              M (VType::Clap, "snap", 1, { 0.50f, 0.18f, 0.55f, 0.00f, 0.20f, 0.20f, 0.45f, 0.00f }),
+                              M (VType::Clap, "tight clap", 3, { 0.45f, 0.20f, 0.45f, 0.00f, 0.25f, 0.30f, 0.40f, 0.05f }) };
+        T[(int) Pid::pc7] = { M (VType::Perc, "conga low", 0, { 0.30f, 0.36f, 0.45f, 0.65f, 0.08f, 0.20f, 0.40f, 0.00f }),
+                              M (VType::Perc, "conga high", 0, { 0.42f, 0.30f, 0.50f, 0.60f, 0.08f, 0.25f, 0.45f, 0.00f }),
+                              M (VType::Perc, "bongo", 1, { 0.52f, 0.22f, 0.60f, 0.55f, 0.05f, 0.25f, 0.55f, 0.00f }),
+                              M (VType::Perc, "soft bell", 2, { 0.62f, 0.50f, 0.20f, 0.45f, 0.00f, 0.00f, 0.50f, 0.00f }) };
+        T[(int) Pid::cl8] = { M (VType::Click, "vinyl dust", 2, { 0.55f, 0.75f, 0.10f, 0.25f, 0.40f, 0.00f, 0.45f, 0.00f }),
+                              M (VType::Click, "soft tick", 0, { 0.55f, 0.25f, 0.40f, 0.30f, 0.10f, 0.00f, 0.25f, 0.00f }),
+                              M (VType::Click, "pop", 1, { 0.35f, 0.30f, 0.25f, 0.20f, 0.00f, 0.00f, 0.15f, 0.00f }) };
+        T[(int) Pid::tm9] = { M (VType::Tom, "deep tom", 0, { 0.25f, 0.50f, 0.30f, 0.70f, 0.10f, 0.25f, 0.45f, 0.05f }),
+                              M (VType::Tom, "low tom", 3, { 0.15f, 0.62f, 0.20f, 0.80f, 0.05f, 0.25f, 0.50f, 0.10f }),
+                              M (VType::Tom, "blip", 1, { 0.45f, 0.30f, 0.15f, 0.50f, 0.00f, 0.45f, 0.35f, 0.00f }) };
+        // kit grooves (ids: bd1 rm2 cp3 ch4 oh5 sh6 cg7 tm8)
+        auto kit = [] (const char* name, const char* pattern, float swing, std::vector<std::pair<juce::String, float>> extra = {})
+        {
+            Preset pr; pr.name = name; pr.pattern = pattern;
+            for (int v = 0; v < kKitVoices; ++v)
+            {
+                const auto d = kitDefaultVoice (v);
+                auto vv = voiceV (kitVoice (v).type, kitPrefix (v), d.model, d.s, d.level, d.pan);
+                pr.values.insert (pr.values.end(), vv.begin(), vv.end());
+            }
+            pr.values.push_back ({ "swing", swing });
+            for (auto& e : extra) pr.values.push_back (e);
+            return pr;
+        };
+        T[(int) Pid::kt1] = {
+            kit ("warehouse", "bd1 X...X...X...X...\nrm2 ...x..x....x.?.\ncp3 ....X.......X...\nch4 o.o.o.o.o.o.o.o.\noh5 ..x...x...x...x.\nsh6 xoxoxoxoxoxoxoxo\ncg7 ......x..x....x.\ntm8 ..............r.", 0.56f),
+            kit ("jazzy", "bd1 X.....x.X.......\nrm2 ..x..x....x..x..\ncp3 ....X.......X..o\nch4 x.xxx.xxx.xxx.xx\noh5 ..o...o...o...o.\nsh6 o.o.o.o.o.o.o.o.\ncg7 .x..o..x..x..o..\ntm8 ..........x.....", 0.6f),
+            kit ("minimal deep", "bd1 X...X...X...X...\nrm2 .......x......x.\ncp3 ....x.......x...\nch4 ................\noh5 ..x...x...x...x.\nsh6 x?x?x?x?x?x?x?x?\ncg7 ...x......x.....\ntm8 ................", 0.55f),
+            kit ("broken", "bd1 X..x..X...x.....\nrm2 ...x..x.x....x..\ncp3 ....X.......X...\nch4 x.x.x.x.x.x.x.x.\noh5 ......x.......x.\nsh6 oxoxoxoxoxoxoxox\ncg7 x.....x..x......\ntm8 .............x.x", 0.57f),
+            kit ("empty", "", 0.56f) };
+        T[(int) Pid::kt2] = { { "straight", {}, "sl 0123456789abcdef" }, { "chopped", { { "revprob", 0.1f } }, "sl 0.2.4401.a8.c4e" },
+                              { "half", { { "gate", 0.6f } }, "sl 0.2.4.6.8.a.c.e" }, { "sparse", { { "gate", 0.4f } }, "sl 0...4...8...c..." } };
+        T[(int) Pid::mc3] = { { "soft grains", { { "mode", 1 }, { "division", 4 }, { "density", 0.3f }, { "size", 80 }, { "mix", 0.3f } } },
+                              { "stutter fill", { { "mode", 0 }, { "division", 1 }, { "density", 0.25f }, { "size", 90 }, { "mix", 0.7f } } },
+                              { "dust from audio", { { "mode", 2 }, { "division", 4 }, { "density", 0.6f }, { "scatter", 0.7f }, { "mix", 0.25f } } } };
+        T[(int) Pid::dl4] = { { "chord echo 1/8 d", { { "division", 9 }, { "feedback", 0.45f }, { "age", 0.3f }, { "hp", 300 }, { "lp", 4500 }, { "spread", 0.8f }, { "mix", 0.3f } } },
+                              { "tape space 3/16", { { "division", 6 }, { "feedback", 0.55f }, { "age", 0.5f }, { "wow", 0.3f }, { "hp", 250 }, { "lp", 3000 }, { "mix", 0.3f } } },
+                              { "dub throw", { { "division", 8 }, { "feedback", 0.75f }, { "age", 0.45f }, { "hp", 400 }, { "lp", 2500 }, { "mix", 0.45f }, { "input", 0.0f } } } };
+        T[(int) Pid::rv5] = { { "warm room", { { "model", 0 }, { "size", 0.4f }, { "decay", 0.9f }, { "damp", 0.6f }, { "mix", 0.22f } } },
+                              { "plate", { { "model", 1 }, { "size", 0.55f }, { "decay", 1.8f }, { "damp", 0.45f }, { "mix", 0.2f } } },
+                              { "big chamber", { { "model", 3 }, { "size", 0.8f }, { "decay", 3.0f }, { "predelay", 25 }, { "damp", 0.55f }, { "mix", 0.25f } } } };
+        T[(int) Pid::sw6] = { { "deep swing 56", { { "template", 1 }, { "swing", 0.56f } } }, { "mpc 58", { { "template", 1 }, { "swing", 0.58f }, { "accent", 0.4f } } },
+                              { "shuffle", { { "template", 2 }, { "swing", 0.6f }, { "accent", 0.5f } } }, { "loose", { { "template", 5 }, { "humanize", 3 } } } };
+        T[(int) Pid::fl7] = { { "flat", {} }, { "warm lowpass", { { "sweep", -0.25f }, { "res", 0.25f }, { "drive", 0.2f } } },
+                              { "dj sweep 4 bars", { { "sweep", -0.3f }, { "res", 0.45f }, { "lfodiv", 16 }, { "lfodepth", 0.3f } } }, { "low kill", { { "low", -40 } } } };
+        T[(int) Pid::gl8] = { { "warm glue", { { "threshold", -16 }, { "ratio", 1 }, { "attack", 15 }, { "tape", 0.3f }, { "bump", 0.6f } } },
+                              { "tape only", { { "threshold", 0 }, { "tape", 0.55f }, { "bump", 0.7f }, { "hf", 0.45f } } },
+                              { "pumping", { { "threshold", -26 }, { "ratio", 2 }, { "attack", 8 }, { "release", 180 }, { "auto", 0 }, { "makeup", 5 }, { "mix", 0.7f } } } };
+        auto S = [] (const char* name, std::vector<std::pair<juce::String, float>> v) { return Preset { name, v, {} }; };
+        const std::vector<std::pair<juce::String, float>> stabBase = { { "voices", 1 }, { "wcut", 0 }, { "sub", 0.0f }, { "ott", 0.15f }, { "width", 0.8f }, { "glide", 0 } };
+        auto withBase = [&] (std::vector<std::pair<juce::String, float>> v) { auto b = stabBase; b.insert (b.end(), v.begin(), v.end()); return b; };
+        T[(int) Pid::wb1] = {
+            S ("minor 9 stab", withBase ({ { "chord", 9 }, { "a_shape", 2.3f }, { "b_shape", 3 }, { "b_level", 0.35f }, { "ftype", 1 }, { "cutoff", 900 }, { "res", 0.3f },
+                                           { "mcut", 2.2f }, { "md", 260 }, { "aa", 2 }, { "ad", 600 }, { "as", 0.0f }, { "ar", 300 } })),
+            S ("organ stab", withBase ({ { "chord", 6 }, { "a_shape", 0 }, { "b_shape", 3 }, { "b_oct", 4 }, { "b_level", 0.5f }, { "a_level", 0.8f }, { "cutoff", 3500 }, { "res", 0.1f },
+                                         { "aa", 2 }, { "ad", 400 }, { "as", 0.0f }, { "ar", 120 }, { "dmode", 3 }, { "ddrive", 0.15f } })),
+            S ("electric piano", withBase ({ { "chord", 8 }, { "a_shape", 0 }, { "b_shape", 0 }, { "b_oct", 5 }, { "b_level", 0 }, { "fm", 0.28f }, { "mfm", 0.3f }, { "md", 500 },
+                                             { "cutoff", 5000 }, { "aa", 2 }, { "ad", 1400 }, { "as", 0.15f }, { "ar", 500 }, { "l2div", 11 }, { "l2shape", 0 }, { "m1src", MS_LFO2 }, { "m1dst", MD_VOLUME }, { "m1amt", 0.12f } })),
+            S ("dub chord", withBase ({ { "chord", 13 }, { "voicing", 1 }, { "a_shape", 2 }, { "ftype", 1 }, { "cutoff", 700 }, { "res", 0.45f }, { "mcut", 2.8f }, { "md", 180 },
+                                        { "aa", 1 }, { "ad", 350 }, { "as", 0.0f }, { "ar", 150 } })),
+            S ("warm pad", withBase ({ { "chord", 10 }, { "a_shape", 2 }, { "a_uni", 3 }, { "a_detune", 0.2f }, { "cutoff", 1100 }, { "aa", 350 }, { "ad", 800 }, { "as", 0.8f }, { "ar", 900 },
+                                       { "l2div", 15 }, { "l2shape", 0 }, { "l2retrig", 0 }, { "m1src", MS_LFO2 }, { "m1dst", MD_CUTOFF }, { "m1amt", 0.12f } })),
+            S ("deep sub", { { "voices", 0 }, { "chord", 0 }, { "a_shape", 0 }, { "a_level", 0.4f }, { "sub", 1.0f }, { "suboct", 1 }, { "cutoff", 400 }, { "wcut", 0 }, { "glide", 30 },
+                             { "aa", 3 }, { "ad", 600 }, { "as", 0.8f }, { "ar", 120 }, { "ott", 0.0f } }),
+            S ("round bass", { { "voices", 0 }, { "chord", 0 }, { "a_shape", 2 }, { "ftype", 0 }, { "cutoff", 320 }, { "res", 0.25f }, { "mcut", 1.5f }, { "md", 220 }, { "sub", 0.7f },
+                               { "wcut", 0 }, { "aa", 2 }, { "ad", 500 }, { "as", 0.6f }, { "ar", 100 }, { "ott", 0.2f } }),
+            S ("plucked chord", withBase ({ { "chord", 5 }, { "a_shape", 3 }, { "a_pw", 0.3f }, { "ftype", 1 }, { "cutoff", 600 }, { "mcut", 3.2f }, { "md", 140 }, { "aa", 1 }, { "ad", 300 }, { "as", 0.0f }, { "ar", 200 } })) };
+        built = true;
+    }
+    return T[(int) p];
+}
+#endif
+
 const std::vector<Preset>& presets (Pid p)
 {
     static std::vector<Preset> table[kNumProducts];
+   #if FALTUNG_DEEP
+    return deepPresets (p);
+   #endif
     static bool built = false;
     if (! built)
     {

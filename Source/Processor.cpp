@@ -98,6 +98,8 @@ Processor::Processor (Pid product)
         auto s = renderDefaultLoop();
         sample = s;
     }
+    // faltung deep: every plug-in opens on its first (deep house) preset
+    if (kDeep && pid != Pid::ms0 && ! presets (pid).empty()) setCurrentProgram (0);
 }
 
 Processor::~Processor() { if (designer) designer->stopThread (2000); }
@@ -857,6 +859,7 @@ BassParams Processor::readBass() const
         l.retrig = param (x + "retrig") > 0.5f; l.phase = param (x + "phase"); l.mode = (int) param (x + "mode"); l.skew = param (x + "skew"); l.smooth = param (x + "smooth");
     };
     lfo ("l2", b.l2); lfo ("l3", b.l3);
+    b.chord = (int) param ("chord"); b.voicing = (int) param ("voicing");
     for (int k = 0; k < 16; ++k) b.steps[(size_t) k] = param ("stp" + juce::String (k + 1));
     b.stepLen = (int) std::round (param ("steplen")); b.stepDiv = (int) param ("stepdiv"); b.stepGlide = param ("stepglide"); b.stepRetrig = param ("stepretrig") > 0.5f;
     for (int k = 0; k < 8; ++k)

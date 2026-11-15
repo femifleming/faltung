@@ -1,6 +1,7 @@
 #pragma once
 #include "Ui.h"
 #include "Processor.h"
+#include "MirrorTree.h"
 
 namespace fal
 {
@@ -14,6 +15,8 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void tick();          // ~30 Hz from the editor
     int focus = -1;       // slot being edited (highlighted)
+    bool sleeveText = true;   // mirror look: draw the sleeve typography (the kit draws its own)
+    void resized() override;
 
 private:
     Processor& p;
@@ -28,6 +31,8 @@ private:
     void paintSnd (juce::Graphics&, juce::Rectangle<float>);
     void paintOval (juce::Graphics&, juce::Rectangle<float>);
     void paintStdio (juce::Graphics&, juce::Rectangle<float>);
+    void paintMirror (juce::Graphics&, juce::Rectangle<float>);
+    MirrorTree tree; juce::Image treeImg; float levelSm = 0;
     void paintTitle (juce::Graphics&, juce::Rectangle<float>);
     std::vector<std::pair<juce::String, float>> values() const;  // short label, 0..1
 };

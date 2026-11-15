@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Collects every built plug-in, app and both manuals into dist/faltung-<os>/<product>/
-# usage: ci/package.sh <macOS|Windows|Linux> <build dir>
+# Collects the built plug-ins, apps and manuals of one suite into dist/<suite>-<os>/<product>/
+# usage: ci/package.sh <macOS|Windows|Linux> <build dir> [faltung|deep]
 set -euo pipefail
-OS="$1"; B="$2"
+OS="$1"; B="$2"; SUITE="${3:-faltung}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/dist/faltung-$OS"
+NAME="faltung"; [ "$SUITE" = "deep" ] && NAME="faltung-deep"
+OUT="$ROOT/dist/$NAME-$OS"
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 art() {   # artefact folder of a target (single- or multi-config generators)
@@ -39,19 +40,25 @@ product() {   # product <folder name> <target> <file name>
     return 0   # optional formats above may be missing; that is not a failure
 }
 
-for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do
-    product "faltung $p" "faltung_$p" "faltung $p"
-done
-product Partials Partials Partials
-
-cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$OUT/"
-cp "$ROOT/partials/docs/manual/manual.pdf" "$OUT/Partials Manual.pdf"
+if [ "$SUITE" = "deep" ]; then
+    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 sb1; do
+        product "faltung deep $p" "faltung_deep_$p" "faltung deep $p"
+    done
+    cp "$ROOT/docs/manual-deep/faltung deep Manual.pdf" "$OUT/"
+else
+    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do
+        product "faltung $p" "faltung_$p" "faltung $p"
+    done
+    product Partials Partials Partials
+    cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$OUT/"
+    cp "$ROOT/partials/docs/manual/manual.pdf" "$OUT/Partials Manual.pdf"
+fi
 cp "$ROOT/README.md" "$ROOT/LICENSE" "$OUT/"
 
 cd "$ROOT/dist"
 case "$OS" in
-    macOS)   ditto -c -k --keepParent "faltung-$OS" "faltung-$OS.zip" ;;
-    Windows) 7z a -tzip -r "faltung-$OS.zip" "faltung-$OS" > /dev/null ;;
-    Linux)   tar -czf "faltung-$OS.tar.gz" "faltung-$OS" ;;
+    macOS)   ditto -c -k --keepParent "$NAME-$OS" "$NAME-$OS.zip" ;;
+    Windows) 7z a -tzip -r "$NAME-$OS.zip" "$NAME-$OS" > /dev/null ;;
+    Linux)   tar -czf "$NAME-$OS.tar.gz" "$NAME-$OS" ;;
 esac
 ls -la "$ROOT/dist"

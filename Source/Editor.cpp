@@ -7,6 +7,8 @@ using juce::Rectangle;
 
 static ui::Theme themeFor (const ProductInfo& pi)
 {
+    if (pi.style == Style::Mirror)
+        return { Colour (pi.ground), Colour (pi.accent), Colour (pi.accent), juce::Colours::white, true };
     const Colour ground (pi.ground);
     Colour fill (pi.accent);
     if (std::abs (fill.getPerceivedBrightness() - ground.getPerceivedBrightness()) < 0.12f)
@@ -126,8 +128,8 @@ public:
     void resized() override
     {
         const int w = getWidth();
-        art.setBounds (0, 0, w, 290);
-        presetBar.setBounds (w - 236, 14, 200, 20);
+        if (theme.mirror) { art.setBounds (0, 0, w, getHeight()); presetBar.setBounds (w - 236, 96, 200, 20); }
+        else { art.setBounds (0, 0, w, 290); presetBar.setBounds (w - 236, 14, 200, 20); }
         int x = 36;
         const int rowY = 300;
         for (auto* c : top)
@@ -144,9 +146,9 @@ public:
         if (offsets) offsets->setBounds (36, 332 + ((sliders.size() + cols - 1) / cols) * 24 + 6, w - 72, getHeight() - 332 - ((sliders.size() + cols - 1) / cols) * 24 - 36);
     }
 
-    void paint (juce::Graphics& g) override
+    void paint (juce::Graphics& g) override { g.fillAll (theme.ground); }
+    void paintOverChildren (juce::Graphics& g) override
     {
-        g.fillAll (theme.ground);
         g.setColour (theme.ink.withAlpha (0.25f));
         g.fillRect (36.0f, 324.0f, (float) getWidth() - 72.0f, 1.0f);
         g.setColour (theme.ink.withAlpha (0.7f));
@@ -159,7 +161,8 @@ public:
             foot = "latency " + juce::String (Swing::kMaxMs, 0) + ui::U (" ms (reported to the host) · drag bars: per-step offset · alt-click: reset");
         else
             foot = pi.blurb;
-        g.drawText ("faltung " + juce::String (pi.code) + " " + pi.name + ui::U ("  ·  ") + foot,
+        if (theme.mirror) g.setFont (ui::light (11.0f));
+        g.drawText ((theme.mirror ? "faltung deep " : "faltung ") + juce::String (pi.code) + " " + pi.name + ui::U ("  ·  ") + foot,
                     Rectangle<float> (36.0f, (float) getHeight() - 24.0f, (float) getWidth() - 72.0f, 14.0f), juce::Justification::centredLeft, true);
     }
 
@@ -263,6 +266,53 @@ private:
     std::array<float, 8> flash {};
 };
 
+/** faltung deep: the kit's voices as a sleeve track list — Side A 1–4, Side B 5–8. Click to select and play. */
+class SleeveVoices : public juce::Component
+{
+public:
+    SleeveVoices (Processor& proc, ui::Theme t) : p (proc), theme (t) { setMouseCursor (juce::MouseCursor::PointingHandCursor); for (int i = 0; i < 8; ++i) seen[(size_t) i] = p.hitCount[(size_t) i].load(); }
+    std::function<void (int)> onSelect;
+    int selected = 0;
+    static const char* name (int v) { static const char* n[8] = { "Kick", "Rim", "Clap", "Closed hat", "Open hat", "Shaker", "Conga", "Tom" }; return n[v & 7]; }
+    void paint (juce::Graphics& g) override
+    {
+        const float colW = (float) getWidth() * 0.5f;
+        for (int side = 0; side < 2; ++side)
+        {
+            g.setColour (theme.ink); g.setFont (ui::cond (15.0f));
+            g.drawText (side == 0 ? "Side A" : "Side B", juce::Rectangle<float> (side * colW, 0, colW, 18), juce::Justification::centredLeft);
+            for (int k = 0; k < 4; ++k)
+            {
+                const int v = side * 4 + k;
+                const auto r = juce::Rectangle<float> (side * colW, 20.0f + k * 19.0f, colW - 8, 18);
+                g.setColour (theme.ink.withAlpha (0.75f + 0.25f * flash[(size_t) v]));
+                g.setFont (ui::cond (15.0f, v == selected));
+                g.drawText (juce::String (v + 1) + ".   " + name (v), r, juce::Justification::centredLeft);
+                if (v == selected) { g.setColour (theme.ink); g.fillRect (r.getX() + 22, r.getBottom() - 1.5f, 70.0f, 1.2f); }
+                if (flash[(size_t) v] > 0.05f) { g.setColour (juce::Colours::white.withAlpha (flash[(size_t) v])); g.fillEllipse (r.getX() - 10, r.getCentreY() - 2.5f, 5, 5); }
+            }
+        }
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.position.y < 20.0f) return;
+        const int side = e.x < getWidth() / 2 ? 0 : 1, k = juce::jlimit (0, 3, (int) ((e.position.y - 20.0f) / 19.0f));
+        selected = side * 4 + k; p.uiTrigger (selected, 0.85f); if (onSelect) onSelect (selected); repaint();
+    }
+    void tick()
+    {
+        for (int v = 0; v < 8; ++v)
+        {
+            const int h = p.hitCount[(size_t) v].load();
+            if (h != seen[(size_t) v]) { seen[(size_t) v] = h; flash[(size_t) v] = 1.0f; } else flash[(size_t) v] *= 0.82f;
+        }
+        repaint();
+    }
+private:
+    Processor& p; ui::Theme theme;
+    std::array<int, 8> seen {}; std::array<float, 8> flash {};
+};
+
 /** shared step editing for kt1 (8 rows) and kt2 (1 row of slices) */
 class StepGrid : public juce::Component, public juce::SettableTooltipClient
 {
@@ -324,7 +374,17 @@ public:
                 auto c = cell (r, s);
                 const Step& st = snap[(size_t) r][(size_t) s];
                 const float alphaLen = s < len ? 1.0f : 0.25f;
-                if (st.on)
+                if (st.on && theme.mirror)
+                {
+                    c = c.translated (st.micro * cellW() * 0.35f, 0.0f);
+                    const float a = (0.35f + 0.65f * st.vel) * alphaLen;
+                    const auto bar = c.withHeight (c.getHeight() * 0.62f).withY (c.getY() + c.getHeight() * 0.19f);
+                    g.setColour (theme.ink.withAlpha (a));
+                    if (st.prob < 0.999f) g.drawRect (bar, 1.0f); else g.fillRect (bar);
+                    if (st.ratchet > 1) { g.setColour (theme.ground); for (int k = 1; k < st.ratchet; ++k) g.fillRect (bar.getX() + bar.getWidth() * (float) k / (float) st.ratchet, bar.getY(), 1.0f, bar.getHeight()); }
+                    if (nRows == 1) { g.setColour (theme.ground); g.setFont (ui::cond (13.0f, true)); g.drawText (juce::String::toHexString (st.slice) + (st.rev ? "<" : ""), bar, juce::Justification::centred); }
+                }
+                else if (st.on)
                 {
                     c = c.translated (st.micro * cellW() * 0.35f, 0.0f);
                     const float a = (0.35f + 0.65f * st.vel) * alphaLen;
@@ -350,6 +410,11 @@ public:
                         g.setFont (ui::mono (13.0f, true));
                         g.drawText (juce::String::toHexString (st.slice) + (st.rev ? "<" : ""), c, juce::Justification::centred);
                     }
+                }
+                else if (theme.mirror)
+                {
+                    g.setColour (theme.ink.withAlpha (0.4f * alphaLen));
+                    g.fillRect (c.getX(), c.getBottom() - 3.0f, c.getWidth(), 1.0f);
                 }
                 else
                 {
@@ -497,17 +562,20 @@ class KitView : public View
 {
 public:
     explicit KitView (Processor& proc)
-        : p (proc), pi (proc.pinfo), theme (themeFor (pi)), strips (proc), grid (proc, theme, 8),
+        : p (proc), pi (proc.pinfo), theme (themeFor (pi)), backdrop (proc), sleeve (proc, theme), strips (proc), grid (proc, theme, 8),
           presetBar (proc, theme), patterns (proc, theme),
           run (P (proc, "run"), theme, "run"), bpm (P (proc, "bpm"), theme, "bpm"),
           swing (P (proc, "swing"), theme, "swing"), micro (P (proc, "micro"), theme, "micro"),
           master (P (proc, "master"), theme, "master")
     {
+        if (theme.mirror) { backdrop.sleeveText = false; addAndMakeVisible (backdrop); addAndMakeVisible (sleeve); sleeve.selected = 2; }
         for (auto* c : std::initializer_list<juce::Component*> { &strips, &grid, &presetBar, &patterns, &run, &bpm, &swing, &micro, &master })
             addAndMakeVisible (c);
+        strips.setVisible (! theme.mirror);
+        sleeve.onSelect = [this] (int v) { grid.selected = v; grid.repaint(); buildPanel (v); };
         for (auto* s : { &bpm, &swing, &micro, &master }) s->setLabelWidth (44);
         strips.onSelect = [this] (int v) { grid.selected = v; grid.repaint(); buildPanel (v); };
-        grid.onSelect = [this] (int v) { strips.selected = v; strips.repaint(); buildPanel (v); };
+        grid.onSelect = [this] (int v) { strips.selected = v; strips.repaint(); sleeve.selected = v; sleeve.repaint(); buildPanel (v); };
         patterns.onChange = [this] { grid.repaint(); };
         buildPanel (2);
         setSize (pi.w, pi.h);
@@ -542,6 +610,8 @@ public:
     {
         const int w = getWidth();
         strips.setBounds (0, 20, 590, 360);
+        backdrop.setBounds (getLocalBounds());
+        sleeve.setBounds (250, 28, 330, 100);
         presetBar.setBounds (604, 30, 190, 20);
         master.setBounds (604, 58, 190, 22);
         const int px = 604, pw = w - 36 - px;
@@ -565,9 +635,24 @@ public:
         patterns.setBounds (586, gy, w - 36 - 586, 22);
     }
 
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        if (! theme.mirror) return;
+        g.setColour (theme.ink); g.setFont (ui::cond (15.0f));
+        g.drawText ("faltung deep", 36, 28, 200, 18, juce::Justification::centredLeft);
+        g.drawText ("KT1 KIT", 36, 46, 200, 18, juce::Justification::centredLeft);
+        g.setFont (ui::cond (15.0f, true)); g.drawText ("FDP001", 36, 90, 120, 18, juce::Justification::centredLeft);
+        const auto& kv = kitVoice (voice);
+        g.setFont (ui::cond (13.0f, true));
+        g.drawText (juce::String (SleeveVoices::name (voice)).toUpperCase() + "   " + kv.id, 604, 128, 200, 16, juce::Justification::centredLeft);
+        g.setFont (ui::light (11.0f));
+        g.drawText ("midi " + juce::MidiMessage::getMidiNoteName (kv.defaultNote, true, true, 3) + "   out " + juce::String (voice + 2), 604, 128, getWidth() - 640, 16, juce::Justification::centredRight);
+        g.fillRect (604.0f, 145.0f, (float) getWidth() - 640.0f, 1.0f);
+    }
     void paint (juce::Graphics& g) override
     {
         g.fillAll (theme.ground);
+        if (theme.mirror) return;
         // the header box, as on the sleeve
         const Rectangle<float> box ((float) getWidth() - 186.0f, 30.0f, 150.0f, 100.0f);
         g.setColour (Colour (pi.accent));
@@ -590,12 +675,14 @@ public:
                     Rectangle<float> (36.0f, 400.0f, (float) getWidth() - 72.0f, 14.0f), juce::Justification::centredLeft);
     }
 
-    void tick() override { strips.tick(); grid.repaint(); }
+    void tick() override { if (theme.mirror) { backdrop.tick(); sleeve.tick(); } else strips.tick(); grid.repaint(); }
 
 private:
     Processor& p;
     const ProductInfo& pi;
     ui::Theme theme;
+    Art backdrop;
+    SleeveVoices sleeve;
     Strips strips;
     StepGrid grid;
     ui::PresetBar presetBar;
@@ -613,6 +700,7 @@ class Wave : public juce::Component, public juce::FileDragAndDropTarget
 {
 public:
     explicit Wave (Processor& proc) : p (proc) { for (int i = 0; i < 16; ++i) seen[(size_t) i] = p.hitCount[(size_t) i].load(); }
+    bool mirror = false; Colour ink { 0xff1d1d1d };
     bool isInterestedInFileDrag (const juce::StringArray& f) override
     {
         for (auto& s : f) if (s.endsWithIgnoreCase (".wav") || s.endsWithIgnoreCase (".aif") || s.endsWithIgnoreCase (".aiff") || s.endsWithIgnoreCase (".flac") || s.endsWithIgnoreCase (".mp3") || s.endsWithIgnoreCase (".ogg")) return true;
@@ -625,7 +713,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto b = getLocalBounds().toFloat();
-        g.fillAll (Colour (0xfff4f2ec));
+        if (! mirror) g.fillAll (Colour (0xfff4f2ec));
         auto s = p.getSample();
         if (! s) return;
         if (s != cached) { cached = s; buildPeaks (*s); }
@@ -642,7 +730,7 @@ public:
                 const float y = mid + (k - 1.5f) * 9.0f - peaks[(size_t) i] * h * 0.45f * (k % 2 ? -1.0f : 1.0f) * (1.0f - 0.18f * k);
                 if (i == 0) line.startNewSubPath (x, y); else line.lineTo (x, y);
             }
-            g.setColour (Colour (cols[k]).withAlpha (k == 0 ? 0.95f : 0.7f));
+            g.setColour (mirror ? ink.withAlpha (k == 0 ? 0.95f : 0.35f) : Colour (cols[k]).withAlpha (k == 0 ? 0.95f : 0.7f));
             g.strokePath (line, juce::PathStrokeType (k == 0 ? 2.5f : 1.3f));
         }
         // slices: black dots on the base line, ticks down, numbers
@@ -660,14 +748,24 @@ public:
                 g.setColour (Colour (0xff8fbf6a).withAlpha (0.55f * fl));
                 g.fillPath (ui::skewRect ({ x0, y0, x1 - x0, h }, 0.08f));
             }
-            g.setColour (Colour (0xff1d1d1d));
+            g.setColour (mirror ? ink : Colour (0xff1d1d1d));
             g.fillEllipse (x0 - 3.5f, b.getBottom() - 50.0f, 7.0f, 7.0f);
             g.drawLine (x0, b.getBottom() - 46.0f, x0, b.getBottom() - 24.0f - (i % 3) * 6.0f, 1.0f);
             g.setFont (ui::mono (9.0f));
             g.drawText (juce::String::toHexString ((int) i), Rectangle<float> (x0 + 3, b.getBottom() - 40.0f, 20, 10), juce::Justification::centredLeft);
         }
-        g.setColour (Colour (0xff1d1d1d));
+        g.setColour (mirror ? ink : Colour (0xff1d1d1d));
         g.fillRect (b.getX() + 36.0f, b.getBottom() - 47.0f, b.getWidth() - 72.0f, 1.0f);
+        if (mirror)
+        {
+            g.setFont (ui::cond (15.0f)); g.drawText ("faltung deep", 36, 24, 200, 18, juce::Justification::centredLeft); g.drawText ("KT2 LOOP", 36, 42, 200, 18, juce::Justification::centredLeft);
+            g.setFont (ui::cond (15.0f, true)); g.drawText ("FDP002", 36, 66, 120, 18, juce::Justification::centredLeft);
+            g.setFont (ui::light (11.0f));
+            g.drawText (s->name + "  /  " + juce::String (s->buf.getNumSamples() / s->rate, 2) + " s  /  " + juce::String ((int) s->onsets.size()) + " onsets  /  drop a file here",
+                        Rectangle<float> (250.0f, 28.0f, 600.0f, 14.0f), juce::Justification::centredLeft);
+            if (dropping) { g.setColour (ink); g.drawRect (b.reduced (6.0f), 2.0f); }
+            return;
+        }
         g.setFont (ui::sans (16.0f));
         g.fillRect (36.0f, 26.0f, 1.0f, 30.0f);
         g.drawText ("kt2loop", Rectangle<float> (44.0f, 24.0f, 200.0f, 20.0f), juce::Justification::centredLeft);
@@ -717,10 +815,11 @@ private:
 class LoopView : public View
 {
 public:
-    explicit LoopView (Processor& proc) : p (proc), pi (proc.pinfo), theme (themeFor (pi)), wave (proc),
+    explicit LoopView (Processor& proc) : p (proc), pi (proc.pinfo), theme (themeFor (pi)), backdrop (proc), wave (proc),
         steps (proc, theme, 1), presetBar (proc, theme), patterns (proc, theme), load (ui::U ("load sample…"), theme)
     {
-        theme.fill = Colour (0xff2f7fd1);
+        if (theme.mirror) { backdrop.sleeveText = false; addAndMakeVisible (backdrop); wave.mirror = true; wave.ink = theme.ink; }
+        else theme.fill = Colour (0xff2f7fd1);
         addAndMakeVisible (wave); addAndMakeVisible (steps); addAndMakeVisible (presetBar); addAndMakeVisible (patterns); addAndMakeVisible (load);
         load.onClick = [this]
         {
@@ -744,6 +843,7 @@ public:
     {
         const int w = getWidth();
         wave.setBounds (0, 0, w, 300);
+        backdrop.setBounds (getLocalBounds());
         presetBar.setBounds (w - 236, 24, 200, 20);
         load.setBounds (w - 236, 48, 200, 20);
         steps.setBounds (36, 310, w - 72, 56);
@@ -762,11 +862,12 @@ public:
         g.drawText (ui::U ("midi c1 and up plays slices 0, 1, 2 … · click a slice to hear it · fit = loop length follows the tempo"),
                     Rectangle<float> (36.0f, (float) getHeight() - 22.0f, (float) getWidth() - 72.0f, 14.0f), juce::Justification::centredLeft);
     }
-    void tick() override { wave.tick(); steps.repaint(); }
+    void tick() override { if (theme.mirror) backdrop.tick(); wave.tick(); steps.repaint(); }
 private:
     Processor& p;
     const ProductInfo& pi;
     ui::Theme theme;
+    Art backdrop;
     Wave wave;
     StepGrid steps;
     ui::PresetBar presetBar;
@@ -995,7 +1096,8 @@ public:
         const std::vector<std::vector<std::pair<juce::String, std::vector<juce::String>>>> cols = {
             { { "osc a", { "a_shape", "a_pw", "a_oct", "a_semi", "a_fine", "a_level", "a_uni", "a_detune", "a_spread" } },
               { "osc b", { "b_shape", "b_pw", "b_oct", "b_semi", "b_fine", "b_level", "b_uni", "b_detune", "b_spread", "fm" } } },
-            { { ui::U ("sub · noise"), { "sub", "subwave", "suboct", "noise" } },
+            { { "chord", { "chord", "voicing" } },
+              { ui::U ("sub · noise"), { "sub", "subwave", "suboct", "noise" } },
               { "filter", { "ftype", "cutoff", "res", "fdrive", "keytrack" } },
               { "formant", { "vowel", "fmtq", "fmtshift", "fmtmix" } },
               { "comb", { "combtune", "combfb", "combmix" } } },
@@ -1039,9 +1141,9 @@ public:
     void resized() override
     {
         const int w = getWidth();
-        art.setBounds (0, 0, w, 212);
-        presetBar.setBounds (w - 236, 14, 200, 20);
-        tabSynth.setBounds (w - 236, 40, 80, 20); tabMod.setBounds (w - 150, 40, 114, 20);
+        art.setBounds (0, 0, w, theme.mirror ? getHeight() : 212);
+        presetBar.setBounds (w - 236, theme.mirror ? 96 : 14, 200, 20);
+        tabSynth.setBounds (w - 236, theme.mirror ? 122 : 40, 80, 20); tabMod.setBounds (w - 150, theme.mirror ? 122 : 40, 114, 20);
         modPage.setBounds (36, 226, w - 72, getHeight() - 226 - 60);
         const int colW = (w - 72 - 3 * 28) / 4;
         std::array<int, 4> y { 226, 226, 226, 226 };
@@ -1057,10 +1159,13 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.fillAll (theme.ground);
+    }
+    void paintOverChildren (juce::Graphics& g) override
+    {
         if (page == 0) for (auto& [r, t] : headers)
         {
             g.setColour (theme.ink);
-            g.setFont (ui::mono (11.0f, true));
+            g.setFont (theme.mirror ? ui::cond (14.0f, true) : ui::mono (11.0f, true));
             g.drawText (t, r, juce::Justification::centredLeft);
             g.setColour (Colour (pi.accent).withAlpha (0.6f));
             g.fillRect ((float) r.getX(), (float) r.getBottom(), (float) r.getWidth(), 1.0f);

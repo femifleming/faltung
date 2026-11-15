@@ -36,7 +36,22 @@ struct BassParams
     int stepLen = 16, stepDiv = 4; float stepGlide = 0.15f; bool stepRetrig = true;
     struct Slot { int src = 0, dst = 0; float amt = 0; };
     std::array<Slot, 8> mods;
+    int chord = 0; int voicing = 0;   // one key plays a chord (deep house stabs); voicing: close, open, drop 2
 };
+
+/** chord shapes in semitones above the played key (index = the "chord" parameter) */
+inline const std::vector<int>& chordShape (int i)
+{
+    static const std::vector<std::vector<int>> c = {
+        { 0 }, { 0, 7 }, { 0, 12 }, { 0, 4, 7 }, { 0, 3, 7 }, { 0, 4, 7, 11 }, { 0, 3, 7, 10 }, { 0, 4, 7, 10 },
+        { 0, 4, 7, 11, 14 }, { 0, 3, 7, 10, 14 }, { 0, 3, 7, 10, 14, 17 }, { 0, 5, 7 }, { 0, 4, 7, 9, 14 }, { 0, 3, 10, 14 }, { 0, 7, 10, 14, 17 } };
+    return c[(size_t) std::clamp (i, 0, (int) c.size() - 1)];
+}
+inline const char* chordName (int i)
+{
+    static const char* n[15] = { "off", "fifth", "octave", "major", "minor", "major 7", "minor 7", "dominant 7", "major 9", "minor 9", "minor 11", "sus 4", "6 / 9", "minor 9 (no 5th)", "deep stack" };
+    return n[std::clamp (i, 0, 14)];
+}
 
 // modulation sources and destinations (indices are stored in presets / sessions: append only)
 enum ModSrc { MS_OFF, MS_WOBBLE, MS_LFO2, MS_LFO3, MS_STEPS, MS_MENV, MS_AENV, MS_VEL, MS_WHEEL, MS_NOTE, MS_RANDOM, MS_PRESSURE, MS_COUNT };
@@ -243,7 +258,7 @@ inline float runModLfo (const BassParams::Lfo& l, ModLfoState& st, float inc, bo
 class BassVoice
 {
 public:
-    int note = -1;
+    int note = -1, root = -1;
     bool gate = false;
     float vel = 1;
     uint32_t age = 0;
@@ -515,7 +530,7 @@ struct BassEvent { int sample; int type; int a; float v; }; // type: 0 on, 1 off
 class BassSynth
 {
 public:
-    static constexpr int kVoices = 8;
+    static constexpr int kVoices = 12;   // room for two overlapping 6-note chords
     std::atomic<float> showWob { 0 }, showEnv { 0 }, showVowel { 0 }, showLevel { 0 }, showL2 { 0 }, showL3 { 0 }, showSteps { 0 }, showStepPh { 0 }, showCut { 0 };
     std::array<std::atomic<float>, 4> showMod {};
 
@@ -690,18 +705,34 @@ private:
             {
                 const bool wasHeld = heldCount > 0;
                 if (heldCount < 16) held[(size_t) heldCount++] = e.a;
+                if (p.chord > 0)
+                {
+                    // a chord from one key: every chord tone gets its own voice
+                    auto shape = chordShape (p.chord);
+                    if (p.voicing == 1 && shape.size() > 2) shape[1] += 12;                                  // open
+                    if (p.voicing == 2 && shape.size() > 3) shape[shape.size() - 2] -= 12;                  // drop 2
+                    for (auto& v : voices) if (v.root == e.a && v.gate) v.noteOff();
+                    for (int iv : shape)
+                    {
+                        auto* v = allocate (e.a + iv);
+                        v->noteOn (e.a + iv, e.v, true, false, p);
+                        v->root = e.a; v->age = ++clock;
+                    }
+                    break;
+                }
                 if (p.mono)
                 {
                     auto& v = voices[0];
                     for (size_t k = 1; k < voices.size(); ++k) voices[k].noteOff();
-                    const bool legatoNow = p.legato && wasHeld && v.gate;
-                    v.noteOn (e.a, e.v, ! legatoNow, v.note >= 0 && v.active(), p);
+                    const bool legatoNow = p.legato && wasHeld && v.gate && v.root < 0;
+                    v.noteOn (e.a, e.v, ! legatoNow, v.note >= 0 && v.active() && v.root < 0, p);
+                    v.root = -1;
                 }
                 else
                 {
                     auto* v = allocate (e.a);
                     v->noteOn (e.a, e.v, true, false, p);
-                    v->age = ++clock;
+                    v->root = -1; v->age = ++clock;
                 }
                 break;
             }
@@ -709,6 +740,11 @@ private:
             {
                 for (int k = 0; k < heldCount; ++k)
                     if (held[(size_t) k] == e.a) { for (int j = k; j < heldCount - 1; ++j) held[(size_t) j] = held[(size_t) (j + 1)]; --heldCount; break; }
+                {
+                    bool chordVoice = false;
+                    for (auto& v : voices) if (v.root == e.a && v.gate) { v.noteOff(); chordVoice = true; }
+                    if (chordVoice) break;
+                }
                 if (p.mono)
                 {
                     auto& v = voices[0];

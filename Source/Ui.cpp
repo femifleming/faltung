@@ -13,6 +13,17 @@ juce::Font sans (float size, bool medium)
     static auto m = face (BinaryData::InterMedium_ttf, BinaryData::InterMedium_ttfSize);
     return juce::Font (juce::FontOptions (medium ? m : r).withHeight (size));
 }
+juce::Font cond (float size, bool medium)
+{
+    static auto r = face (BinaryData::BarlowCondensedRegular_ttf, BinaryData::BarlowCondensedRegular_ttfSize);
+    static auto m = face (BinaryData::BarlowCondensedMedium_ttf, BinaryData::BarlowCondensedMedium_ttfSize);
+    return juce::Font (juce::FontOptions (medium ? m : r).withHeight (size)).withExtraKerningFactor (0.04f);
+}
+juce::Font light (float size)
+{
+    static auto l = face (BinaryData::BarlowLight_ttf, BinaryData::BarlowLight_ttfSize);
+    return juce::Font (juce::FontOptions (l).withHeight (size));
+}
 juce::Font mono (float size, bool medium)
 {
     static auto r = face (BinaryData::IBMPlexMonoRegular_ttf, BinaryData::IBMPlexMonoRegular_ttfSize);
@@ -54,6 +65,27 @@ void ParamSlider::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
     const float cy = b.getCentreY();
+    if (theme.mirror)
+    {
+        // sleeve style: CONDENSED LABEL · hairline · white tick · light value
+        g.setColour (theme.ink);
+        g.setFont (cond (12.5f));
+        g.drawText (label.toUpperCase(), juce::Rectangle<float> (0, 0, (float) labelW, b.getHeight()), juce::Justification::centredLeft, true);
+        g.setFont (light (12.0f));
+        g.drawText (param.getCurrentValueAsText(), juce::Rectangle<float> (b.getRight() - 70.0f, 0, 70.0f, b.getHeight()), juce::Justification::centredRight);
+        const auto t = track();
+        g.setColour (theme.ink.withAlpha (0.4f));
+        g.fillRect (t.getX(), cy, t.getWidth(), 1.0f);
+        const auto range = param.getNormalisableRange();
+        const bool bipolar = range.start < 0.0f && range.end > 0.0f;
+        const float zero = bipolar ? range.convertTo0to1 (0.0f) : 0.0f;
+        const float a = t.getX() + t.getWidth() * std::min (zero, value01), e = t.getX() + t.getWidth() * std::max (zero, value01);
+        g.setColour (theme.ink.withAlpha (dragging ? 0.9f : 0.65f));
+        g.fillRect (a, cy - 0.5f, e - a, 2.0f);
+        g.setColour (juce::Colours::white);
+        g.fillRect (t.getX() + t.getWidth() * value01 - 1.0f, cy - 6.5f, 2.0f, 13.0f);
+        return;
+    }
     g.setColour (theme.ink);
     g.setFont (mono (11.0f));
     g.drawText (label, juce::Rectangle<float> (0, 0, (float) labelW, b.getHeight()), juce::Justification::centredLeft, true);
@@ -152,15 +184,24 @@ void ChoiceBox::paint (juce::Graphics& g)
             if (i == index)
             {
                 g.setColour (theme.fill);
-                g.fillPath (skewRect (r.reduced (2.0f, 0.0f), 0.35f));
+                if (theme.mirror) g.fillRect (r.getX() + 4.0f, r.getBottom() - 1.0f, r.getWidth() - 8.0f, 2.0f);
+                else g.fillPath (skewRect (r.reduced (2.0f, 0.0f), 0.35f));
             }
             g.setColour (theme.ink);
+            if (theme.mirror) g.setFont (cond (13.0f, i == index));
             g.drawText (c->choices[i], r, juce::Justification::centred);
         }
         return;
     }
     g.setColour (theme.ink);
     const float lw = label.isEmpty() ? 0.0f : (float) labelW;
+    if (theme.mirror)
+    {
+        g.setFont (cond (12.5f)); g.drawText (label.toUpperCase(), b.removeFromLeft (lw), juce::Justification::centredLeft);
+        g.setFont (sans (12.0f)); g.drawText (param.getCurrentValueAsText(), b, juce::Justification::centredLeft);
+        g.setColour (theme.ink.withAlpha (0.35f)); g.fillRect (b.getX(), b.getBottom() - 2.0f, std::min (b.getWidth(), 100.0f), 1.0f);
+        return;
+    }
     g.drawText (label, b.removeFromLeft (lw), juce::Justification::centredLeft);
     g.setFont (mono (11.0f, true));
     g.drawText (param.getCurrentValueAsText(), b, juce::Justification::centredLeft);
@@ -209,6 +250,15 @@ ToggleBox::ToggleBox (juce::RangedAudioParameter& p, Theme t, juce::String l)
 void ToggleBox::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
+    if (theme.mirror)
+    {
+        const auto r = juce::Rectangle<float> (1.0f, b.getCentreY() - 5.0f, 10.0f, 10.0f);
+        g.setColour (theme.ink);
+        if (on) g.fillRect (r); else g.drawRect (r, 1.0f);
+        g.setFont (cond (12.5f));
+        g.drawText (label.toUpperCase(), b.withTrimmedLeft (20.0f), juce::Justification::centredLeft);
+        return;
+    }
     const auto r = juce::Rectangle<float> (0.0f, b.getCentreY() - 5.0f, 18.0f, 10.0f);
     auto p = skewRect (r);
     if (on) { g.setColour (theme.fill); g.fillPath (p); }
@@ -223,6 +273,13 @@ void ToggleBox::mouseDown (const juce::MouseEvent&) { attach.setValueAsCompleteG
 void TextLink::paint (juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat();
+    if (theme.mirror)
+    {
+        g.setColour (theme.ink); g.setFont (cond (13.0f, lit));
+        g.drawText (text, b, juce::Justification::centred);
+        if (lit) g.fillRect (b.getCentreX() - 12.0f, b.getBottom() - 2.0f, 24.0f, 1.5f);
+        return;
+    }
     if (lit) { g.setColour (theme.fill); g.fillPath (skewRect (b.reduced (2.0f, 3.0f), 0.35f)); }
     g.setColour (theme.ink);
     g.setFont (mono (11.0f));
@@ -240,10 +297,10 @@ void PresetBar::paint (juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat();
     g.setColour (theme.ink);
-    g.setFont (mono (11.0f));
+    g.setFont (theme.mirror ? cond (13.0f) : mono (11.0f));
     g.drawText ("<", b.removeFromLeft (16.0f), juce::Justification::centred);
     g.drawText (">", b.removeFromRight (16.0f), juce::Justification::centred);
-    g.setFont (mono (11.0f, true));
+    g.setFont (theme.mirror ? cond (13.0f, true) : mono (11.0f, true));
     g.drawText (p.getProgramName (p.getCurrentProgram()), b, juce::Justification::centred, true);
 }
 void PresetBar::mouseDown (const juce::MouseEvent& e)

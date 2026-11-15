@@ -4,7 +4,10 @@
 `faltung-macOS.zip`, `faltung-Windows.zip` or `faltung-Linux.tar.gz` from the
 [releases](https://github.com/femifleming/faltung/releases). Partials alone: `brew install --cask femifleming/tap/partials`.
 
-**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) (both are also in every download).
+**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) · [faltung deep Manual.pdf](docs/manual-deep/faltung%20deep%20Manual.pdf) (also in every download).
+
+**Two suites, one repository:** *faltung* (minimal / microhouse, below) and *faltung deep* (deep house, [further down](#faltung-deep)).
+`brew install --cask femifleming/tap/faltung-deep`, or `faltung-deep-macOS.zip`, `faltung-deep-Windows.zip`, `faltung-deep-Linux.tar.gz` from the releases. They install side by side.
 
 Drums and processes for minimal / microhouse, after the 2000–2015 sound of Perlon, [a:rpia:r],
 Villalobos and the Romanian scene. Nineteen plug-ins: two drum machines, eight single drum modules,
@@ -40,6 +43,22 @@ and standalone on Linux.
 | **ms0** | master | mastering bus for microhouse and dense experimental / electroacoustic work: linear-phase eq (8 bands + hp / lp, each stereo, mid or side), 2 linear-phase dynamic eq bands, linear-phase 4-band split with gentle compression and per-band width (sub mono), air, 2× oversampled saturation with focus, parallel ambience, glue, true-peak limiter, dither; BS.1770 loudness, true peak, correlation, mid / side analyser with draggable eq points, an imager (polar sample / polar level / lissajous) and level-matched compare. ~190 ms latency (reported). 9 presets. Own manual. |
 | **Partials** | partials | additive / subtractive synthesizer: 516 partials per voice, harmonizer, prism, blur, unison, two filters, phaser, image and sound resynthesis, articulation envelopes, effects. Its own manual and history live in [partials/](partials). |
 | **wb1** | wub | dubstep / neuro bass synth, after DMZ, Hench, Skream, Rusko, Noisa, Current Value, Billain. Two oscillators (sine to saw to square to "hard", up to 7-voice unison, b phase-modulates a), clean sub, noise; lp24/lp12/bp/hp/notch filter with drive; formant filter (a e i o u, the "yoy"); comb tuned to the note; 6 distortions (pre or post filter); host-synced wobble with sine, wow, yoy, ramps, square, random, routable to cutoff, vowel, fm, drive, pitch, volume, comb; mod envelope; mono / legato / glide; mod wheel to wobble depth or rate; 3-band "ott" compression; mono below 140 Hz. Runs at 2× oversampling. 10 presets (sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl, talk box, neuro stab). |
+
+## faltung deep
+
+The deep house twin: the same engines, retuned and re-preset for warm, swung house — round kicks, wooden
+rims, soft room claps, shakers and congas, chord stabs and sub bass. Seventeen plug-ins (no mastering bus,
+no Partials): **kt1** kit (kick, rim, clap, closed / open hat, shaker, conga, tom), **kt2** loop, the eight
+modules **bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9**, the six effects **mc3 dl4 rv5 sw6 fl7 gl8**, and **sb1 stabs** —
+the bass synth with a chord section (one key plays a minor 9, minor 7, 6/9 … in close, open or drop-2 voicing)
+and organ, electric piano, pad, stab and sub presets. Every plug-in is named *faltung deep …* and opens on a
+deep house preset.
+
+The look follows record sleeves of deep house labels: a mirrored tree in one duotone per plug-in that sways
+in a slow wind, sways more as the output gets louder and lights up on every hit, with the controls set like
+the back of a sleeve (Side A / Side B track list, catalogue number, vertical credits). Barlow type.
+
+Build: `cmake --build build --target faltung_deep_all faltungDeepTest`; `./build/faltungDeepTest_artefacts/Release/faltungDeepTest`.
 
 ## Automation
 
@@ -84,4 +103,4 @@ Everything here was made from typed requests; they are logged in [REQUESTS.md](R
 
 ## Licence
 
-AGPL-3.0. Fonts: Inter and IBM Plex Mono, SIL Open Font License (Resources/fonts).
+AGPL-3.0. Fonts: Inter, IBM Plex Mono and Barlow, SIL Open Font License (Resources/fonts).

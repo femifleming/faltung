@@ -3656,6 +3656,24 @@
         "def": "-6.0 db"
       },
       {
+        "id": "chord",
+        "name": "chord",
+        "choices": "off, fifth, octave, major, minor, major 7, minor 7, dominant 7, major 9, minor 9, minor 11, sus 4, 6 / 9, minor 9 (no 5th), deep stack",
+        "type": "choice",
+        "min": "off",
+        "max": "deep stack",
+        "def": "off"
+      },
+      {
+        "id": "voicing",
+        "name": "chord voicing",
+        "choices": "close, open, drop 2",
+        "type": "choice",
+        "min": "close",
+        "max": "drop 2",
+        "def": "close"
+      },
+      {
         "id": "l2div",
         "name": "lfo 2 rate",
         "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar, 2 bars, 4 bars, 8 bars, 16 bars",

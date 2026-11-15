@@ -93,7 +93,8 @@ SEQ = {'run': 'internal clock (standalone, or when the host is stopped)', 'bpm':
        'len': 'pattern length of the track in steps (different lengths = polymeter)', 'prob': 'probability multiplier for every step of the track',
        'shift': 'moves the whole track earlier or later in ms', 'mute': 'silences the track'}
 
-WB = {'shape': 'waveform: sine → triangle → saw → square → hard (saw × square); in-between values blend', 'pw': 'pulse width of the square',
+WB = {'chord': 'one key plays a whole chord: fifth, octave, major, minor, 7ths, 9ths, minor 11, sus 4, 6/9 …', 'voicing': 'close; open (second tone up an octave); drop 2',
+      'shape': 'waveform: sine → triangle → saw → square → hard (saw × square); in-between values blend', 'pw': 'pulse width of the square',
       'oct': 'octave', 'semi': 'semitones', 'fine': 'cents', 'level': 'level into the filter', 'uni': 'unison copies (1–7)',
       'detune': 'spread of the unison copies in pitch (up to ±60 cents)', 'spread': 'spread of the unison copies in stereo',
       'fm': 'osc b phase-modulates osc a (set b level to 0 to hear only the result)', 'sub': 'clean sub level — it bypasses filter and distortion',

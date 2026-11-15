@@ -15,18 +15,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ macOS, Windows, Linux ]
+        suite: [ faltung, deep ]
         include:
-          - name: macOS
-            os: macos-latest
-            package: faltung-macOS.zip
-          - name: Windows
-            os: windows-latest
-            package: faltung-Windows.zip
-          - name: Linux
-            os: ubuntu-22.04
-            package: faltung-Linux.tar.gz
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+          - os: macOS
+            runner: macos-latest
+          - os: Windows
+            runner: windows-latest
+          - os: Linux
+            runner: ubuntu-22.04
+          - suite: faltung
+            targets: faltung_all faltungTest PartialsTest
+            tests: faltungTest PartialsTest
+            name: faltung
+          - suite: deep
+            targets: faltung_deep_all faltungDeepTest
+            tests: faltungDeepTest
+            name: faltung-deep
+    name: ${{ matrix.suite }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
 
     steps:
@@ -49,10 +56,10 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then EXTRA="-G Ninja"; fi
           if [ "$RUNNER_OS" = "macOS" ]; then EXTRA="-G Ninja -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"; fi
           if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="-A x64"; fi
-          cmake -B build $EXTRA -DCMAKE_BUILD_TYPE=Release
+          cmake -B build $EXTRA -DCMAKE_BUILD_TYPE=Release -DFALTUNG_LTO=OFF
 
       - name: Build
-        run: cmake --build build --config Release --parallel 4 --target faltung_all faltungTest PartialsTest
+        run: cmake --build build --config Release --parallel 4 --target ${{ matrix.targets }}
 
       - name: Test
         shell: bash
@@ -60,19 +67,19 @@ jobs:
           find_exe() { find build -type f \( -name "$1" -o -name "$1.exe" \) -path "*_artefacts*" | head -n 1; }
           RUN=""
           if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
-          for t in faltungTest PartialsTest; do
+          for t in ${{ matrix.tests }}; do
             exe="$(find_exe $t)"; echo "== $t ($exe)"
             $RUN "$exe"
           done
 
       - name: Package
         shell: bash
-        run: ci/package.sh "${{ matrix.name }}" build
+        run: ci/package.sh "${{ matrix.os }}" build "${{ matrix.suite }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.package }}
-          path: dist/${{ matrix.package }}
+          name: ${{ matrix.name }}-${{ matrix.os }}
+          path: dist/${{ matrix.name }}-${{ matrix.os }}.*
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
