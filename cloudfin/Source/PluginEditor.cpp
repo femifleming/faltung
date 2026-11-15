@@ -686,7 +686,7 @@ void CloudfinEditor::drawSkyHalf (Graphics& g)
     {
         Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (0, 0, (int) cx + 2, (int) hy);
-        const float r = th.mode == 1 ? 46.0f : 26.0f, sy = th.mode == 1 ? hy - 6.0f : (th.mode == 0 ? 62.0f : 70.0f);
+        const float r = th.mode == 1 ? 46.0f : 26.0f, sy = th.mode == 1 ? hy - 34.0f : (th.mode == 0 ? 62.0f : 70.0f);
         g.setColour (th.sun.withAlpha (0.9f));
         g.fillEllipse (cx - r, sy - r, 2 * r, 2 * r);
         if (th.mode == 2) { g.setColour (th.sun.withAlpha (0.35f)); g.drawEllipse (cx - r - 9.0f, sy - r - 9.0f, 2 * r + 18.0f, 2 * r + 18.0f, 1.0f); }
