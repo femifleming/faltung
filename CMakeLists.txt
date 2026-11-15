@@ -106,6 +106,7 @@ faltung_plugin(sw6 13 Fsw6 effect  "swing")
 faltung_plugin(fl7 14 Ffl7 effect  "filter")
 faltung_plugin(gl8 15 Fgl8 effect  "glue")
 faltung_plugin(wb1 16 Fwb1 module  "dubstep + neuro bass synth")
+faltung_plugin(ms0 17 Fms0 effect  "mastering bus")
 add_custom_target(faltung_all DEPENDS ${FAL_ALL_TARGETS})
 
 # Partials (additive / image resynthesis synth) lives in partials/ and builds with the bundle

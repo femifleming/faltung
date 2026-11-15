@@ -21,6 +21,8 @@ static juce::RangedAudioParameter& P (Processor& p, const juce::String& id)
     return *r;
 }
 
+#include "MasterView.h"
+
 // pattern clipboard shared by every machine in the session
 static Pattern<8> kitClip;
 static Pattern<1> loopClip;
@@ -924,6 +926,7 @@ Editor::Editor (Processor& p) : AudioProcessorEditor (p), proc (p)
     if (p.pid == Pid::kt1) view = std::make_unique<KitView> (p);
     else if (p.pid == Pid::kt2) view = std::make_unique<LoopView> (p);
     else if (p.pid == Pid::wb1) view = std::make_unique<SynthView> (p);
+    else if (p.pid == Pid::ms0) view = std::make_unique<MasterView> (p);
     else view = std::make_unique<ModuleView> (p);
     nominalW = p.pinfo.w; nominalH = p.pinfo.h;
     view->setBounds (0, 0, nominalW, nominalH);

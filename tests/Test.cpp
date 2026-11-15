@@ -100,6 +100,27 @@ int main (int argc, char** argv)
     }
     if (wavDir != juce::File()) wavDir.createDirectory();
     for (int i = 1; i < argc; ++i)
+        if (juce::String (argv[i]) == "--fircheck")
+        {
+            const int N = 8192;
+            FirDesigner d (N); std::vector<float> h ((size_t) N);
+            d.design (48000.0, [] (double) { return 1.0; }, h.data());
+            int mi = 0; double sum = 0; for (int k = 0; k < N; ++k) { sum += h[(size_t) k]; if (std::abs (h[(size_t) k]) > std::abs (h[(size_t) mi])) mi = k; }
+            std::cout << "flat fir: peak " << h[(size_t) mi] << " at " << mi << ", sum " << sum << ", h[mi+1] " << h[(size_t) mi + 1] << "\n";
+            PartConv c; c.prepare (N); c.loadNow (h.data(), N);
+            std::vector<float> x (20000, 0.0f); x[100] = 1.0f;
+            c.process (x.data(), (int) x.size());
+            int pi2 = 0; for (int k = 0; k < (int) x.size(); ++k) if (std::abs (x[(size_t) k]) > std::abs (x[(size_t) pi2])) pi2 = k;
+            std::cout << "conv impulse: peak " << x[(size_t) pi2] << " at " << pi2 << " (expected " << 100 + PartConv::B + N / 2 << ")\n";
+            // random signal vs direct
+            juce::Random r (1); std::vector<float> y (20000); for (auto& v : y) v = r.nextFloat() * 2 - 1;
+            auto z = y; PartConv c2; c2.prepare (N); c2.loadNow (h.data(), N); c2.process (z.data(), (int) z.size());
+            double e = 0, ref = 0; const int lat = PartConv::B + N / 2;
+            for (int k = lat + 100; k < 20000; ++k) { const double dd = z[(size_t) k] - y[(size_t) (k - lat)]; e += dd * dd; ref += (double) y[(size_t) (k - lat)] * y[(size_t) (k - lat)]; }
+            std::cout << "conv random residual " << 10 * std::log10 (e / ref + 1e-30) << " dB\n";
+            return 0;
+        }
+    for (int i = 1; i < argc; ++i)
         if (juce::String (argv[i]) == "--dump-params" && i + 1 < argc)
         {
             // every product's parameters as JSON, for the manual
@@ -219,6 +240,35 @@ int main (int argc, char** argv)
                 writeWav (wavDir.getChildFile (juce::String (pi.code) + "-preset-" + proc->getProgramName (pr).replaceCharacter (' ', '_') + ".wav"), o, 48000.0);
         }
 
+        if (pi.id == Pid::ms0)
+        {
+            // null test: everything neutral → output must equal the input delayed by the reported latency
+            Processor m (Pid::ms0);
+            for (auto id : { "mbon", "dynon", "glueon", "limon", "saton", "ambon" }) m.setParam (id, 0.0f);
+            for (int b = 1; b <= 4; ++b) m.setParam ("b" + juce::String (b) + "width", 1.0f);
+            m.setParam ("match", 0.0f);
+            double rt2; auto o = render (m, &loop, 4.0, rt2);
+            const int lat = m.getLatencySamples();
+            double err = 0, ref = 0;
+            for (int c = 0; c < 2; ++c)
+                for (int k = lat + 2000; k < o.getNumSamples(); ++k)
+                {
+                    const float x = loop.getSample (c, (k - lat) % loop.getNumSamples()), y = o.getSample (c, k);
+                    err += (double) (y - x) * (y - x); ref += (double) x * x;
+                }
+            const double nullDb = 10.0 * std::log10 ((err + 1e-30) / (ref + 1e-30));
+            std::cout << "  null test: latency " << lat << " samples, residual " << nullDb << " dB\n";
+            check (nullDb < -90.0, "ms0 null test");
+            // limiter: a hot signal must stay under the true-peak ceiling
+            Processor h (Pid::ms0);
+            h.setParam ("limgain", 18.0f); h.setParam ("ceiling", -1.0f);
+            auto hot = render (h, &loop, 4.0, rt2);
+            float pk = 0;
+            for (int c = 0; c < 2; ++c) for (int k = h.getLatencySamples() + 4800; k < hot.getNumSamples(); ++k) pk = std::max (pk, std::abs (hot.getSample (c, k)));
+            std::cout << "  limiter: +18 db into -1 dbtp ceiling, sample peak " << juce::Decibels::gainToDecibels (pk) << " dB\n";
+            check (pk <= juce::Decibels::decibelsToGain (-0.99f), "ms0 limiter ceiling");
+        }
+
         // state round trip
         proc->setCurrentProgram (proc->getNumPrograms() > 1 ? 1 : 0);
         juce::MemoryBlock mb; proc->getStateInformation (mb);
@@ -234,8 +284,10 @@ int main (int argc, char** argv)
         if (shotDir != juce::File())
         {
             proc->setCurrentProgram (0);
+            if (pi.id == Pid::ms0) { proc->setCurrentProgram (2); double r4; render (*proc, &loop, 3.0, r4); }   // "dense experimental", with audio in the scopes
             std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
             ed->setSize (pi.w, pi.h);
+            if (auto* fe = dynamic_cast<Editor*> (ed.get())) for (int t = 0; t < 12; ++t) fe->tickForTest();
             juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
             juce::PNGImageFormat png;
             const auto f = shotDir.getChildFile (juce::String (pi.code) + ".png");

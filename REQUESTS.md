@@ -15,3 +15,7 @@ What was asked for, in order, as typed.
 
 Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.md).
 11. "in WB1, dont put the actual artist names in the preset names." (wb1 presets renamed by sound: sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl.)
+12. "i also want a mastering bus vst part of this bunde. designed for both mastering that microhouse sound anf my dense experimenta electronic/electroacosutic work. it needs to be extemeely high quality, the eqs linear phase. in the same aesthetic. read this convo: [a conversation about a master-bus chain for dense music with extreme lows and highs: linear-phase and mid/side eq, dynamic eq / gentle multiband, saturation, frequency-dependent stereo imaging with mono subs, subtle parallel ambience, glue, true-peak limiting at -1 dbtp, loudness / true-peak / correlation metering, and bypassing every stage to judge it]" (ms0 master.)
+13. "make it have a visualizer for mid side like ozone imageer has" (the imager: polar sample, polar level, lissajous, correlation, per-band width.)
+14. "and give it presets as well." (nine presets.)
+15. "make a manual for it when youre done" (ms0 master Manual.pdf, and a chapter in the faltung manual.)

@@ -2,6 +2,7 @@
 #include "Products.h"
 #include "dsp/Sequencer.h"
 #include "dsp/Bass.h"
+#include "dsp/Master.h"
 
 namespace fal
 {
@@ -72,6 +73,8 @@ public:
     Micro* micro() { return microFx.get(); }
     Swing* swing() { return swingFx.get(); }
     BassSynth* bass() { return bassFx.get(); }
+    MasterChain* master() { return masterFx.get(); }
+    MasterParams readMaster() const;
     /** synth keyboard in the editor: velocity 0 = note off */
     void uiNote (int note, float velocity) { uiTrigger (note, velocity); }
     void swingLearn (bool start);
@@ -120,6 +123,24 @@ private:
     std::unique_ptr<Micro> microFx;
     std::unique_ptr<Swing> swingFx;
     std::unique_ptr<BassSynth> bassFx;
+    std::unique_ptr<MasterChain> masterFx;
+    /** redesigns the linear-phase FIRs when eq / crossover parameters move (ms0) */
+    struct Designer : juce::Thread
+    {
+        Processor& p; explicit Designer (Processor& pr) : juce::Thread ("faltung fir"), p (pr) {}
+        void run() override
+        {
+            while (! threadShouldExit())
+            {
+                wait (25);
+                const juce::ScopedLock sl (p.designLock);
+                if (p.masterReady) p.masterFx->design (p.readMaster(), false);
+            }
+        }
+    };
+    juce::CriticalSection designLock;
+    bool masterReady = false;
+    std::unique_ptr<Designer> designer;
     BassParams readBass() const;
     void processSynth (juce::AudioBuffer<float>&, juce::MidiBuffer&, const Transport&);
     Smooth masterSm;

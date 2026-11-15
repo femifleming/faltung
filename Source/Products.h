@@ -6,8 +6,8 @@
 
 namespace fal
 {
-enum class Pid { kt1, kt2, bd1, sd2, rm3, hh4, cp6, pc7, cl8, tm9, mc3, dl4, rv5, sw6, fl7, gl8, wb1 };
-constexpr int kNumProducts = 17;
+enum class Pid { kt1, kt2, bd1, sd2, rm3, hh4, cp6, pc7, cl8, tm9, mc3, dl4, rv5, sw6, fl7, gl8, wb1, ms0 };
+constexpr int kNumProducts = 18;
 
 enum class Kind { Machine, Module, Effect, Synth };
 enum class Style { Snd, Fell, Oval, Stdio };

@@ -83,6 +83,7 @@ Processor::Processor (Pid product)
         case Pid::mc3: microFx = std::make_unique<Micro>(); break;
         case Pid::sw6: swingFx = std::make_unique<Swing>(); break;
         case Pid::wb1: bassFx = std::make_unique<BassSynth>(); break;
+        case Pid::ms0: masterFx = std::make_unique<MasterChain>(); designer = std::make_unique<Designer> (*this); designer->startThread(); break;
         default: break;
     }
     if (pid == Pid::kt1)
@@ -99,7 +100,7 @@ Processor::Processor (Pid product)
     }
 }
 
-Processor::~Processor() = default;
+Processor::~Processor() { if (designer) designer->stopThread (2000); }
 
 juce::AudioProcessorEditor* Processor::createEditor() { return new Editor (*this); }
 
@@ -119,6 +120,7 @@ double Processor::getTailLengthSeconds() const
     {
         case Pid::dl4: return 8.0;
         case Pid::rv5: return 8.0;
+        case Pid::ms0: return 2.0;
         case Pid::mc3: return 0.5;
         default: return pinfo.kind == Kind::Effect ? 0.0 : 2.0;
     }
@@ -139,6 +141,14 @@ void Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
     if (glueFx) glueFx->prepare ((float) sr);
     if (microFx) microFx->prepare ((float) sr);
     if (bassFx) bassFx->prepare ((float) sr);
+    if (masterFx)
+    {
+        const juce::ScopedLock sl (designLock);
+        masterFx->prepare (sr, samplesPerBlock);
+        masterFx->design (readMaster(), true);
+        masterReady = true;
+        setLatencySamples (masterFx->latency());
+    }
     if (swingFx) { swingFx->prepare ((float) sr); setLatencySamples (swingFx->latency()); }
 }
 
@@ -686,6 +696,13 @@ void Processor::processEffect (juce::AudioBuffer<float>& buffer, const Transport
             microFx->process (L, R, n, m, tr);
             break;
         }
+        case Pid::ms0:
+        {
+            const auto mp = readMaster();
+            for (int off = 0; off < n; off += 4096)
+                masterFx->process (L + off, R + off, std::min (4096, n - off), mp);
+            break;
+        }
         case Pid::sw6:
         {
             SwingParams s;
@@ -733,7 +750,7 @@ void Processor::setCurrentProgram (int i)
     if (i < 0 || i >= (int) pr.size()) return;
     currentProgram = i;
     // a preset is complete: everything it does not mention goes back to its default
-    static const juce::StringArray keep { "pattern", "run", "bpm", "master", "loopbeats" };
+    static const juce::StringArray keep { "pattern", "run", "bpm", "master", "loopbeats", "listen", "bypass", "match", "trim" };
     for (auto* prm : getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
             if (! keep.contains (r->getParameterID()) && std::abs (r->getValue() - r->getDefaultValue()) > 1.0e-6f)
@@ -847,6 +864,52 @@ void Processor::processSynth (juce::AudioBuffer<float>& buffer, juce::MidiBuffer
     auto* L = buffer.getWritePointer (0); auto* R = buffer.getWritePointer (1);
     bassFx->process (L, R, n, readBass(), tr, ev.data(), ne);
     midi.clear();
+}
+
+
+// ---- ms0 master ----------------------------------------------------------------------------------------
+MasterParams Processor::readMaster() const
+{
+    MasterParams m;
+    auto b = [this] (const juce::String& id) { return param (id) > 0.5f; };
+    auto I = [this] (const juce::String& id) { return (int) param (id); };
+    static const int orders[4] = { 2, 4, 8, 16 };
+    m.trim = param ("trim"); m.listen = I ("listen"); m.bypass = b ("bypass"); m.match = b ("match");
+    m.eqOn = b ("eqon");
+    for (int k = 0; k < 8; ++k)
+    {
+        const juce::String x = "e" + juce::String (k + 1);
+        auto& e = m.eq[(size_t) k];
+        e.on = b (x + "on"); e.type = I (x + "type"); e.freq = param (x + "freq"); e.gain = param (x + "gain"); e.q = param (x + "q"); e.ch = I (x + "ch");
+    }
+    m.hpOn = b ("hpon"); m.hpF = param ("hpfreq"); m.hpOrd = orders[std::clamp (I ("hpslope"), 0, 3)]; m.hpCh = I ("hpch");
+    m.lpOn = b ("lpon"); m.lpF = param ("lpfreq"); m.lpOrd = orders[std::clamp (I ("lpslope"), 0, 3)]; m.lpCh = I ("lpch");
+    m.dynOn = b ("dynon");
+    for (int k = 0; k < 2; ++k)
+    {
+        const juce::String x = "d" + juce::String (k + 1);
+        auto& d = m.dyn[(size_t) k];
+        d.on = b (x + "on"); d.ch = I (x + "ch"); d.freq = param (x + "freq"); d.q = param (x + "q"); d.thr = param (x + "thr");
+        d.range = param (x + "range"); d.attack = param (x + "att"); d.release = param (x + "rel");
+    }
+    m.mbOn = b ("mbon"); m.x1 = param ("x1"); m.x2 = param ("x2"); m.x3 = param ("x3");
+    for (int k = 0; k < 4; ++k)
+    {
+        const juce::String x = "b" + juce::String (k + 1);
+        auto& d = m.mb[(size_t) k];
+        d.thr = param (x + "thr"); d.ratio = param (x + "ratio"); d.attack = param (x + "att"); d.release = param (x + "rel");
+        d.gain = param (x + "gain"); d.width = param (x + "width"); d.solo = b (x + "solo");
+    }
+    m.imgOn = b ("imgon"); m.air = param ("air");
+    m.satOn = b ("saton"); m.satCurve = I ("satcurve"); m.satFocus = I ("satfocus"); m.satDrive = param ("satdrive"); m.satMix = param ("satmix");
+    m.ambOn = b ("ambon"); m.ambLevel = param ("amblevel"); m.ambSize = param ("ambsize"); m.ambDecay = param ("ambdecay");
+    m.ambHp = param ("ambhp"); m.ambLp = param ("amblp"); m.ambWidth = param ("ambwidth");
+    m.glueOn = b ("glueon"); m.gThr = param ("gthr"); m.gRatio = param ("gratio"); m.gAtt = param ("gatt"); m.gRel = param ("grel");
+    m.gAuto = b ("gauto"); m.gMakeup = param ("gmakeup"); m.gMix = param ("gmix");
+    m.limOn = b ("limon"); m.limGain = param ("limgain"); m.ceiling = param ("ceiling"); m.limRel = param ("limrel");
+    m.limAuto = b ("limauto"); m.lookahead = param ("lookahead");
+    m.out = param ("out"); m.dither = I ("dither"); m.shaping = b ("shaping");
+    return m;
 }
 
 } // namespace fal

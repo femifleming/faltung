@@ -30,6 +30,7 @@ const ProductInfo& info (Pid p)
         { Pid::fl7, "fl7", "filter", "3-band isolator + resonant sweep",             Kind::Effect,  Style::Snd,   0xff8593d4, 0xffcfe6f0, VType::Kick,  760, 480 },
         { Pid::gl8, "gl8", "glue",   "bus compressor + tape saturation",             Kind::Effect,  Style::Stdio, 0xffdfe9ed, 0xff8fa9b5, VType::Kick,  760, 480 },
         { Pid::wb1, "wb1", "wub",    "dubstep + neuro bass synth",                   Kind::Synth,   Style::Fell,  0xff2f4a52, 0xff7fd3c8, VType::Kick, 1100, 760 },
+        { Pid::ms0, "ms0", "master", "mastering bus: linear-phase eq, mid / side, imaging, limiter", Kind::Effect, Style::Stdio, 0xff1a242c, 0xff5aaad8, VType::Kick, 1320, 880 },
     };
     return t[(int) p];
 }
@@ -260,6 +261,108 @@ void bassParams (L& l)
     l.f ("level", "level", NR (-24.0f, 6.0f), -6.0f, dbText);
 }
 
+void masterParams (L& l)
+{
+    const juce::StringArray chs { "stereo", "mid", "side" };
+    const juce::StringArray slopes { "12 db", "24 db", "48 db", "96 db" };
+    auto on = [&] (const juce::String& id, const juce::String& n, bool d) { l.b (id, n, d); };
+    auto db = [] (float v) { return (v > 0 ? "+" : "") + juce::String (v, 1) + " db"; };
+    auto ms = [] (float v) { return v < 10 ? juce::String (v, 1) + " ms" : juce::String (juce::roundToInt (v)) + " ms"; };
+    auto ratio = [] (float v) { return juce::String (v, 2) + ":1"; };
+    l.f ("trim", "input trim", NR (-24.0f, 24.0f), 0.0f, db);
+    l.c ("listen", "listen", { "stereo", "mono", "side", "swap" }, 0);
+    on ("bypass", "compare (bypass)", false);
+    on ("match", "level-matched compare", true);
+    // eq
+    on ("eqon", "eq on", true);
+    const float f0[8] = { 40, 120, 300, 700, 1500, 3500, 8000, 14000 };
+    for (int k = 1; k <= 8; ++k)
+    {
+        const juce::String x = "e" + juce::String (k), n = "eq " + juce::String (k) + " ";
+        on (x + "on", n + "on", false);
+        l.c (x + "type", n + "type", { "bell", "low shelf", "high shelf", "notch" }, k == 1 ? 1 : (k == 8 ? 2 : 0));
+        l.f (x + "freq", n + "freq", NR (20.0f, 20000.0f, 0.0f, 0.25f), f0[k - 1], hz);
+        l.f (x + "gain", n + "gain", NR (-18.0f, 18.0f), 0.0f, db);
+        l.f (x + "q", n + "q", NR (0.1f, 18.0f, 0.0f, 0.35f), 0.7f, plain2);
+        l.c (x + "ch", n + "channel", chs, 0);
+    }
+    on ("hpon", "high-pass on", false);
+    l.f ("hpfreq", "high-pass freq", NR (10.0f, 500.0f, 0.0f, 0.35f), 22.0f, hz);
+    l.c ("hpslope", "high-pass slope", slopes, 1);
+    l.c ("hpch", "high-pass channel", chs, 0);
+    on ("lpon", "low-pass on", false);
+    l.f ("lpfreq", "low-pass freq", NR (2000.0f, 22000.0f, 0.0f, 0.5f), 20000.0f, hz);
+    l.c ("lpslope", "low-pass slope", slopes, 1);
+    l.c ("lpch", "low-pass channel", chs, 0);
+    // dynamic eq
+    on ("dynon", "dynamic eq on", true);
+    for (int k = 1; k <= 2; ++k)
+    {
+        const juce::String x = "d" + juce::String (k), n = "dyn " + juce::String (k) + " ";
+        on (x + "on", n + "on", false);
+        l.c (x + "ch", n + "channel", chs, 1);
+        l.f (x + "freq", n + "freq", NR (20.0f, 20000.0f, 0.0f, 0.25f), k == 1 ? 400.0f : 3000.0f, hz);
+        l.f (x + "q", n + "q", NR (0.3f, 12.0f, 0.0f, 0.4f), 1.4f, plain2);
+        l.f (x + "thr", n + "threshold", NR (-60.0f, 0.0f), -30.0f, db);
+        l.f (x + "range", n + "range", NR (-18.0f, 12.0f), -4.0f, db);
+        l.f (x + "att", n + "attack", NR (0.5f, 100.0f, 0.0f, 0.4f), 10.0f, ms);
+        l.f (x + "rel", n + "release", NR (10.0f, 1000.0f, 0.0f, 0.4f), 120.0f, ms);
+    }
+    // multiband + imaging
+    on ("mbon", "multiband on", true);
+    l.f ("x1", "crossover 1", NR (30.0f, 300.0f, 0.0f, 0.5f), 80.0f, hz);
+    l.f ("x2", "crossover 2", NR (150.0f, 2000.0f, 0.0f, 0.5f), 350.0f, hz);
+    l.f ("x3", "crossover 3", NR (1000.0f, 12000.0f, 0.0f, 0.5f), 4000.0f, hz);
+    const char* bn[4] = { "sub", "low-mid", "mid-high", "high" };
+    const float wd[4] = { 0.0f, 0.85f, 1.0f, 1.1f };
+    for (int k = 1; k <= 4; ++k)
+    {
+        const juce::String x = "b" + juce::String (k), n = juce::String (bn[k - 1]) + " ";
+        l.f (x + "thr", n + "threshold", NR (-60.0f, 0.0f), -18.0f, db);
+        l.f (x + "ratio", n + "ratio", NR (1.0f, 4.0f, 0.0f, 0.6f), 1.5f, ratio);
+        l.f (x + "att", n + "attack", NR (1.0f, 200.0f, 0.0f, 0.4f), k == 1 ? 40.0f : 25.0f, ms);
+        l.f (x + "rel", n + "release", NR (20.0f, 1000.0f, 0.0f, 0.4f), k == 1 ? 220.0f : 150.0f, ms);
+        l.f (x + "gain", n + "gain", NR (-12.0f, 12.0f), 0.0f, db);
+        l.f (x + "width", n + "width", NR (0.0f, 2.0f), wd[k - 1], pct);
+        on (x + "solo", n + "solo", false);
+    }
+    on ("imgon", "imaging on", true);
+    l.f ("air", "air (top-band width)", NR (0.0f, 1.0f), 0.0f, pct);
+    // saturation
+    on ("saton", "saturation on", false);
+    l.c ("satcurve", "saturation curve", { "tape", "tube", "soft clip", "smooth" }, 0);
+    l.c ("satfocus", "saturation focus", { "full", "lows", "highs", "ends (avoid 200-2k)" }, 0);
+    l.f ("satdrive", "saturation drive", NR (0.0f, 18.0f), 3.0f, db);
+    l.f ("satmix", "saturation mix", NR (0.0f, 1.0f), 1.0f, pct);
+    // ambience
+    on ("ambon", "ambience on", false);
+    l.f ("amblevel", "ambience level", NR (-60.0f, -6.0f), -30.0f, db);
+    l.f ("ambsize", "ambience size", NR (0.0f, 1.0f), 0.3f, pct);
+    l.f ("ambdecay", "ambience decay", NR (0.1f, 3.0f, 0.0f, 0.5f), 0.6f, [] (float v) { return juce::String (v, 2) + " s"; });
+    l.f ("ambhp", "ambience high-pass", NR (40.0f, 1000.0f, 0.0f, 0.4f), 300.0f, hz);
+    l.f ("amblp", "ambience low-pass", NR (2000.0f, 20000.0f, 0.0f, 0.4f), 10000.0f, hz);
+    l.f ("ambwidth", "ambience width", NR (0.0f, 1.5f), 1.0f, pct);
+    // glue
+    on ("glueon", "glue on", true);
+    l.f ("gthr", "glue threshold", NR (-40.0f, 0.0f), -16.0f, db);
+    l.f ("gratio", "glue ratio", NR (1.0f, 4.0f, 0.0f, 0.6f), 2.0f, ratio);
+    l.f ("gatt", "glue attack", NR (0.1f, 50.0f, 0.0f, 0.4f), 20.0f, ms);
+    l.f ("grel", "glue release", NR (50.0f, 1200.0f, 0.0f, 0.5f), 150.0f, ms);
+    on ("gauto", "glue auto release", true);
+    l.f ("gmakeup", "glue makeup", NR (-6.0f, 12.0f), 0.0f, db);
+    l.f ("gmix", "glue mix", NR (0.0f, 1.0f), 1.0f, pct);
+    // limiter + output
+    on ("limon", "limiter on", true);
+    l.f ("limgain", "limiter gain", NR (0.0f, 18.0f), 0.0f, db);
+    l.f ("ceiling", "ceiling (true peak)", NR (-6.0f, 0.0f), -1.0f, [] (float v) { return juce::String (v, 1) + " dbtp"; });
+    l.f ("limrel", "limiter release", NR (10.0f, 1000.0f, 0.0f, 0.4f), 120.0f, ms);
+    on ("limauto", "limiter auto release", true);
+    l.f ("lookahead", "limiter lookahead", NR (0.5f, 5.0f), 3.0f, ms);
+    l.f ("out", "output", NR (-24.0f, 6.0f), 0.0f, db);
+    l.c ("dither", "dither", { "off", "24 bit", "16 bit" }, 0);
+    on ("shaping", "noise shaping", false);
+}
+
 void seqGlobals (L& l, bool kit)
 {
     l.b ("run", "run (internal clock)", false);
@@ -410,6 +513,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                     l.b ("hold", "hold", false);
                     l.f ("mix", "mix", NR (0.0f, 1.0f), 0.5f, pct);
                     break;
+                case Pid::ms0: masterParams (l); break;
                 case Pid::sw6:
                 {
                     juce::StringArray tn; for (int i = 0; i < 6; ++i) tn.add (Swing::templName (i));
@@ -584,6 +688,45 @@ const std::vector<Preset>& presets (Pid p)
                              { "dmode", 3 }, { "ddrive", 0.3f }, { "ott", 0.4f } }),
             B ("neuro stab", { { "voices", 1 }, { "a_shape", 4 }, { "a_uni", 5 }, { "a_detune", 0.35f }, { "cutoff", 200 }, { "wcut", 0 }, { "mcut", 4.0f }, { "md", 160 },
                                { "dmode", 1 }, { "ddrive", 0.6f }, { "ott", 0.8f }, { "ad", 300 }, { "as", 0 }, { "ar", 120 }, { "sub", 0.5f } }),
+        };
+        // ms0 master
+        auto Mp = [] (const char* name, V v) { return Preset { name, v, {} }; };
+        table[(int) Pid::ms0] = {
+            Mp ("transparent", { { "mbon", 0 }, { "glueon", 0 }, { "dynon", 0 }, { "b1width", 1 }, { "b2width", 1 }, { "b3width", 1 }, { "b4width", 1 } }),
+            Mp ("microhouse club", { { "hpon", 1 }, { "hpfreq", 24 }, { "hpslope", 1 },
+                { "e2on", 1 }, { "e2freq", 250 }, { "e2gain", -1.0f }, { "e2q", 0.8f }, { "e2ch", 1 },
+                { "e5on", 1 }, { "e5freq", 420 }, { "e5gain", -1.5f }, { "e5q", 0.9f }, { "e5ch", 2 },
+                { "e6on", 1 }, { "e6freq", 3000 }, { "e6gain", -0.8f }, { "e6q", 1.0f }, { "e6ch", 1 },
+                { "e8on", 1 }, { "e8freq", 10000 }, { "e8gain", 1.5f }, { "e8ch", 2 },
+                { "b1width", 0 }, { "b2width", 0.8f }, { "b3width", 1.05f }, { "b4width", 1.2f },
+                { "saton", 1 }, { "satfocus", 1 }, { "satdrive", 3 }, { "satmix", 0.5f },
+                { "gthr", -18 }, { "limgain", 4 } }),
+            Mp ("dense experimental", { { "e3on", 1 }, { "e3freq", 300 }, { "e3gain", -1.5f }, { "e3q", 0.9f }, { "e3ch", 1 },
+                { "e5on", 1 }, { "e5freq", 1200 }, { "e5gain", -1.0f }, { "e5q", 1.2f }, { "e5ch", 1 },
+                { "e6on", 1 }, { "e6freq", 450 }, { "e6gain", -1.5f }, { "e6q", 0.8f }, { "e6ch", 2 },
+                { "e8on", 1 }, { "e8freq", 9000 }, { "e8gain", 1.5f }, { "e8ch", 2 },
+                { "d1on", 1 }, { "d1ch", 1 }, { "d1freq", 400 }, { "d1thr", -30 }, { "d1range", -4 },
+                { "d2on", 1 }, { "d2ch", 1 }, { "d2freq", 2800 }, { "d2thr", -32 }, { "d2range", -3 },
+                { "b1ratio", 1.3f }, { "b2ratio", 1.4f }, { "b3ratio", 1.4f }, { "b4ratio", 1.3f },
+                { "b1width", 0 }, { "b2width", 0.85f }, { "b3width", 1.15f }, { "b4width", 1.35f }, { "air", 0.15f },
+                { "ambon", 1 }, { "amblevel", -34 }, { "ambsize", 0.25f }, { "glueon", 0 }, { "limgain", 1.5f } }),
+            Mp ("electroacoustic, dynamic", { { "mbon", 0 }, { "glueon", 0 }, { "b1width", 0.3f }, { "b2width", 1 }, { "b3width", 1 }, { "b4width", 1 },
+                { "d1on", 1 }, { "d1ch", 0 }, { "d1freq", 3500 }, { "d1thr", -24 }, { "d1range", -3 }, { "d1q", 1.0f },
+                { "limgain", 0 }, { "ceiling", -1.0f }, { "limrel", 300 } }),
+            Mp ("wide air, deep space", { { "e8on", 1 }, { "e8freq", 12000 }, { "e8gain", 2.0f }, { "e8ch", 2 },
+                { "b1width", 0 }, { "b2width", 0.9f }, { "b3width", 1.2f }, { "b4width", 1.5f }, { "air", 0.35f },
+                { "ambon", 1 }, { "amblevel", -30 }, { "ambsize", 0.4f }, { "ambdecay", 0.9f }, { "limgain", 2 } }),
+            Mp ("mono-safe low end", { { "x1", 110 }, { "x2", 300 }, { "b1width", 0 }, { "b2width", 0.5f }, { "b3width", 1 }, { "b4width", 1.15f },
+                { "hpon", 1 }, { "hpfreq", 120 }, { "hpch", 2 }, { "hpslope", 2 } }),
+            Mp ("loud club", { { "hpon", 1 }, { "hpfreq", 25 }, { "b1ratio", 2 }, { "b2ratio", 2 }, { "b3ratio", 1.8f }, { "b4ratio", 1.6f },
+                { "b1width", 0 }, { "b2width", 0.8f }, { "b3width", 1.05f }, { "b4width", 1.2f },
+                { "saton", 1 }, { "satcurve", 2 }, { "satfocus", 3 }, { "satdrive", 4 }, { "satmix", 0.6f },
+                { "gthr", -20 }, { "gratio", 2 }, { "limgain", 7 }, { "lookahead", 2 } }),
+            Mp ("vinyl pre-master", { { "hpon", 1 }, { "hpfreq", 25 }, { "lpon", 1 }, { "lpfreq", 18000 },
+                { "x1", 150 }, { "b1width", 0 }, { "b2width", 0.75f }, { "b3width", 1 }, { "b4width", 1 },
+                { "ceiling", -1.5f }, { "limgain", 0 } }),
+            Mp ("16-bit export", { { "mbon", 0 }, { "glueon", 0 }, { "dynon", 0 }, { "b1width", 1 }, { "b2width", 1 }, { "b3width", 1 }, { "b4width", 1 },
+                { "dither", 2 }, { "shaping", 1 } }),
         };
         built = true;
     }

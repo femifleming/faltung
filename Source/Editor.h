@@ -17,6 +17,8 @@ public:
     ~Editor() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    /** advance the displays once (offline screenshots) */
+    void tickForTest() { if (view) view->tick(); }
 
 private:
     void timerCallback() override;

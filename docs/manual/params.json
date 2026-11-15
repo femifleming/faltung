@@ -3668,5 +3668,1177 @@
       "talk box",
       "neuro stab"
     ]
+  },
+  {
+    "code": "ms0",
+    "name": "master",
+    "blurb": "mastering bus: linear-phase eq, mid / side, imaging, limiter",
+    "params": [
+      {
+        "id": "trim",
+        "name": "input trim",
+        "type": "float",
+        "min": "-24.0 db",
+        "max": "+24.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "listen",
+        "name": "listen",
+        "choices": "stereo, mono, side, swap",
+        "type": "choice",
+        "min": "stereo",
+        "max": "swap",
+        "def": "stereo"
+      },
+      {
+        "id": "bypass",
+        "name": "compare (bypass)",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "match",
+        "name": "level-matched compare",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "eqon",
+        "name": "eq on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "e1on",
+        "name": "eq 1 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e1type",
+        "name": "eq 1 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "low shelf"
+      },
+      {
+        "id": "e1freq",
+        "name": "eq 1 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "40.0 hz"
+      },
+      {
+        "id": "e1gain",
+        "name": "eq 1 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e1q",
+        "name": "eq 1 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e1ch",
+        "name": "eq 1 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e2on",
+        "name": "eq 2 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e2type",
+        "name": "eq 2 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "bell"
+      },
+      {
+        "id": "e2freq",
+        "name": "eq 2 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "120 hz"
+      },
+      {
+        "id": "e2gain",
+        "name": "eq 2 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e2q",
+        "name": "eq 2 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e2ch",
+        "name": "eq 2 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e3on",
+        "name": "eq 3 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e3type",
+        "name": "eq 3 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "bell"
+      },
+      {
+        "id": "e3freq",
+        "name": "eq 3 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "300 hz"
+      },
+      {
+        "id": "e3gain",
+        "name": "eq 3 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e3q",
+        "name": "eq 3 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e3ch",
+        "name": "eq 3 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e4on",
+        "name": "eq 4 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e4type",
+        "name": "eq 4 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "bell"
+      },
+      {
+        "id": "e4freq",
+        "name": "eq 4 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "700 hz"
+      },
+      {
+        "id": "e4gain",
+        "name": "eq 4 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e4q",
+        "name": "eq 4 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e4ch",
+        "name": "eq 4 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e5on",
+        "name": "eq 5 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e5type",
+        "name": "eq 5 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "bell"
+      },
+      {
+        "id": "e5freq",
+        "name": "eq 5 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "1.50 khz"
+      },
+      {
+        "id": "e5gain",
+        "name": "eq 5 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e5q",
+        "name": "eq 5 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e5ch",
+        "name": "eq 5 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e6on",
+        "name": "eq 6 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e6type",
+        "name": "eq 6 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "bell"
+      },
+      {
+        "id": "e6freq",
+        "name": "eq 6 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "3.50 khz"
+      },
+      {
+        "id": "e6gain",
+        "name": "eq 6 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e6q",
+        "name": "eq 6 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e6ch",
+        "name": "eq 6 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e7on",
+        "name": "eq 7 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e7type",
+        "name": "eq 7 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "bell"
+      },
+      {
+        "id": "e7freq",
+        "name": "eq 7 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "8.00 khz"
+      },
+      {
+        "id": "e7gain",
+        "name": "eq 7 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e7q",
+        "name": "eq 7 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e7ch",
+        "name": "eq 7 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "e8on",
+        "name": "eq 8 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "e8type",
+        "name": "eq 8 type",
+        "choices": "bell, low shelf, high shelf, notch",
+        "type": "choice",
+        "min": "bell",
+        "max": "notch",
+        "def": "high shelf"
+      },
+      {
+        "id": "e8freq",
+        "name": "eq 8 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "14.0 khz"
+      },
+      {
+        "id": "e8gain",
+        "name": "eq 8 gain",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "e8q",
+        "name": "eq 8 q",
+        "type": "float",
+        "min": "0.10",
+        "max": "18.00",
+        "def": "0.70"
+      },
+      {
+        "id": "e8ch",
+        "name": "eq 8 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "hpon",
+        "name": "high-pass on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "hpfreq",
+        "name": "high-pass freq",
+        "type": "float",
+        "min": "10.0 hz",
+        "max": "500 hz",
+        "def": "22.0 hz"
+      },
+      {
+        "id": "hpslope",
+        "name": "high-pass slope",
+        "choices": "12 db, 24 db, 48 db, 96 db",
+        "type": "choice",
+        "min": "12 db",
+        "max": "96 db",
+        "def": "24 db"
+      },
+      {
+        "id": "hpch",
+        "name": "high-pass channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "lpon",
+        "name": "low-pass on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "lpfreq",
+        "name": "low-pass freq",
+        "type": "float",
+        "min": "2.00 khz",
+        "max": "22.0 khz",
+        "def": "20.0 khz"
+      },
+      {
+        "id": "lpslope",
+        "name": "low-pass slope",
+        "choices": "12 db, 24 db, 48 db, 96 db",
+        "type": "choice",
+        "min": "12 db",
+        "max": "96 db",
+        "def": "24 db"
+      },
+      {
+        "id": "lpch",
+        "name": "low-pass channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "stereo"
+      },
+      {
+        "id": "dynon",
+        "name": "dynamic eq on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "d1on",
+        "name": "dyn 1 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "d1ch",
+        "name": "dyn 1 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "mid"
+      },
+      {
+        "id": "d1freq",
+        "name": "dyn 1 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "400 hz"
+      },
+      {
+        "id": "d1q",
+        "name": "dyn 1 q",
+        "type": "float",
+        "min": "0.30",
+        "max": "12.00",
+        "def": "1.40"
+      },
+      {
+        "id": "d1thr",
+        "name": "dyn 1 threshold",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "0.0 db",
+        "def": "-30.0 db"
+      },
+      {
+        "id": "d1range",
+        "name": "dyn 1 range",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+12.0 db",
+        "def": "-4.0 db"
+      },
+      {
+        "id": "d1att",
+        "name": "dyn 1 attack",
+        "type": "float",
+        "min": "0.5 ms",
+        "max": "100 ms",
+        "def": "10 ms"
+      },
+      {
+        "id": "d1rel",
+        "name": "dyn 1 release",
+        "type": "float",
+        "min": "10 ms",
+        "max": "1000 ms",
+        "def": "120 ms"
+      },
+      {
+        "id": "d2on",
+        "name": "dyn 2 on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "d2ch",
+        "name": "dyn 2 channel",
+        "choices": "stereo, mid, side",
+        "type": "choice",
+        "min": "stereo",
+        "max": "side",
+        "def": "mid"
+      },
+      {
+        "id": "d2freq",
+        "name": "dyn 2 freq",
+        "type": "float",
+        "min": "20.0 hz",
+        "max": "20.0 khz",
+        "def": "3.00 khz"
+      },
+      {
+        "id": "d2q",
+        "name": "dyn 2 q",
+        "type": "float",
+        "min": "0.30",
+        "max": "12.00",
+        "def": "1.40"
+      },
+      {
+        "id": "d2thr",
+        "name": "dyn 2 threshold",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "0.0 db",
+        "def": "-30.0 db"
+      },
+      {
+        "id": "d2range",
+        "name": "dyn 2 range",
+        "type": "float",
+        "min": "-18.0 db",
+        "max": "+12.0 db",
+        "def": "-4.0 db"
+      },
+      {
+        "id": "d2att",
+        "name": "dyn 2 attack",
+        "type": "float",
+        "min": "0.5 ms",
+        "max": "100 ms",
+        "def": "10 ms"
+      },
+      {
+        "id": "d2rel",
+        "name": "dyn 2 release",
+        "type": "float",
+        "min": "10 ms",
+        "max": "1000 ms",
+        "def": "120 ms"
+      },
+      {
+        "id": "mbon",
+        "name": "multiband on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "x1",
+        "name": "crossover 1",
+        "type": "float",
+        "min": "30.0 hz",
+        "max": "300 hz",
+        "def": "80.0 hz"
+      },
+      {
+        "id": "x2",
+        "name": "crossover 2",
+        "type": "float",
+        "min": "150 hz",
+        "max": "2.00 khz",
+        "def": "350 hz"
+      },
+      {
+        "id": "x3",
+        "name": "crossover 3",
+        "type": "float",
+        "min": "1.00 khz",
+        "max": "12.0 khz",
+        "def": "4.00 khz"
+      },
+      {
+        "id": "b1thr",
+        "name": "sub threshold",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "0.0 db",
+        "def": "-18.0 db"
+      },
+      {
+        "id": "b1ratio",
+        "name": "sub ratio",
+        "type": "float",
+        "min": "1.00:1",
+        "max": "4.00:1",
+        "def": "1.50:1"
+      },
+      {
+        "id": "b1att",
+        "name": "sub attack",
+        "type": "float",
+        "min": "1.0 ms",
+        "max": "200 ms",
+        "def": "40 ms"
+      },
+      {
+        "id": "b1rel",
+        "name": "sub release",
+        "type": "float",
+        "min": "20 ms",
+        "max": "1000 ms",
+        "def": "220 ms"
+      },
+      {
+        "id": "b1gain",
+        "name": "sub gain",
+        "type": "float",
+        "min": "-12.0 db",
+        "max": "+12.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "b1width",
+        "name": "sub width",
+        "type": "float",
+        "min": "0%",
+        "max": "200%",
+        "def": "0%"
+      },
+      {
+        "id": "b1solo",
+        "name": "sub solo",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "b2thr",
+        "name": "low-mid threshold",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "0.0 db",
+        "def": "-18.0 db"
+      },
+      {
+        "id": "b2ratio",
+        "name": "low-mid ratio",
+        "type": "float",
+        "min": "1.00:1",
+        "max": "4.00:1",
+        "def": "1.50:1"
+      },
+      {
+        "id": "b2att",
+        "name": "low-mid attack",
+        "type": "float",
+        "min": "1.0 ms",
+        "max": "200 ms",
+        "def": "25 ms"
+      },
+      {
+        "id": "b2rel",
+        "name": "low-mid release",
+        "type": "float",
+        "min": "20 ms",
+        "max": "1000 ms",
+        "def": "150 ms"
+      },
+      {
+        "id": "b2gain",
+        "name": "low-mid gain",
+        "type": "float",
+        "min": "-12.0 db",
+        "max": "+12.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "b2width",
+        "name": "low-mid width",
+        "type": "float",
+        "min": "0%",
+        "max": "200%",
+        "def": "85%"
+      },
+      {
+        "id": "b2solo",
+        "name": "low-mid solo",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "b3thr",
+        "name": "mid-high threshold",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "0.0 db",
+        "def": "-18.0 db"
+      },
+      {
+        "id": "b3ratio",
+        "name": "mid-high ratio",
+        "type": "float",
+        "min": "1.00:1",
+        "max": "4.00:1",
+        "def": "1.50:1"
+      },
+      {
+        "id": "b3att",
+        "name": "mid-high attack",
+        "type": "float",
+        "min": "1.0 ms",
+        "max": "200 ms",
+        "def": "25 ms"
+      },
+      {
+        "id": "b3rel",
+        "name": "mid-high release",
+        "type": "float",
+        "min": "20 ms",
+        "max": "1000 ms",
+        "def": "150 ms"
+      },
+      {
+        "id": "b3gain",
+        "name": "mid-high gain",
+        "type": "float",
+        "min": "-12.0 db",
+        "max": "+12.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "b3width",
+        "name": "mid-high width",
+        "type": "float",
+        "min": "0%",
+        "max": "200%",
+        "def": "100%"
+      },
+      {
+        "id": "b3solo",
+        "name": "mid-high solo",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "b4thr",
+        "name": "high threshold",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "0.0 db",
+        "def": "-18.0 db"
+      },
+      {
+        "id": "b4ratio",
+        "name": "high ratio",
+        "type": "float",
+        "min": "1.00:1",
+        "max": "4.00:1",
+        "def": "1.50:1"
+      },
+      {
+        "id": "b4att",
+        "name": "high attack",
+        "type": "float",
+        "min": "1.0 ms",
+        "max": "200 ms",
+        "def": "25 ms"
+      },
+      {
+        "id": "b4rel",
+        "name": "high release",
+        "type": "float",
+        "min": "20 ms",
+        "max": "1000 ms",
+        "def": "150 ms"
+      },
+      {
+        "id": "b4gain",
+        "name": "high gain",
+        "type": "float",
+        "min": "-12.0 db",
+        "max": "+12.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "b4width",
+        "name": "high width",
+        "type": "float",
+        "min": "0%",
+        "max": "200%",
+        "def": "110%"
+      },
+      {
+        "id": "b4solo",
+        "name": "high solo",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "imgon",
+        "name": "imaging on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "air",
+        "name": "air (top-band width)",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "0%"
+      },
+      {
+        "id": "saton",
+        "name": "saturation on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "satcurve",
+        "name": "saturation curve",
+        "choices": "tape, tube, soft clip, smooth",
+        "type": "choice",
+        "min": "tape",
+        "max": "smooth",
+        "def": "tape"
+      },
+      {
+        "id": "satfocus",
+        "name": "saturation focus",
+        "choices": "full, lows, highs, ends (avoid 200-2k)",
+        "type": "choice",
+        "min": "full",
+        "max": "ends (avoid 200-2k)",
+        "def": "full"
+      },
+      {
+        "id": "satdrive",
+        "name": "saturation drive",
+        "type": "float",
+        "min": "0.0 db",
+        "max": "+18.0 db",
+        "def": "+3.0 db"
+      },
+      {
+        "id": "satmix",
+        "name": "saturation mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "ambon",
+        "name": "ambience on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      },
+      {
+        "id": "amblevel",
+        "name": "ambience level",
+        "type": "float",
+        "min": "-60.0 db",
+        "max": "-6.0 db",
+        "def": "-30.0 db"
+      },
+      {
+        "id": "ambsize",
+        "name": "ambience size",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "30%"
+      },
+      {
+        "id": "ambdecay",
+        "name": "ambience decay",
+        "type": "float",
+        "min": "0.10 s",
+        "max": "3.00 s",
+        "def": "0.60 s"
+      },
+      {
+        "id": "ambhp",
+        "name": "ambience high-pass",
+        "type": "float",
+        "min": "40.0 hz",
+        "max": "1.00 khz",
+        "def": "300 hz"
+      },
+      {
+        "id": "amblp",
+        "name": "ambience low-pass",
+        "type": "float",
+        "min": "2.00 khz",
+        "max": "20.0 khz",
+        "def": "10.0 khz"
+      },
+      {
+        "id": "ambwidth",
+        "name": "ambience width",
+        "type": "float",
+        "min": "0%",
+        "max": "150%",
+        "def": "100%"
+      },
+      {
+        "id": "glueon",
+        "name": "glue on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "gthr",
+        "name": "glue threshold",
+        "type": "float",
+        "min": "-40.0 db",
+        "max": "0.0 db",
+        "def": "-16.0 db"
+      },
+      {
+        "id": "gratio",
+        "name": "glue ratio",
+        "type": "float",
+        "min": "1.00:1",
+        "max": "4.00:1",
+        "def": "2.00:1"
+      },
+      {
+        "id": "gatt",
+        "name": "glue attack",
+        "type": "float",
+        "min": "0.1 ms",
+        "max": "50 ms",
+        "def": "20 ms"
+      },
+      {
+        "id": "grel",
+        "name": "glue release",
+        "type": "float",
+        "min": "50 ms",
+        "max": "1200 ms",
+        "def": "150 ms"
+      },
+      {
+        "id": "gauto",
+        "name": "glue auto release",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "gmakeup",
+        "name": "glue makeup",
+        "type": "float",
+        "min": "-6.0 db",
+        "max": "+12.0 db",
+        "def": "+0.0 db"
+      },
+      {
+        "id": "gmix",
+        "name": "glue mix",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "100%"
+      },
+      {
+        "id": "limon",
+        "name": "limiter on",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "limgain",
+        "name": "limiter gain",
+        "type": "float",
+        "min": "0.0 db",
+        "max": "+18.0 db",
+        "def": "0.0 db"
+      },
+      {
+        "id": "ceiling",
+        "name": "ceiling (true peak)",
+        "type": "float",
+        "min": "-6.0 dbtp",
+        "max": "0.0 dbtp",
+        "def": "-1.0 dbtp"
+      },
+      {
+        "id": "limrel",
+        "name": "limiter release",
+        "type": "float",
+        "min": "10 ms",
+        "max": "1000 ms",
+        "def": "120 ms"
+      },
+      {
+        "id": "limauto",
+        "name": "limiter auto release",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "on"
+      },
+      {
+        "id": "lookahead",
+        "name": "limiter lookahead",
+        "type": "float",
+        "min": "0.5 ms",
+        "max": "5.0 ms",
+        "def": "3.0 ms"
+      },
+      {
+        "id": "out",
+        "name": "output",
+        "type": "float",
+        "min": "-24.0 db",
+        "max": "+6.0 db",
+        "def": "+0.0 db"
+      },
+      {
+        "id": "dither",
+        "name": "dither",
+        "choices": "off, 24 bit, 16 bit",
+        "type": "choice",
+        "min": "off",
+        "max": "16 bit",
+        "def": "off"
+      },
+      {
+        "id": "shaping",
+        "name": "noise shaping",
+        "type": "bool",
+        "min": "off",
+        "max": "on",
+        "def": "off"
+      }
+    ],
+    "presets": [
+      "transparent",
+      "microhouse club",
+      "dense experimental",
+      "electroacoustic, dynamic",
+      "wide air, deep space",
+      "mono-safe low end",
+      "loud club",
+      "vinyl pre-master",
+      "16-bit export"
+    ]
   }
 ]

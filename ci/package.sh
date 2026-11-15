@@ -38,12 +38,12 @@ product() {   # product <folder name> <target> <file name>
     esac
 }
 
-for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1; do
+for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do
     product "faltung $p" "faltung_$p" "faltung $p"
 done
 product Partials Partials Partials
 
-cp "$ROOT/docs/manual/faltung Manual.pdf" "$OUT/"
+cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$OUT/"
 cp "$ROOT/partials/docs/manual/manual.pdf" "$OUT/Partials Manual.pdf"
 cp "$ROOT/README.md" "$ROOT/LICENSE" "$OUT/"
 

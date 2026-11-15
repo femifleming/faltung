@@ -4,11 +4,11 @@
 `faltung-macOS.zip`, `faltung-Windows.zip` or `faltung-Linux.tar.gz` from the
 [releases](https://github.com/femifleming/faltung/releases). Partials alone: `brew install --cask femifleming/tap/partials`.
 
-**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) (both are also in every download).
+**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) (both are also in every download).
 
 Drums and processes for minimal / microhouse, after the 2000–2015 sound of Perlon, [a:rpia:r],
-Villalobos and the Romanian scene. Eighteen plug-ins: two drum machines, eight single drum modules,
-six effects, a bass synth, and Partials, an additive synthesizer with image resynthesis. Every module uses the same synthesis code as the kit, so a sound moves between them unchanged.
+Villalobos and the Romanian scene. Nineteen plug-ins: two drum machines, eight single drum modules,
+six effects, a bass synth, a linear-phase mastering bus, and Partials, an additive synthesizer with image resynthesis. Every module uses the same synthesis code as the kit, so a sound moves between them unchanged.
 
 The look follows the sleeves of that era: Mark Fell's flat colour fields with wireframe solids, snd's
 folded pastel strips, Oval's coloured lines, stdio's pale chevrons and tracklists. The pictures are
@@ -37,6 +37,7 @@ and standalone on Linux.
 | **sw6** | swing | moves the audio itself onto a groove: every 16th is read from a delay line with its own offset. Templates, 16 per-step offsets, humanize, accents, and *learn groove* from a playing loop. 70 ms latency, reported to the host. |
 | **fl7** | filter | 3-band DJ isolator (Linkwitz-Riley, kills) + resonant one-knob lp/hp sweep with drive and a synced lfo. |
 | **gl8** | glue | bus compressor (soft knee, sidechain hp, program-dependent auto release) + tape (bias, head bump, hf loss). |
+| **ms0** | master | mastering bus for microhouse and dense experimental / electroacoustic work: linear-phase eq (8 bands + hp / lp, each stereo, mid or side), 2 linear-phase dynamic eq bands, linear-phase 4-band split with gentle compression and per-band width (sub mono), air, 2× oversampled saturation with focus, parallel ambience, glue, true-peak limiter, dither; BS.1770 loudness, true peak, correlation, mid / side analyser with draggable eq points, an imager (polar sample / polar level / lissajous) and level-matched compare. ~190 ms latency (reported). 9 presets. Own manual. |
 | **Partials** | partials | additive / subtractive synthesizer: 516 partials per voice, harmonizer, prism, blur, unison, two filters, phaser, image and sound resynthesis, articulation envelopes, effects. Its own manual and history live in [partials/](partials). |
 | **wb1** | wub | dubstep / neuro bass synth, after DMZ, Hench, Skream, Rusko, Noisa, Current Value, Billain. Two oscillators (sine to saw to square to "hard", up to 7-voice unison, b phase-modulates a), clean sub, noise; lp24/lp12/bp/hp/notch filter with drive; formant filter (a e i o u, the "yoy"); comb tuned to the note; 6 distortions (pre or post filter); host-synced wobble with sine, wow, yoy, ramps, square, random, routable to cutoff, vowel, fm, drive, pitch, volume, comb; mod envelope; mono / legato / glide; mod wheel to wobble depth or rate; 3-band "ott" compression; mono below 140 Hz. Runs at 2× oversampling. 10 presets (sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl, talk box, neuro stab). |
 

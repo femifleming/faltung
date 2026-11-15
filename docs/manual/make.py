@@ -11,7 +11,7 @@ VERSION = '1.0.0'
 
 GROUND = {'kt1': '#c9b53b', 'kt2': '#f4f2ec', 'bd1': '#b88a26', 'sd2': '#9cc788', 'rm3': '#8ec3e6', 'hh4': '#8d9bd6', 'cp6': '#a9bccf',
           'pc7': '#f6c590', 'cl8': '#eef6fa', 'tm9': '#76a582', 'mc3': '#ee8e6e', 'dl4': '#fbfbf8', 'rv5': '#f4f9fb', 'sw6': '#79e04a',
-          'fl7': '#8593d4', 'gl8': '#dfe9ed', 'wb1': '#2f4a52'}
+          'fl7': '#8593d4', 'gl8': '#dfe9ed', 'wb1': '#2f4a52', 'ms0': '#1a242c'}
 e = html.escape
 
 # ------------------------------------------------------------------------------------------------
@@ -208,27 +208,27 @@ add(f'''<section class="cover">{chevrons()}
 <div class="ct"><h1>faltung</h1><p class="sub">drums, processes and bass for minimal, microhouse and dubstep</p>
 <p class="ver">manual · version {VERSION} · november 2026</p></div>
 <div class="tl">''' + ''.join(f'<div><span class="chip" style="background:{GROUND[c]}"></span><span>01 : {i:02d} : {(i*17)%60:02d}</span><b>{c}</b><span>{e(P[c]["name"])}</span><span>{e(P[c]["blurb"])}</span></div>'
-                      for i, c in enumerate(['kt1', 'kt2', 'bd1', 'sd2', 'rm3', 'hh4', 'cp6', 'pc7', 'cl8', 'tm9', 'mc3', 'dl4', 'rv5', 'sw6', 'fl7', 'gl8', 'wb1'])) + '</div></section>')
+                      for i, c in enumerate(['kt1', 'kt2', 'bd1', 'sd2', 'rm3', 'hh4', 'cp6', 'pc7', 'cl8', 'tm9', 'mc3', 'dl4', 'rv5', 'sw6', 'fl7', 'gl8', 'wb1', 'ms0'])) + '</div></section>')
 
 add('''<section class="page"><h2>contents</h2><ol class="toc">
 <li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">using the controls</a></li>
 <li><a href="#auto">automation in ableton</a></li><li><a href="#midi">midi</a></li>
 <li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li><li><a href="#modules">the drum modules</a> — bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9</li>
-<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
+<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
 <h2 id="intro">introduction</h2>
-<p>faltung is a set of seventeen instruments and effects for the sound of 2000s minimal and microhouse — Perlon, [a:rpia:r], Villalobos, the Romanian
+<p>faltung is a set of eighteen instruments and effects for the sound of 2000s minimal and microhouse — Perlon, [a:rpia:r], Villalobos, the Romanian
 labels — and for the bass of early dubstep and neuro. Everything is synthesized or processed live; there are no sample libraries.</p>
 <p>The drums come twice: as <b>kt1 kit</b>, a drum machine with eight voices and a sequencer, and as eight single <b>modules</b> (bd1 … tm9) that
 you play from a midi clip or a drum rack. They share one synthesis engine, so a sound you design in a module behaves identically in the kit.
 The <b>processes</b> are the effects that make that music move: micro-sampling, dub echo, small rooms, groove, the dj filter and bus glue.
-<b>wb1 wub</b> is a bass synth for wobbles, formants and reese.</p>
+<b>wb1 wub</b> is a bass synth for wobbles, formants and reese, and <b>ms0 master</b> a linear-phase mastering bus.</p>
 <p>The look follows record sleeves of the period — Mark Fell's flat colour fields and wireframe solids, snd's folded pastel strips, Oval's coloured
 lines, stdio's chevrons and tracklists. The pictures are not decoration: they are drawn from the current settings and move as you play.</p>
 <table class="params"><tr><th>id</th><th>name</th><th>type</th><th>what it is</th></tr>''' +
 ''.join(f'<tr><td class="n">{c}</td><td>{e(P[c]["name"])}</td><td>{t}</td><td>{e(P[c]["blurb"])}</td></tr>' for c, t in
         [('kt1', 'drum machine'), ('kt2', 'drum machine'), ('bd1', 'module'), ('sd2', 'module'), ('rm3', 'module'), ('hh4', 'module'), ('cp6', 'module'),
          ('pc7', 'module'), ('cl8', 'module'), ('tm9', 'module'), ('mc3', 'effect'), ('dl4', 'effect'), ('rv5', 'effect'), ('sw6', 'effect'),
-         ('fl7', 'effect'), ('gl8', 'effect'), ('wb1', 'synth')]) + '</table></section>')
+         ('fl7', 'effect'), ('gl8', 'effect'), ('wb1', 'synth'), ('ms0', 'mastering')]) + '</table></section>')
 
 add('''<section class="page"><h2 id="install">installing</h2>
 <p>Each plug-in comes as VST3, Audio Unit and VST2, plus a standalone app. On this Mac they are already installed:</p>
@@ -404,6 +404,92 @@ wobble; on <b>wobble rate</b> it switches to faster divisions.</p>
 <h3>recipes</h3><table class="params">{''.join(f'<tr><td class="n">{e(n)}</td><td>{t}</td></tr>' for n, t in WB_RECIPES)}</table>
 <h3>controls</h3>{ptable(params_rows('wb1', wb_desc))}{presets('wb1')}</section>''')
 
+# ---- ms0 master -------------------------------------------------------------------------------------------
+MS = {
+ 'trim': 'input level. Aim for peaks around -6 dbfs into the chain', 'listen': 'monitoring only: stereo · mono (sum) · side (the difference) · swap (L / R). Set stereo before you bounce',
+ 'bypass': 'compare: hear the input instead (delayed to match the latency)', 'match': 'during compare, the input is level-matched to the output (short-term loudness), so louder never wins by default',
+ 'eqon': 'switch the whole linear-phase eq (stays at the same latency)', 'type': 'bell · low shelf · high shelf · notch', 'freq': 'centre or corner frequency', 'gain': 'boost or cut',
+ 'q': 'width: low = broad, high = narrow', 'ch': 'stereo (both) · mid (the centre) · side (the edges)', 'on': 'band on',
+ 'hpon': 'high-pass on', 'hpfreq': 'high-pass corner', 'hpslope': '12 – 96 db / octave', 'hpch': 'which part it acts on (side = remove lows from the edges only)',
+ 'lpon': 'low-pass on', 'lpfreq': 'low-pass corner', 'lpslope': '12 – 96 db / octave', 'lpch': 'which part it acts on',
+ 'dynon': 'switch both dynamic bands', 'thr': 'level at which the band starts acting', 'range': 'maximum cut (negative) or boost (positive)', 'att': 'how fast it reacts', 'rel': 'how fast it lets go',
+ 'mbon': 'switch the band compression (the split and widths stay)', 'x1': 'sub / low-mid crossover', 'x2': 'low-mid / mid-high crossover', 'x3': 'mid-high / high crossover',
+ 'ratio': 'compression ratio, keep it 1.2 – 2', 'width': 'stereo width of the band: 0% mono, 100% as is, 200% doubled side', 'solo': 'hear only the soloed bands',
+ 'imgon': 'switch the per-band widths', 'air': 'adds a decorrelated copy of the top band\'s centre to its sides: width for mono highs, no transient smear below the top crossover',
+ 'saton': 'saturation on', 'satcurve': 'tape · tube · soft clip · smooth', 'satfocus': 'where the harmonics are generated: full · lows · highs · ends (leaves 200 hz – 2 khz alone)',
+ 'satdrive': 'drive into the curve (level-compensated)', 'satmix': 'parallel: dry / saturated',
+ 'ambon': 'ambience on', 'amblevel': 'level of the parallel room, keep it very quiet', 'ambsize': 'room size', 'ambdecay': 'tail length', 'ambhp': 'high-pass on the room', 'amblp': 'low-pass on the room', 'ambwidth': 'stereo width of the room',
+ 'glueon': 'glue on', 'gthr': 'threshold', 'gratio': 'ratio', 'gatt': 'attack', 'grel': 'release', 'gauto': 'program-dependent release', 'gmakeup': 'makeup gain', 'gmix': 'parallel mix',
+ 'limon': 'limiter on', 'limgain': 'drive into the limiter', 'ceiling': 'maximum true peak (inter-sample peaks included)', 'limrel': 'release', 'limauto': 'fast release after short peaks, slower when held', 'lookahead': 'attack window (latency stays fixed at 5 ms)',
+ 'out': 'output level (before dither)', 'dither': 'TPDF dither for 24 or 16 bit export; off for 32-bit float', 'shaping': 'first-order noise shaping (pushes dither noise up in frequency)',
+}
+def ms_desc(pid):
+    import re
+    if pid in MS: return MS[pid]
+    m = re.match(r'^[edb]\d(.+)$', pid)
+    if m and m.group(1) in MS: return MS[m.group(1)]
+    return ''
+MS_PRESETS = [
+ ('transparent', 'only the limiter at -1 dbtp. The starting point: switch stages on one at a time and keep only those that help'),
+ ('microhouse club', 'subsonic high-pass, a little low-mid out of the centre, side mud cleared, side air, sub mono and widening above, tape saturation on the lows, light glue, +4 db into the limiter'),
+ ('dense experimental', 'no high-pass (your lows stay), mid cuts at 300 hz and 1.2 khz, side cut at 450 hz, side air, two dynamic mid bands at 400 hz and 2.8 khz, gentle bands, widths 0 / 85 / 115 / 135%, air, a very quiet room, no glue, light limiting'),
+ ('electroacoustic, dynamic', 'almost nothing: a dynamic band catching harshness around 3.5 khz, the sub narrowed, slow limiter release. Keeps the full dynamic range'),
+ ('wide air, deep space', 'side high shelf, wide top band with air, a quiet room for depth'),
+ ('mono-safe low end', 'everything under 110 hz mono, low-mids half width, side high-pass at 120 hz'),
+ ('loud club', 'firmer bands, soft-clip saturation focused on the ends, glue, +7 db into the limiter with a short lookahead'),
+ ('vinyl pre-master', 'high- and low-pass, everything under 150 hz mono, low-mids narrowed, ceiling -1.5 dbtp, no limiting gain'),
+ ('16-bit export', 'transparent, with 16-bit TPDF dither and noise shaping for CD / 16-bit delivery'),
+]
+msflow = """<svg class="flow" viewBox="0 0 700 120" font-family="IBM Plex Mono" font-size="10"><g fill="none" stroke="#5aaad8" stroke-width="1.3">""" + \
+  ''.join(f'<rect x="{10+i*86}" y="34" width="76" height="34"/>' for i in range(8)) + \
+  ''.join(f'<path d="M{86+i*86} 51 H{96+i*86}"/>' for i in range(7)) + """</g><g fill="#e9eef0">""" + \
+  ''.join(f'<text x="{16+i*86}" y="49">{a}</text><text x="{16+i*86}" y="62" font-size="8.5">{b}</text>' for i,(a,b) in enumerate(
+   [('trim','listen'),('lin eq','8 + hp/lp'),('dyn eq','2 bands'),('split','4 bands'),('sat','2x'),('room','parallel'),('glue','bus comp'),('limit','true peak')])) + \
+  """<text x="10" y="20">mid / side throughout · stages A and B are linear phase (FIR) · every stage can be switched off at the same latency</text>
+<text x="10" y="96" font-size="9">meters: loudness momentary / short-term / integrated (BS.1770) · true peak · correlation · spectrum pre / post, mid / side · imager</text></g></svg>"""
+ms0_html = f'''<section class="page" id="ms0"><h2>ms0 master</h2>
+<p class="lead">A mastering bus for two kinds of work: the tight, dry, wide-but-centred sound of 2000s microhouse, and dense experimental and
+electroacoustic music that reaches from the lowest lows to the highest highs. The aim is not maximum loudness or maximum width but
+<b>spectral separation, depth and controlled stereo</b>, without flattening the density that makes the music what it is.</p>
+{shot('ms0')}
+<h3>the chain</h3><div class="dark">{msflow}</div>
+<p>Everything runs in mid / side. The eq and the band split are <b>linear phase</b>: they change level without smearing the timing of
+transients or the phase between frequencies, which is why the plug-in has about 190 ms of latency (8192-tap filters at 48 khz, longer
+filters at higher rates so the resolution stays the same). Ableton compensates automatically. With every stage neutral the output equals the
+input to within 135 db — the test suite checks this.</p>
+<h3>a way of working</h3><ol>
+<li><b>trim</b> so the loudest peaks sit near -6 dbfs. Listen in <b>mono</b> once for reference.</li>
+<li>Look at the <b>analyser</b> (mid blue, side orange, the input faint) — especially 150 hz – 1.5 khz, where many independent sounds pile up.
+The analyser shows where to listen, not where to cut.</li>
+<li><b>eq</b>: remove what is not wanted. A high-pass only if the lows below 25 hz are not part of the music. Small cuts in the low-mids of the
+<b>mid</b> if the centre is crowded; side-only cuts around 200 – 500 hz if the edges are muddy; a gentle side high shelf for air.
+Double-click the analyser to add a band, drag it, scroll for q, right-click for type and channel.</li>
+<li><b>dynamic eq</b> for buildups that only happen sometimes (a texture that blooms at 400 hz when it gets loud).</li>
+<li><b>multiband</b>: gentle (1.3 – 2:1, 1 – 2 db of reduction) and only where the low end moves too much. Go easy on the low-mid band.
+Then the <b>widths</b>: sub mono, low-mids slightly narrow, mids moderate, highs wider. Width and depth are different things; watch the imager and
+the correlation.</li>
+<li><b>saturation</b> only for definition (a low end that should be heard on small speakers). Focus <i>ends</i> keeps it out of 200 hz – 2 khz.</li>
+<li><b>ambience</b> — a very quiet, filtered room — only if the mix lacks a sense of space. Often reducing competing information creates more space than adding a room.</li>
+<li><b>glue</b> 0.5 – 1.5 db, or none.</li>
+<li><b>limiter</b>: ceiling -1 dbtp, ideally 1 – 2 db of reduction or less. Don't chase a loudness number.</li>
+<li>Check everything with <b>compare</b> (level-matched): each stage must improve separation, depth or translation, or it goes. The best chain is often short.</li></ol>
+<h3>the imager</h3><p>Click it to switch between three views. <b>Polar sample</b> (as in Ozone Imager): every sample is a dot; mono material
+stands on the vertical line, hard left and right on the diagonals, out-of-phase material lies along the horizontal. Dots outside the
+diagonals mean more side than mid. <b>Polar level</b>: the energy at each angle as rays. <b>Lissajous</b>: the classic goniometer. Below: the
+<b>correlation</b> (+1 mono, 0 wide, below 0 phase trouble that will vanish in mono) and, for each band, the measured width (orange) against
+the width you set (white mark). The same per-band width bars appear in the analyser under each band.</p>
+<h3>meters</h3><p>The line under the analyser: momentary, short-term and integrated loudness (BS.1770 / EBU R128, gated), true peak (4×
+interpolated), gain reduction of glue and limiter, and the latency. <b>reset meters</b> clears the integrated loudness and peak hold.</p>
+<h3>presets</h3><table class="params">{''.join(f'<tr><td class="n">{e(n)}</td><td>{e(t)}</td></tr>' for n, t in MS_PRESETS)}</table>
+<p class="small">Presets never change listen, compare or input trim.</p>
+<h3>controls</h3>{ptable(params_rows('ms0', ms_desc, skip=lambda pid: pid[0] in 'eb' and pid[1:2].isdigit() and pid[1] not in '1'))}
+<p class="small">eq bands 2 – 8 work like band 1 and multiband bands 2 – 4 like the sub band; every one of them is its own automatable parameter
+(<i>eq 5 gain</i>, <i>high width</i> …).</p>
+<h3>export</h3><p>Bounce at the project's sample rate as 24-bit (dither 24) or 32-bit float (dither off). For 16-bit delivery, set dither to 16 bit;
+nothing after ms0 should change the level.</p></section>'''
+add(divider('ms0 master', 'linear-phase mastering bus · mid / side · imaging · true-peak limiter', '#1a242c', chevrons('#5aaad8', 5), '#e9eef0', '#e9eef0'))
+add(ms0_html)
+
 # ---- recipes + tech -----------------------------------------------------------------------------------------
 add('''<section class="page" id="recipes"><h2>recipes</h2>
 <h3>a long shuffled groove (kt1)</h3><ol><li>Load <b>a3 tok</b>. Set rm3 length 15, pc7 length 12, cl8 length 7.</li><li>Shift-drag a few rim steps early and hats late.</li>
@@ -467,10 +553,15 @@ ul, ol {{ padding-left: 14pt; }} li {{ margin: 2pt 0; }}
 .divider .dt {{ position: absolute; left: 14mm; top: 16mm; }} .divider h1 {{ font-size: 34pt; margin: 0; text-transform: uppercase; }}
 .divider p {{ font-size: 12pt; margin: 4pt 0; }}
 '''
+ms_page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>ms0 master manual</title><style>{CSS}</style></head><body>' + \
+    divider('ms0 master', 'faltung · linear-phase mastering bus · manual', '#1a242c', chevrons('#5aaad8', 5), '#e9eef0', '#e9eef0') + ms0_html + '</body></html>'
+open(os.path.join(HERE, 'ms0.html'), 'w').write(ms_page)
 page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>faltung manual</title><style>{CSS}</style></head><body>{"".join(doc)}</body></html>'
 open(os.path.join(HERE, 'manual.html'), 'w').write(page)
 chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 pdf = os.path.join(HERE, 'faltung Manual.pdf')
 subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files',
                 f'--print-to-pdf={pdf}', 'file://' + os.path.join(HERE, 'manual.html')], check=True, capture_output=True)
+subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files',
+                f'--print-to-pdf={os.path.join(HERE, "ms0 master Manual.pdf")}', 'file://' + os.path.join(HERE, 'ms0.html')], check=True, capture_output=True)
 print(pdf)
