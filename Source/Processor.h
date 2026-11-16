@@ -63,6 +63,7 @@ public:
 
     // kt2 sample
     bool loadSample (const juce::File&);
+    void setSample (std::shared_ptr<const LoopSample>);
     std::shared_ptr<const LoopSample> getSample() const;
     std::vector<std::pair<int, int>> currentSlices (const LoopSample&) const; // start, end in samples
 
@@ -171,13 +172,12 @@ private:
     VoiceParams readVoice (const juce::String& pre, VType t) const;
     void triggerKit (int v, float vel);
     void triggerModule (int note, float vel);
-    void triggerSlice (int slice, float vel, bool rev);
+    void triggerSlice (int slice, float vel, bool rev, float stepSemis = 0.0f);
     void renderSlices (float* L, float* R, int n);
     void processKit (juce::AudioBuffer<float>&, juce::MidiBuffer&, const Transport&);
     void processModule (juce::AudioBuffer<float>&, juce::MidiBuffer&);
     void processLoop (juce::AudioBuffer<float>&, juce::MidiBuffer&, const Transport&);
     void processEffect (juce::AudioBuffer<float>&, const Transport&);
-    void setSample (std::shared_ptr<const LoopSample>);
     std::shared_ptr<LoopSample> renderDefaultLoop();
     static void detectOnsets (LoopSample&);
     juce::String sampleToBase64 (const LoopSample&) const;

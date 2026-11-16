@@ -7,7 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 P = {p['code']: p for p in json.load(open(os.path.join(HERE, 'params.json')))}
 FONTS = os.path.join(ROOT, 'Resources', 'fonts')
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 GROUND = {'kt1': '#c9b53b', 'kt2': '#f4f2ec', 'bd1': '#b88a26', 'sd2': '#9cc788', 'rm3': '#8ec3e6', 'hh4': '#8d9bd6', 'cp6': '#a9bccf',
           'pc7': '#f6c590', 'cl8': '#eef6fa', 'tm9': '#76a582', 'mc3': '#ee8e6e', 'dl4': '#fbfbf8', 'rv5': '#f4f9fb', 'sw6': '#79e04a',
@@ -60,7 +60,7 @@ COMMON = {'model': 'which engine variant (see the models above)', 'level': 'outp
 
 FX = {
  'mc3': {'mode': 'cut: repeats the latest slice of input for the coming step · grain: scattered grains from the recent past · click: very short grains, several per step',
-         'division': 'the grid that grains fire on, synced to the host', 'density': 'chance that something fires on each step', 'size': 'length of a grain or cut (click mode maps this to 0.6–14 ms)',
+         'division': 'the grid that grains fire on, synced to the host; the last entry, <b>free</b>, runs it from <i>free rate</i> instead, whatever the tempo', 'freerate': 'the grid in Hz while the rate is <b>free</b> (dimmed otherwise)', 'density': 'chance that something fires on each step', 'size': 'length of a grain or cut (click mode maps this to 0.6–14 ms)',
          'pitch': 'replay pitch of the grains', 'scatter': 'how far back in the last 2 seconds grains are taken from', 'reverse': 'chance a grain plays backwards',
          'shape': 'grain edges, hard cut … smooth', 'hold': 'stop recording: keep cutting what is already in memory', 'mix': 'level of the grains (cut mode ducks the dry signal while it repeats)'},
  'dl4': {'sync': 'time follows the host tempo', 'division': 'synced echo time', 'time': 'free echo time in ms', 'feedback': 'repeats; above 100% it builds up (the loop saturates instead of exploding)',
@@ -87,7 +87,10 @@ LOOP = {'slices': 'how many slices the loop is cut into', 'slicemode': 'grid: eq
         'start': 'skips the beginning of the loop', 'pitch': 'replay pitch', 'gate': 'how much of each slice plays', 'attack': 'fade-in of each slice',
         'release': 'fade-out of each slice (also the crossfade when slices cut each other)', 'tone': 'low-pass on the slices', 'revprob': 'chance a step plays reversed',
         'spread': 'random stereo placement per hit', 'level': 'output level', 'vel': 'velocity sensitivity', 'fit': 'replay speed follows the host tempo',
-        'loopbeats': 'how many beats the loop is (set automatically when you load)'}
+        'loopbeats': 'how many beats the loop is (set automatically when you load)',
+        'curve': 'the clock curve (after AERIA OS / norns\' clockabout): over each loop the steps speed up or slow down along a shape — accel: long steps first; decel: the other way; arch: slow ends, fast middle; bulge: fast ends, slow middle; wave: a push-pull; rand: a fixed random set. The loop keeps its length, so step 1 always lands on time',
+        'curveamt': 'how far the clock curve bends the steps (100% ≈ ± 90% of a step)',
+        'pitch1': 'pitch of each step in semitones, added to <i>pitch</i>: sixteen parameters, step 1 pitch … step 16 pitch (cmd-drag or scroll on a step). The patterns share them'}
 SEQ = {'outs': 'separate outputs: each voice to its own output 2–9 (VST3 does this by itself when you route an output; AU / VST2 hosts need this switch on, otherwise everything plays on the main pair)', 'run': 'internal clock (standalone, or when the host is stopped)', 'bpm': 'internal tempo', 'swing': 'offbeat 16ths later, 50% = straight',
        'micro': 'how far the per-step microtiming reaches (± ms)', 'pattern': 'current pattern a1–a8 — automate it to arrange', 'master': 'output level',
        'len': 'pattern length of the track in steps (different lengths = polymeter)', 'prob': 'probability multiplier for every step of the track',
@@ -313,6 +316,8 @@ micro range, the pattern tabs a1–a8 and copy / paste / clear.</p>
 <tr><td class="n">shift-drag</td><td>microtiming: the step moves early or late, up to ± the <i>micro range</i>; you see it shift sideways</td></tr>
 <tr><td class="n">alt-click</td><td>probability 100 → 75 → 50 → 25%: the step is drawn partly filled</td></tr>
 <tr><td class="n">right-click</td><td>ratchet 1 → 2 → 3 → 4 hits inside the step (thin lines)</td></tr>
+<tr><td class="n">alt-drag up / down · alt-scroll</td><td>the ratchet's curve, out 7 … even … in 7: the hits spread out or crowd together toward the end of the step (see kt2)</td></tr>
+<tr><td class="n">click a step number</td><td>the selected track's length ends there</td></tr>
 <tr><td class="n">click a row name</td><td>select and play that voice</td></tr></table>
 <p>Steps past a track's length are dimmed. Give tracks different lengths — hats 16, rim 15, perc 12 — and the pattern slowly turns over itself,
 which is most of the trick of long minimal grooves. The factory patterns already place offbeat hats and percussion a little late and some rims early.</p>
@@ -323,14 +328,24 @@ to the kt1 track and choose <i>bd1</i>, <i>sd2</i> … in the second chooser. A 
 
 # ---- kt2 ---------------------------------------------------------------------------------------------
 def loop_desc(pid): return LOOP.get(pid) or SEQ.get(pid, '')
+def loop_skip(pid): return pid.startswith('pitch') and pid != 'pitch' and pid != 'pitch1'
+def loop_name(p): return 'step 1 … 16 pitch' if p['id'] == 'pitch1' else p['name']
+STEP_FEATURES = '''<h3>pitch, length and curves per step</h3>
+<table class="params"><tr><th>gesture</th><th>does</th></tr>
+<tr><td class="n">cmd-drag up / down · scroll</td><td><b>pitch per step</b>, ± 24 semitones on top of <i>pitch</i>, shown on the step (<i>+7</i>). Each step's pitch is a parameter (<i>step 1 pitch</i> … <i>step 16 pitch</i>), so a host can automate it; the eight patterns share the sixteen pitches</td></tr>
+<tr><td class="n">click a step number</td><td><b>pattern length</b>: the loop ends after that step (the <i>length</i> parameter, 1–16; a thin mark shows the end, later steps are dimmed)</td></tr>
+<tr><td class="n">right-click</td><td><b>ratchet</b> 1 → 2 → 3 → 4 hits inside the step, drawn as thin lines</td></tr>
+<tr><td class="n">alt-drag up / down · alt-scroll</td><td>the <b>ratchet's curve</b>, as AERIA OS's CURV: <i>even</i> spaces the hits equally; <i>in 1 … in 7</i> crowds them together toward the end of the step, like a ball coming to rest; <i>out 1 … out 7</i> spreads them out. Each gap is the one before times a ratio — about 0.89 at 1, 0.45 at 7 — and the row always fits the step exactly. An alt-click without a drag still reverses the step</td></tr></table>
+<p>The <b>clock curve</b> (AERIA's CLK, after norns' clockabout) bends the whole loop rather than one step: along <i>accel</i> the steps start long and get shorter, <i>decel</i> the other way, <i>arch</i> is slow at both ends and fast in the middle, <i>bulge</i> the reverse, <i>wave</i> a push and a pull, <i>rand</i> a fixed random set of lengths. <b>curve amount</b> is how far it goes; the loop keeps its plain length, so step 1 always lands on the bar. The step cells on the grid stretch and shrink to show where the steps fall. Preset <b>pitched roll</b> uses all of this: pitched steps, a ratchet that crowds in on the last step, and a slowing clock.</p>'''
 add(f'''<section class="page" id="kt2"><h2>kt2 loop</h2><p class="lead">{INTRO['kt2']}</p>{shot('kt2')}
 <h3>loading</h3><p>Drag an audio file (wav, aiff, flac, mp3, ogg; up to 60 s) onto the waveform, or use <b>load sample…</b>. kt2 guesses the length in
 beats from the current tempo (<i>loop length</i>); correct it if needed. The sample is stored inside the project (up to 40 s), so the set opens on another computer.</p>
 <h3>slices</h3><p>The black dots under the waveform are the slice starts, numbered 0, 1 … f. <b>grid</b> cuts equal slices; <b>onsets</b> starts each slice on a
 detected hit, which keeps transients intact on loose breaks. Click a slice to hear it.</p>
 <h3>the step row</h3><p>Each lit step shows the slice it plays (hex digit). Click to turn a step on (it takes the slice with the same number), drag up/down to choose another slice,
-<b>alt-click</b> to reverse (<i>&lt;</i>), <b>shift-drag</b> for microtiming, right-click for ratchets. Slices are monophonic: a new one fades out the last over the release time.</p>
-<h3>controls</h3>{ptable(params_rows('kt2', loop_desc))}{presets('kt2')}</section>''')
+<b>alt-click</b> to reverse (<i>&lt;</i>), <b>shift-drag</b> (or shift-scroll) for microtiming, right-click for ratchets. Slices are monophonic: a new one fades out the last over the release time.</p>
+{STEP_FEATURES}{shot('kt2-steps')}
+<h3>controls</h3>{ptable(params_rows('kt2', loop_desc, loop_skip, loop_name))}{presets('kt2')}</section>''')
 
 # ---- modules -------------------------------------------------------------------------------------------
 add(divider('the drum modules', 'bd1 kick · sd2 snare · rm3 rim · hh4 hats · cp6 clap · pc7 perc · cl8 click · tm9 tom', GROUND['bd1'], wire('#e3bf5f')))

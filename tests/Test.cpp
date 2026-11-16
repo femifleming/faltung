@@ -617,6 +617,34 @@ int main (int argc, char** argv)
             std::cout << "  chord: one key on minor 9 sounds " << found << " of 5 chord tones\n";
             check (found == 5, "wb1 chord");
         }
+        if (pi.id == Pid::mc3)
+        {
+            // the grid: a tempo division follows the host tempo; "free" runs from the free rate knob and ignores it
+            auto ticksAt = [&] (float division, float freeHz, double bpm)
+            {
+                Processor q (Pid::mc3);
+                q.setParam ("mode", 0.0f); q.setParam ("density", 1.0f); q.setParam ("division", division); q.setParam ("freerate", freeHz);
+                const double sr = 48000.0; const int bs = 512, total = (int) (sr * 4.0);
+                FakeHead head; head.bpm = bpm; q.setPlayHead (&head); q.setRateAndBufferSizeDetails (sr, bs); q.prepareToPlay (sr, bs);
+                juce::AudioBuffer<float> blk (2, bs);
+                for (int pos = 0; pos < total; pos += bs)
+                {
+                    const int n = std::min (bs, total - pos);
+                    blk.setSize (2, n, false, false, true);
+                    for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) blk.setSample (c, i, loop.getSample (c, (pos + i) % loop.getNumSamples()));
+                    juce::MidiBuffer mb; q.processBlock (blk, mb);
+                    head.ppq += n / sr * head.bpm / 60.0;
+                }
+                q.setPlayHead (nullptr);
+                return q.micro()->ticks.load();
+            };
+            const int s124 = ticksAt (4.0f, 8.0f, 124.0), s90 = ticksAt (4.0f, 8.0f, 90.0);     // 1/16
+            const int f124 = ticksAt ((float) MicroParams::kFree, 20.0f, 124.0), f90 = ticksAt ((float) MicroParams::kFree, 20.0f, 90.0);
+            std::cout << "  grid ticks in 4 s: 1/16 at 124 bpm " << s124 << ", at 90 bpm " << s90 << " · free 20 hz at 124 bpm " << f124 << ", at 90 bpm " << f90 << "\n";
+            check (std::abs (s124 - 33) <= 2 && std::abs (s90 - 24) <= 2, "mc3 division follows the tempo");
+            check (std::abs (f124 - 80) <= 2 && f90 == f124, "mc3 free rate ignores the tempo");
+        }
+
         if (pi.id == Pid::ms0)
         {
             // null test: everything neutral → output must equal the input delayed by the reported latency
@@ -636,6 +664,69 @@ int main (int argc, char** argv)
             const double nullDb = 10.0 * std::log10 ((err + 1e-30) / (ref + 1e-30));
             std::cout << "  null test: latency " << lat << " samples, residual " << nullDb << " dB\n";
             check (nullDb < -90.0, "ms0 null test");
+            // compare (bypass): with a preset that changes the sound, bypass on → the input, delayed by the latency
+            {
+                Processor b (Pid::ms0);
+                b.setCurrentProgram (2);
+                b.setParam ("dcon", 0.0f); b.setParam ("dither", 0.0f); b.setParam ("trim", 0.0f);
+                b.setParam ("bypass", 1.0f); b.setParam ("match", 0.0f);
+                auto ob = render (b, &loop, 4.0, rt2);
+                const int lb = b.getLatencySamples();
+                double e2 = 0, r2 = 0;
+                for (int c = 0; c < 2; ++c)
+                    for (int k = lb + 4800; k < ob.getNumSamples(); ++k)
+                    {
+                        const float x = loop.getSample (c, (k - lb) % loop.getNumSamples()), y = ob.getSample (c, k);
+                        e2 += (double) (y - x) * (y - x); r2 += (double) x * x;
+                    }
+                const double bypDb = 10.0 * std::log10 ((e2 + 1e-30) / (r2 + 1e-30));
+                std::cout << "  compare (bypass) on preset " << b.getProgramName (2) << ": residual vs input " << bypDb << " dB\n";
+                check (bypDb < -80.0, "ms0 compare / bypass passes the input");
+            }
+            // level-matched compare: process for a while (louder than the input), then switch compare on in the
+            // middle of the run, as a host automation or the button would: the output becomes the input, at the
+            // loudness of the processed signal
+            {
+                Processor b (Pid::ms0);
+                b.setCurrentProgram (2);
+                b.setParam ("dcon", 0.0f); b.setParam ("dither", 0.0f); b.setParam ("trim", 0.0f);
+                b.setParam ("limgain", 8.0f); b.setParam ("ceiling", -1.0f);
+                b.setParam ("bypass", 0.0f); b.setParam ("match", 1.0f);
+                const double sr = 48000.0; const int bs = 512, secs = 5;
+                FakeHead head; b.setPlayHead (&head); b.setRateAndBufferSizeDetails (sr, bs); b.prepareToPlay (sr, bs);
+                const int total = (int) (sr * secs);
+                juce::AudioBuffer<float> out (2, total * 2), blk (2, bs);
+                auto runFor = [&] (int from)
+                {
+                    for (int pos = 0; pos < total; pos += bs)
+                    {
+                        const int n = std::min (bs, total - pos);
+                        blk.setSize (2, n, false, false, true);
+                        for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) blk.setSample (c, i, loop.getSample (c, (from + pos + i) % loop.getNumSamples()));
+                        juce::MidiBuffer mb; b.processBlock (blk, mb);
+                        for (int c = 0; c < 2; ++c) out.copyFrom (c, from + pos, blk, c, 0, n);
+                        head.ppq += n / sr * head.bpm / 60.0;
+                    }
+                };
+                runFor (0);
+                b.setParam ("bypass", 1.0f);
+                runFor (total);
+                const int lb = b.getLatencySamples(), win = (int) (2.0 * sr);
+                auto rmsDb = [&] (const juce::AudioBuffer<float>& bf, int from) { return juce::Decibels::gainToDecibels (0.5f * (bf.getRMSLevel (0, from, win) + bf.getRMSLevel (1, from, win))); };
+                const double procDb = rmsDb (out, total - win), matchedDb = rmsDb (out, 2 * total - win);
+                juce::AudioBuffer<float> inp (2, win);
+                for (int c = 0; c < 2; ++c) for (int i = 0; i < win; ++i) inp.setSample (c, i, loop.getSample (c, (2 * total - win - lb + i) % loop.getNumSamples()));
+                const double inDb = rmsDb (inp, 0);
+                // shape: the matched output is the input times one gain
+                double xy = 0, xx = 0, yy = 0;
+                for (int c = 0; c < 2; ++c) for (int i = 0; i < win; ++i) { const double x = inp.getSample (c, i), y = out.getSample (c, 2 * total - win + i); xy += x * y; xx += x * x; yy += y * y; }
+                const double corr = xy / std::sqrt (xx * yy + 1e-30);
+                std::cout << "  level-matched compare: input " << inDb << " dB, processed " << procDb << " dB, compare " << matchedDb << " dB, shape correlation " << corr << "\n";
+                check (procDb - inDb > 2.0, "ms0 test preset is louder than the input");
+                check (corr > 0.995, "ms0 compare output is the input");
+                check (std::abs (matchedDb - procDb) < 1.5, "ms0 level-matched compare sits at the processed loudness");
+                b.setPlayHead (nullptr);
+            }
             // limiter: a hot signal must stay under the true-peak ceiling
             Processor h (Pid::ms0);
             h.setParam ("limgain", 18.0f); h.setParam ("ceiling", -1.0f);
@@ -656,6 +747,101 @@ int main (int argc, char** argv)
                 const char* nm[4] = { "off", "2x", "4x", "8x + clipper" };
                 std::cout << "  limiter os " << nm[os] << ": true peak " << juce::Decibels::gainToDecibels (tpk) << " dBTP, " << (int) rt2 << "x realtime\n";
                 check (tpk <= juce::Decibels::decibelsToGain (-0.95f), juce::String ("ms0 true peak, os ") + nm[os]);
+            }
+        }
+
+        if (pi.id == Pid::kt2)
+        {
+            // the sequencer alone: a ratchet with the AERIA-style curve crowds its hits toward the end ("in") and
+            // still fits the step; the clock curve stretches the steps of a loop and keeps step 1 on time
+            {
+                Sequencer<1> sq; sq.prepare (48000.0); Rng rg; rg.seed (7);
+                std::array<TrackCtl, 1> ctl { TrackCtl { 16, 1.0f, 0.0f, false } };
+                auto hits = [&] (int ratchet, int curve, SeqCurve cc, int len)
+                {
+                    Pattern<1> pat;
+                    for (int s = 0; s < len; ++s) { auto& st = pat.t[0][(size_t) s]; st.on = true; st.ratchet = ratchet; st.curve = curve; }
+                    ctl[0].length = len;
+                    sq.prepare (48000.0);
+                    std::vector<int> out; int pos = 0;
+                    for (int blk = 0; blk < 400; ++blk)   // 400 x 512 = 204800 samples ≈ 2.1 bars at 120 bpm
+                    {
+                        sq.run (pat, ctl, 512, false, false, 0.0, 120.0, true, 0.5f, 0.0f, rg, [&] (const SeqEvent& e) { out.push_back (pos + e.sample); }, cc);
+                        pos += 512;
+                    }
+                    return out;
+                };
+                const int stepS = 6000;   // samples per 16th at 120 bpm
+                auto even = hits (4, 0, {}, 1);
+                check (even.size() >= 8 && std::abs (even[1] - even[0] - stepS / 4) <= 2 && std::abs (even[3] - even[2] - stepS / 4) <= 2, "ratchet: four even hits");
+                auto in = hits (4, 7, {}, 1);
+                check (in.size() >= 8 && (in[1] - in[0]) > (in[2] - in[1]) && (in[2] - in[1]) > (in[3] - in[2]) && in[3] < in[0] + stepS && std::abs (in[4] - in[0] - stepS) <= 2,
+                       "ratchet curve in: gaps shrink, the row fits the step");
+                auto outc = hits (4, -7, {}, 1);
+                check (outc.size() >= 8 && (outc[1] - outc[0]) < (outc[2] - outc[1]) && (outc[2] - outc[1]) < (outc[3] - outc[2]) && outc[3] < outc[0] + stepS,
+                       "ratchet curve out: gaps grow");
+                auto plain = hits (1, 0, {}, 16);
+                check (plain.size() >= 32 && std::abs (plain[1] - plain[0] - stepS) <= 2, "clock curve off: even steps");
+                auto acc = hits (1, 0, SeqCurve { 1, 1.0f }, 16);
+                bool ok = acc.size() >= 32;
+                if (ok)
+                {
+                    ok = (acc[1] - acc[0]) > stepS * 3 / 2 && (acc[15] - acc[14]) < stepS / 2;   // long steps first, short at the end
+                    ok = ok && std::abs (acc[16] - acc[0] - 16 * stepS) <= 2;                   // the loop keeps its plain length
+                    for (int k = 1; k < 16; ++k) ok = ok && acc[k] > acc[k - 1];
+                }
+                check (ok, "clock curve accel: long steps first, loop on time");
+            }
+            // per-step pitch: a 440 Hz sine as the loop, one step on, step 1 pitch +12 → 880 Hz out
+            auto peakHz = [&] (float stepSemis)
+            {
+                Processor q (Pid::kt2);
+                auto s = std::make_shared<LoopSample>();
+                s->rate = 48000.0; s->name = "sine"; s->buf.setSize (2, 48000);
+                for (int k = 0; k < 48000; ++k) { const float v = 0.5f * std::sin (kTwoPi * 440.0f * (float) k / 48000.0f); s->buf.setSample (0, k, v); s->buf.setSample (1, k, v); }
+                q.setSample (s);
+                q.setParam ("fit", 0.0f); q.setParam ("slices", 0.0f); q.setParam ("tone", 1.0f); q.setParam ("spread", 0.0f); q.setParam ("revprob", 0.0f);
+                q.setParam ("pitch1", stepSemis);
+                q.applyPatternText ("sl 0", 0);
+                double r3; auto o = render (q, nullptr, 0.5, r3);
+                const int N = 8192; juce::dsp::FFT fft (13); std::vector<float> x ((size_t) N * 2, 0.0f);
+                for (int k = 0; k < N; ++k) x[(size_t) k] = o.getSample (0, 200 + k) * (0.5f - 0.5f * std::cos (kTwoPi * k / (N - 1)));
+                fft.performFrequencyOnlyForwardTransform (x.data(), true);
+                int best = 1; for (int k = 2; k < N / 2; ++k) if (x[(size_t) k] > x[(size_t) best]) best = k;
+                return best * 48000.0 / N;
+            };
+            const double f0 = peakHz (0.0f), f12 = peakHz (12.0f), f7 = peakHz (-5.0f);
+            std::cout << "  step pitch: 0 st -> " << f0 << " Hz, +12 st -> " << f12 << " Hz, -5 st -> " << f7 << " Hz\n";
+            check (std::abs (f0 - 440.0) < 12.0 && std::abs (f12 - 880.0) < 20.0 && std::abs (f7 - 329.6) < 12.0, "per-step pitch changes the pitch");
+
+            // length: with len 4 only slices 0-3 of a straight pattern ever play; ratchet 4 on step 1 gives four hits a bar
+            {
+                Processor q (Pid::kt2);
+                q.applyPatternText ("sl 0123456789abcdef", 0);
+                q.setParam ("len", 4.0f);
+                double r3; render (q, nullptr, 4.0, r3);
+                bool lo = true, hi = true;
+                for (int k = 0; k < 4; ++k) lo = lo && q.hitCount[(size_t) k].load() > 0;
+                for (int k = 4; k < 16; ++k) hi = hi && q.hitCount[(size_t) k].load() == 0;
+                check (lo && hi, "length 4 truncates the loop");
+            }
+            {
+                Processor q (Pid::kt2);
+                q.applyPatternText ("sl 0\nrt 4\ncv 5", 0);
+                q.setParam ("len", 16.0f);
+                double r3; render (q, nullptr, 60.0 / 124.0 * 4.0, r3);   // one bar at the fake head's 124 bpm
+                const int n = q.hitCount[0].load();
+                check (n == 4, "ratchet 4 with a curve: four hits a bar (got " + juce::String (n) + ")");
+            }
+            // the pattern text keeps ratchets and curves; the state keeps the curve
+            {
+                Processor q (Pid::kt2);
+                q.applyPatternText ("sl 0123\nrt 1234\ncv 07a0", 0);
+                const auto& st = q.loopBank.p[0].t[0];
+                check (st[3].ratchet == 4 && st[1].curve == 7 && st[2].curve == -1, "rt / cv pattern lines");
+                juce::MemoryBlock mb2; q.getStateInformation (mb2);
+                Processor q2 (Pid::kt2); q2.setStateInformation (mb2.getData(), (int) mb2.getSize());
+                check (q2.loopBank.toString() == q.loopBank.toString() && q2.loopBank.p[0].t[0][1].curve == 7, "loop bank round trip with curves");
             }
         }
 
@@ -690,6 +876,18 @@ int main (int argc, char** argv)
                     const auto f2 = shotDir.getChildFile ("wb1-mod.png"); f2.deleteFile();
                     juce::FileOutputStream os2 (f2); juce::PNGImageFormat png2; png2.writeImageToStream (im2, os2);
                     fe->pageForTest (0);
+                }
+            if (pi.id == Pid::kt2)
+                if (auto* fe = dynamic_cast<Editor*> (ed.get()))
+                {
+                    // second picture: the step features, on the "pitched roll" preset (pitches, a curved ratchet, a clock curve)
+                    proc->setCurrentProgram (proc->getNumPrograms() - 1);
+                    for (int t = 0; t < 6; ++t) fe->tickForTest();
+                    juce::Image im2 = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
+                    const auto f2 = shotDir.getChildFile ("kt2-steps.png"); f2.deleteFile();
+                    juce::FileOutputStream os2 (f2); juce::PNGImageFormat png2; png2.writeImageToStream (im2, os2);
+                    proc->setCurrentProgram (0);
+                    for (int t = 0; t < 6; ++t) fe->tickForTest();
                 }
             juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
             juce::PNGImageFormat png;

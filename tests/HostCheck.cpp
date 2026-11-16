@@ -65,6 +65,49 @@ static void run (juce::AudioPluginInstance& p, bool instrument, bool isKit, bool
     rms = (float) std::sqrt (sum / (double) std::max<juce::int64> (1, n));
 }
 
+/** ms0: compare (bypass) on → the output must be the input, delayed by the reported latency. Returns the residual in dB. */
+static float bypassResidual (juce::AudioPluginInstance& p)
+{
+    auto set = [&] (const juce::String& name, float v)
+    {
+        for (auto* prm : p.getParameters())
+            if (prm->getName (64) == name) { prm->setValueNotifyingHost (v); return true; }
+        return false;
+    };
+    set ("compare (bypass)", 1.0f); set ("level-matched compare", 0.0f); set ("dc filter", 0.0f); set ("dither", 0.0f);
+    const double sr = 48000.0; const int bs = 512;
+    Head head; p.setPlayHead (&head);
+    p.prepareToPlay (sr, bs);
+    const int total = (int) (4.0 * sr), every = (int) (sr * 60.0 / head.bpm / 2.0);
+    juce::AudioBuffer<float> in (2, total), out (2, total), b (std::max (2, p.getTotalNumOutputChannels()), bs);
+    juce::Random rnd (7);
+    for (int pos = 0; pos < total; pos += bs)
+    {
+        b.clear();
+        for (int k = 0; k < bs; ++k)
+        {
+            const int t = (pos + k) % every;
+            const float s = std::exp (-(float) t / 2400.0f) * (0.6f * std::sin ((float) t * 0.012f) + 0.2f * (rnd.nextFloat() * 2 - 1));
+            b.setSample (0, k, s); b.setSample (1, k, s); in.setSample (0, pos + k, s); in.setSample (1, pos + k, s);
+        }
+        juce::MidiBuffer m; p.processBlock (b, m);
+        for (int c = 0; c < 2; ++c) out.copyFrom (c, pos, b, c, 0, bs);
+        head.samples += bs; head.ppq += bs / sr * head.bpm / 60.0;
+        if (pos < 30 * bs) juce::Thread::sleep ((int) (bs * 1000.0 / sr));
+    }
+    p.releaseResources();
+    const int lat = p.getLatencySamples();
+    double err = 0, ref = 0;
+    for (int c = 0; c < 2; ++c)
+        for (int k = lat + 24000; k < total; ++k)
+        {
+            const float x = in.getSample (c, k - lat), y = out.getSample (c, k);
+            err += (double) (y - x) * (y - x); ref += (double) x * x;
+        }
+    set ("compare (bypass)", 0.0f); set ("level-matched compare", 1.0f);
+    return (float) (10.0 * std::log10 ((err + 1e-30) / (ref + 1e-30)));
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -121,6 +164,14 @@ int main (int argc, char** argv)
             if (pk <= 1.0e-3f && inst->getProgramName (pr) != "empty") { std::cout << "  FAIL program silent\n"; ++failures; }
         }
         if (! any) { std::cout << "  FAIL silent\n"; ++failures; }
+        if (found[0]->name.endsWith ("ms0"))
+        {
+            inst->setCurrentProgram (2);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+            const float res = bypassResidual (*inst);
+            std::cout << "  compare (bypass) on program 2: output vs input delayed by " << inst->getLatencySamples() << " samples: " << juce::String (res, 1) << " dB\n";
+            if (res > -60.0f) { std::cout << "  FAIL compare / bypass does not pass the input\n"; ++failures; }
+        }
     }
     std::cout << (failures == 0 ? "all good\n" : juce::String (failures) + " failures\n");
     return failures == 0 ? 0 : 1;

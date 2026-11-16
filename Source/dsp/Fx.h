@@ -532,7 +532,9 @@ private:
 struct MicroParams
 {
     int mode = 1;          // cut, grain, click
-    int division = 4;      // index into divisions()
+    int division = 4;      // index into divisions(); kFree: the grid runs at freeHz, whatever the tempo
+    float freeHz = 8.0f;   // the free rate (division == kFree)
+    static constexpr int kFree = 19;
     float density = 0.5f;  // probability per grid tick
     float sizeMs = 60.0f;
     float pitch = 0.0f;    // semitones
@@ -563,14 +565,16 @@ public:
         cutOn = false;
     }
     std::atomic<int> activity { 0 };
+    std::atomic<int> ticks { 0 };   // grid ticks so far (tests)
 
     void process (float* L, float* R, int n, const MicroParams& p, const Transport& tr)
     {
         mixSm.target = p.mix;
+        const bool free = p.division >= MicroParams::kFree;
         const double beats = divisions()[(size_t) std::clamp (p.division, 0, 18)].beats;
         const double spb = 60.0 / std::max (20.0, tr.bpm) * sr;      // samples per beat
-        const double stepS = beats * spb;
-        const bool sync = tr.playing && tr.hasPpq;
+        const double stepS = free ? sr / std::max (0.1f, p.freeHz) : beats * spb;
+        const bool sync = ! free && tr.playing && tr.hasPpq;
         int act = 0;
 
         for (int i = 0; i < n; ++i)
@@ -588,6 +592,7 @@ public:
             if (tick != lastTick)
             {
                 lastTick = tick;
+                ticks.fetch_add (1);
                 onTick (p, (int) std::max (8.0, stepS));
             }
 

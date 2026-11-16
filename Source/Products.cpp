@@ -531,6 +531,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                 l.b ("fit", "fit loop to tempo", true);
                 l.f ("loopbeats", "loop length", NR (1.0f, 16.0f, 1.0f), 4.0f, [] (float v) { return juce::String (juce::roundToInt (v)) + " beats"; });
                 trackCtl (l, "", "");
+                // the clock's curve over each loop (after AERIA OS / norns' clockabout) and its amount
+                l.c ("curve", "clock curve", { "off", "accel", "decel", "arch", "bulge", "wave", "rand" }, 0);
+                l.f ("curveamt", "curve amount", NR (0.0f, 1.0f), 0.5f, pct);
+                // pitch per step, in semitones (parameters, so a host can automate them; the patterns share them)
+                for (int s = 0; s < kSteps; ++s)
+                    l.f ("pitch" + juce::String (s + 1), "step " + juce::String (s + 1) + " pitch", NR (-24.0f, 24.0f, 1.0f), 0.0f,
+                         [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v)) + " st"; });
             }
             break;
         }
@@ -600,8 +607,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                     l.f ("out", "output", NR (-18.0f, 6.0f), 0.0f, dbText);
                     break;
                 case Pid::mc3:
+                {
                     l.c ("mode", "mode", { "cut", "grain", "click" }, 1);
-                    l.c ("division", "rate", divNames(), 4);
+                    // the last entry, "free", runs the grid from the free rate knob instead of the tempo
+                    juce::StringArray divs = divNames(); divs.add ("free");
+                    l.c ("division", "rate", divs, 4);
+                    l.f ("freerate", "free rate", NR (0.5f, 200.0f, 0.0f, 0.3f), 8.0f, [] (float v) { return juce::String (v, v < 10 ? 2 : 1) + " hz"; });
                     l.f ("density", "density", NR (0.0f, 1.0f), 0.45f, pct);
                     l.f ("size", "size", NR (2.0f, 250.0f, 0.0f, 0.5f), 60.0f, [] (float v) { return juce::String (v, 1) + " ms"; });
                     l.f ("pitch", "pitch", NR (-24.0f, 24.0f, 0.01f), 0.0f, [] (float v) { return (v > 0 ? "+" : "") + juce::String (v, 2) + " st"; });
@@ -611,6 +622,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                     l.b ("hold", "hold", false);
                     l.f ("mix", "mix", NR (0.0f, 1.0f), 0.5f, pct);
                     break;
+                }
                 case Pid::ms0: masterParams (l); break;
                 case Pid::sw6:
                 {
@@ -710,7 +722,10 @@ static const std::vector<Preset>& deepPresets (Pid p)
             kit ("broken", "bd1 X..x..X...x.....\nrm2 ...x..x.x....x..\ncp3 ....X.......X...\nch4 x.x.x.x.x.x.x.x.\noh5 ......x.......x.\nsh6 oxoxoxoxoxoxoxox\ncg7 x.....x..x......\ntm8 .............x.x", 0.57f),
             kit ("empty", "", 0.56f) };
         T[(int) Pid::kt2] = { { "straight", {}, "sl 0123456789abcdef" }, { "chopped", { { "revprob", 0.1f } }, "sl 0.2.4401.a8.c4e" },
-                              { "half", { { "gate", 0.6f } }, "sl 0.2.4.6.8.a.c.e" }, { "sparse", { { "gate", 0.4f } }, "sl 0...4...8...c..." } };
+                              { "half", { { "gate", 0.6f } }, "sl 0.2.4.6.8.a.c.e" }, { "sparse", { { "gate", 0.4f } }, "sl 0...4...8...c..." },
+                              // pitch per step, a rolled fill that crowds in, and a slowing clock over the bar
+                              { "pitched roll", { { "pitch5", 3 }, { "pitch9", 7 }, { "pitch13", -5 }, { "pitch16", 12 }, { "curve", 2 }, { "curveamt", 0.35f } },
+                                "sl 0.2.4.0.2.8.0.4c\nrt 1111111111111114\ncv 0000000000000005" } };
         T[(int) Pid::mc3] = { { "soft grains", { { "mode", 1 }, { "division", 4 }, { "density", 0.3f }, { "size", 80 }, { "mix", 0.3f } } },
                               { "stutter fill", { { "mode", 0 }, { "division", 1 }, { "density", 0.25f }, { "size", 90 }, { "mix", 0.7f } } },
                               { "dust from audio", { { "mode", 2 }, { "division", 4 }, { "density", 0.6f }, { "scatter", 0.7f }, { "mix", 0.25f } } } };
@@ -833,7 +848,10 @@ const std::vector<Preset>& presets (Pid p)
             { "straight", {}, "sl 0123456789abcdef" },
             { "cut-up", { { "revprob", 0.15f } }, "sl 0.2.4401.a8.c4e" },
             { "stutter", { { "gate", 0.45f } }, "sl 00.4448.0cc.4ee" },
-            { "sparse", { { "gate", 0.3f } }, "sl 0...3..6..9...c" } };
+            { "sparse", { { "gate", 0.3f } }, "sl 0...3..6..9...c" },
+            // pitch per step, a rolled fill that crowds in, and a slowing clock over the bar
+            { "pitched roll", { { "pitch5", 3 }, { "pitch9", 7 }, { "pitch13", -5 }, { "pitch16", 12 }, { "curve", 2 }, { "curveamt", 0.35f } },
+              "sl 0.2.4.0.2.8.0.4c\nrt 1111111111111114\ncv 0000000000000005" } };
         table[(int) Pid::dl4] = {
             { "dub 3/16", { { "division", 6 }, { "feedback", 0.62f }, { "age", 0.4f }, { "hp", 250 }, { "lp", 2800 }, { "mix", 0.35f } } },
             { "ping 1/8 d", { { "division", 9 }, { "feedback", 0.5f }, { "spread", 1.0f }, { "lp", 4500 }, { "mix", 0.3f } } },

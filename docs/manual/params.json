@@ -1300,13 +1300,159 @@
         "min": "off",
         "max": "on",
         "def": "off"
+      },
+      {
+        "id": "curve",
+        "name": "clock curve",
+        "choices": "off, accel, decel, arch, bulge, wave, rand",
+        "type": "choice",
+        "min": "off",
+        "max": "rand",
+        "def": "off"
+      },
+      {
+        "id": "curveamt",
+        "name": "curve amount",
+        "type": "float",
+        "min": "0%",
+        "max": "100%",
+        "def": "50%"
+      },
+      {
+        "id": "pitch1",
+        "name": "step 1 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch2",
+        "name": "step 2 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch3",
+        "name": "step 3 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch4",
+        "name": "step 4 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch5",
+        "name": "step 5 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch6",
+        "name": "step 6 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch7",
+        "name": "step 7 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch8",
+        "name": "step 8 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch9",
+        "name": "step 9 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch10",
+        "name": "step 10 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch11",
+        "name": "step 11 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch12",
+        "name": "step 12 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch13",
+        "name": "step 13 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch14",
+        "name": "step 14 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch15",
+        "name": "step 15 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
+      },
+      {
+        "id": "pitch16",
+        "name": "step 16 pitch",
+        "type": "float",
+        "min": "-24 st",
+        "max": "+24 st",
+        "def": "0 st"
       }
     ],
     "presets": [
       "straight",
       "cut-up",
       "stutter",
-      "sparse"
+      "sparse",
+      "pitched roll"
     ]
   },
   {
@@ -2343,11 +2489,19 @@
       {
         "id": "division",
         "name": "rate",
-        "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar, 2 bars, 4 bars, 8 bars, 16 bars",
+        "choices": "1/64, 1/32, 1/32 d, 1/16 t, 1/16, 3/32, 1/16 d, 1/8 t, 1/8, 1/8 d, 1/4 t, 1/4, 1/4 d, 1/2, 1 bar, 2 bars, 4 bars, 8 bars, 16 bars, free",
         "type": "choice",
         "min": "1/64",
-        "max": "16 bars",
+        "max": "free",
         "def": "1/16"
+      },
+      {
+        "id": "freerate",
+        "name": "free rate",
+        "type": "float",
+        "min": "0.50 hz",
+        "max": "200.0 hz",
+        "def": "8.00 hz"
       },
       {
         "id": "density",

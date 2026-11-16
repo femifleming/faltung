@@ -102,6 +102,7 @@ public:
             {
                 auto* s = sliders.add (new ui::ParamSlider (*r, theme));
                 s->setLabelWidth (68);
+                if (id == "freerate") freeRate = s;
                 const int mySlot = pi.kind == Kind::Module && slot < kSlots ? slot : -1;
                 s->onTouch = [this, mySlot] { art.focus = mySlot; };
                 ++slot;
@@ -166,7 +167,15 @@ public:
                     Rectangle<float> (36.0f, (float) getHeight() - 24.0f, (float) getWidth() - 72.0f, 14.0f), juce::Justification::centredLeft, true);
     }
 
-    void tick() override { art.tick(); if (offsets) offsets->repaint(); }
+    void tick() override
+    {
+        art.tick(); if (offsets) offsets->repaint();
+        if (freeRate)   // mc3: the free rate knob only counts while the rate is "free"
+        {
+            const float a = (int) p.param ("division") >= MicroParams::kFree ? 1.0f : 0.35f;
+            if (std::abs (freeRate->getAlpha() - a) > 0.01f) freeRate->setAlpha (a);
+        }
+    }
 
 private:
     Processor& p;
@@ -176,6 +185,7 @@ private:
     ui::PresetBar presetBar;
     juce::OwnedArray<juce::Component> top;
     juce::OwnedArray<ui::ParamSlider> sliders;
+    ui::ParamSlider* freeRate = nullptr;
     std::unique_ptr<StepOffsets> offsets;
     std::unique_ptr<ui::TextLink> learn;
     bool learning = false;
@@ -319,8 +329,8 @@ class StepGrid : public juce::Component, public juce::SettableTooltipClient
 public:
     StepGrid (Processor& proc, ui::Theme t, int rows) : p (proc), theme (t), nRows (rows)
     {
-        setTooltip (rows > 1 ? ui::U ("click: step on/off · drag up/down: velocity · drag across: paint · shift-drag: microtiming · alt-click: probability · right-click: ratchet")
-                             : ui::U ("click: slice on/off · drag up/down: choose slice · shift-drag: microtiming · alt-click: reverse · right-click: ratchet"));
+        setTooltip (rows > 1 ? ui::U ("click: step on/off · drag up/down: velocity · drag across: paint · shift-drag: microtiming · alt-click: probability · right-click: ratchet · alt-drag / alt-scroll: ratchet curve · click a step number: length")
+                             : ui::U ("click: slice on/off · drag up/down: choose slice · cmd-drag / scroll: pitch · shift-drag / shift-scroll: microtiming · alt-click: reverse · right-click: ratchet · alt-drag / alt-scroll: ratchet curve · click a step number: length"));
     }
     int selected = 2;
     std::function<void (int)> onSelect;
@@ -330,19 +340,37 @@ public:
         if (nRows > 1) return p.kitBank.p[(size_t) p.currentPattern()].t[(size_t) row][(size_t) s];
         return p.loopBank.p[(size_t) p.currentPattern()].t[0][(size_t) s];
     }
-    int trackLen (int row) const
-    {
-        return (int) std::round (p.param (nRows > 1 ? kitPrefix (row) + "len" : juce::String ("len")));
-    }
+    juce::String lenId (int row) const { return nRows > 1 ? kitPrefix (row) + "len" : juce::String ("len"); }
+    int trackLen (int row) const { return juce::jlimit (1, 16, (int) std::round (p.param (lenId (row)))); }
+    /** kt2: the clock curve, which spaces the cells like the steps' time */
+    SeqCurve curve() const { return nRows > 1 ? SeqCurve {} : SeqCurve { (int) p.param ("curve"), p.param ("curveamt") }; }
+    int stepPitch (int s) const { return nRows > 1 ? 0 : juce::roundToInt (p.param ("pitch" + juce::String (s + 1))); }
     Colour rowColour (int row) const { return nRows > 1 ? Colour (kitVoice (row).colour) : Colour (0xff2f7fd1); }
 
     float labelW() const { return nRows > 1 ? 40.0f : 0.0f; }
     float rightW() const { return 52.0f; }
     float rowH() const { return nRows > 1 ? 19.0f : (float) getHeight() - 16.0f; }
     float cellW() const { return ((float) getWidth() - labelW() - rightW()) / 16.0f; }
+    /** the left edge of step s (s = 16: the right end); inside the loop the clock curve stretches the cells */
+    float cellX (int row, int s) const
+    {
+        const int len = trackLen (row);
+        const SeqCurve c = curve();
+        if (s >= len || ! c.active (len)) return labelW() + (float) s * cellW();
+        float start, dur; curvedStep (c, s, len, start, dur);
+        return labelW() + start * cellW();
+    }
     Rectangle<float> cell (int row, int s) const
     {
-        return { labelW() + s * cellW() + 2.0f, 14.0f + row * (rowH() + 2.0f), cellW() - 4.0f, rowH() - 4.0f };
+        const float x0 = cellX (row, s), x1 = cellX (row, s + 1);
+        return { x0 + 2.0f, 14.0f + (float) row * (rowH() + 2.0f), std::max (6.0f, x1 - x0 - 4.0f), rowH() - 4.0f };
+    }
+    /** the ratchet's hits inside a cell, as x positions */
+    static void ratchetX (const Step& st, Rectangle<float> c, std::vector<float>& xs)
+    {
+        xs.clear();
+        float at[4]; ratchetTimes (st.ratchet, st.curve, at);
+        for (int k = 1; k < std::min (4, st.ratchet); ++k) xs.push_back (c.getX() + c.getWidth() * at[k]);
     }
 
     void paint (juce::Graphics& g) override
@@ -350,7 +378,7 @@ public:
         g.setFont (ui::mono (9.0f));
         g.setColour (theme.ink.withAlpha (0.75f));
         for (int s = 0; s < 16; ++s)
-            g.drawText (juce::String (s + 1).paddedLeft ('0', 2), Rectangle<float> (labelW() + s * cellW() + 2.0f, 0, cellW(), 12), juce::Justification::centredLeft);
+            g.drawText (juce::String (s + 1).paddedLeft ('0', 2), Rectangle<float> (cellX (nRows > 1 ? selected : 0, s) + 2.0f, 0, cellW(), 12), juce::Justification::centredLeft);
         g.drawText (nRows > 1 ? ui::U ("len · prob") : "len", Rectangle<float> ((float) getWidth() - rightW(), 0, rightW(), 12), juce::Justification::centredRight);
         const float ppq = p.playPpq.load();
         std::array<std::array<Step, 16>, 8> snap;
@@ -358,6 +386,7 @@ public:
             const juce::SpinLock::ScopedLockType sl (p.bankLock);   // copy, then paint without the lock
             for (int r = 0; r < nRows; ++r) for (int s = 0; s < 16; ++s) snap[(size_t) r][(size_t) s] = stepRef (r, s);
         }
+        std::vector<float> rx;
         for (int r = 0; r < nRows; ++r)
         {
             const int len = trackLen (r);
@@ -368,12 +397,19 @@ public:
                 g.setFont (ui::mono (10.0f, r == selected));
                 g.drawText (kitVoice (r).id, Rectangle<float> (0, cell (r, 0).getY() - 2, labelW(), rowH()), juce::Justification::centredLeft);
             }
-            const int playing = ppq >= 0 ? (int) (((long long) std::floor (ppq / 0.25) % len + len) % len) : -1;
+            const int playing = ppq >= 0 ? stepAtPpq (ppq, len, curve()) : -1;
+            // the end of the loop: a thin mark after the last step
+            {
+                const auto c0 = cell (r, 0);
+                g.setColour (theme.ink.withAlpha (0.55f));
+                g.fillRect (cellX (r, len) - 1.0f, c0.getY(), 1.0f, c0.getHeight());
+            }
             for (int s = 0; s < 16; ++s)
             {
                 auto c = cell (r, s);
                 const Step& st = snap[(size_t) r][(size_t) s];
                 const float alphaLen = s < len ? 1.0f : 0.25f;
+                const int pitch = stepPitch (s);
                 if (st.on && theme.mirror)
                 {
                     c = c.translated (st.micro * cellW() * 0.35f, 0.0f);
@@ -381,8 +417,16 @@ public:
                     const auto bar = c.withHeight (c.getHeight() * 0.62f).withY (c.getY() + c.getHeight() * 0.19f);
                     g.setColour (theme.ink.withAlpha (a));
                     if (st.prob < 0.999f) g.drawRect (bar, 1.0f); else g.fillRect (bar);
-                    if (st.ratchet > 1) { g.setColour (theme.ground); for (int k = 1; k < st.ratchet; ++k) g.fillRect (bar.getX() + bar.getWidth() * (float) k / (float) st.ratchet, bar.getY(), 1.0f, bar.getHeight()); }
-                    if (nRows == 1) { g.setColour (theme.ground); g.setFont (ui::cond (13.0f, true)); g.drawText (juce::String::toHexString (st.slice) + (st.rev ? "<" : ""), bar, juce::Justification::centred); }
+                    if (st.ratchet > 1) { g.setColour (theme.ground); ratchetX (st, bar, rx); for (float x : rx) g.fillRect (x, bar.getY(), 1.0f, bar.getHeight()); }
+                    if (nRows == 1)
+                    {
+                        g.setColour (theme.ground); g.setFont (ui::cond (13.0f, true));
+                        g.drawText (juce::String::toHexString (st.slice) + (st.rev ? "<" : ""), pitch != 0 ? bar.withTrimmedRight (bar.getWidth() * 0.45f) : bar, juce::Justification::centred);
+                        g.setFont (ui::mono (9.0f, true));
+                        if (pitch != 0) g.drawText ((pitch > 0 ? "+" : "") + juce::String (pitch), bar.withTrimmedLeft (bar.getWidth() * 0.5f).reduced (2.0f, 0.0f), juce::Justification::centredRight);
+                        g.setColour (theme.ink.withAlpha (0.8f)); g.setFont (ui::mono (8.0f));
+                        if (st.curve != 0) g.drawText ((st.curve > 0 ? "in " : "out ") + juce::String (std::abs (st.curve)), c.withTrimmedTop (bar.getBottom() - c.getY()), juce::Justification::centredLeft);
+                    }
                 }
                 else if (st.on)
                 {
@@ -402,13 +446,18 @@ public:
                     if (st.ratchet > 1)
                     {
                         g.setColour (theme.ink.withAlpha (0.8f));
-                        for (int k = 1; k < st.ratchet; ++k) g.fillRect (c.getX() + c.getWidth() * k / st.ratchet + c.getHeight() * 0.25f, c.getY() + 2, 1.0f, c.getHeight() - 4);
+                        ratchetX (st, c, rx);
+                        for (float x : rx) g.fillRect (x + c.getHeight() * 0.25f, c.getY() + 2, 1.0f, c.getHeight() - 4);
                     }
                     if (nRows == 1)
                     {
                         g.setColour (ui::inkFor (col));
                         g.setFont (ui::mono (13.0f, true));
-                        g.drawText (juce::String::toHexString (st.slice) + (st.rev ? "<" : ""), c, juce::Justification::centred);
+                        g.drawText (juce::String::toHexString (st.slice) + (st.rev ? "<" : ""), pitch != 0 ? c.withTrimmedRight (c.getWidth() * 0.45f) : c, juce::Justification::centred);
+                        g.setFont (ui::mono (9.0f, true));
+                        if (pitch != 0) g.drawText ((pitch > 0 ? "+" : "") + juce::String (pitch), c.withTrimmedLeft (c.getWidth() * 0.5f).reduced (4.0f, 2.0f), juce::Justification::topRight);
+                        g.setFont (ui::mono (8.0f));
+                        if (st.curve != 0) g.drawText ((st.curve > 0 ? "in " : "out ") + juce::String (std::abs (st.curve)), c.reduced (6.0f, 2.0f), juce::Justification::bottomLeft);
                     }
                 }
                 else if (theme.mirror)
@@ -438,33 +487,43 @@ public:
                 if (cell (r, k).expanded (2.0f, 1.0f).contains (pt)) { row = r; s = k; return true; }
         return false;
     }
+    /** the step number row above the grid: which step is under x (-1: none) */
+    int headerStep (juce::Point<float> pt) const
+    {
+        if (pt.y >= 13.0f || pt.x < labelW() || pt.x >= (float) getWidth() - rightW()) return -1;
+        const int row = nRows > 1 ? selected : 0;
+        for (int s = 0; s < 16; ++s) if (pt.x < cellX (row, s + 1)) return s;
+        return 15;
+    }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
         mode = None;
         int r, s;
-        if (nRows > 1 && e.position.x < labelW())
+        if (nRows > 1 && e.position.x < labelW() && e.position.y >= 13.0f)
         {
             const int row = juce::jlimit (0, nRows - 1, (int) ((e.position.y - 14.0f) / (rowH() + 2.0f)));
             selected = row; p.uiTrigger (row, 0.85f);
             if (onSelect) onSelect (row);
             repaint(); return;
         }
+        if (const int hs = headerStep (e.position); hs >= 0)
+        {
+            // click a step number: the loop ends there (the track's length)
+            p.setParam (lenId (nRows > 1 ? selected : 0), (float) (hs + 1));
+            repaint(); return;
+        }
         if (! find (e.position, r, s)) return;
         const juce::SpinLock::ScopedLockType sl (p.bankLock);
         Step& st = stepRef (r, s);
-        downRow = r; downStep = s; startVel = st.vel; startMicro = st.micro; startSlice = st.slice;
+        downRow = r; downStep = s; startVel = st.vel; startMicro = st.micro; startSlice = st.slice; startCurve = st.curve; startPitch = stepPitch (s);
         if (e.mods.isPopupMenu()) { if (! st.on) st.on = true; st.ratchet = st.ratchet % 4 + 1; repaint(); return; }
-        if (e.mods.isAltDown())
-        {
-            if (nRows == 1) st.rev = ! st.rev;
-            else st.prob = st.prob > 0.99f ? 0.75f : st.prob > 0.7f ? 0.5f : st.prob > 0.45f ? 0.25f : 1.0f;
-            st.on = true; repaint(); return;
-        }
+        if (e.mods.isAltDown()) { if (! st.on) st.on = true; mode = AltPending; repaint(); return; }   // click: reverse / probability; drag: the ratchet's curve
         if (e.mods.isShiftDown()) { if (! st.on) st.on = true; mode = Micro; repaint(); return; }
+        if (e.mods.isCommandDown() && nRows == 1) { if (! st.on) st.on = true; mode = Pitch; repaint(); return; }
         if (! st.on)
         {
-            st.on = true; st.vel = 0.8f; st.prob = 1.0f; st.ratchet = 1; st.micro = 0;
+            st.on = true; st.vel = 0.8f; st.prob = 1.0f; st.ratchet = 1; st.micro = 0; st.curve = 0;
             if (nRows == 1) { st.slice = s % 16; startSlice = st.slice; }
             paintOn = true; mode = Pending; turnedOn = true;
         }
@@ -475,27 +534,34 @@ public:
     void mouseDrag (const juce::MouseEvent& e) override
     {
         if (mode == None) return;
+        const int dx = e.getDistanceFromDragStartX(), dy = e.getDistanceFromDragStartY();
+        if (mode == Pitch)
+        {
+            p.setParam ("pitch" + juce::String (downStep + 1), (float) juce::jlimit (-24, 24, startPitch - dy / 6));
+            repaint(); return;
+        }
         const juce::SpinLock::ScopedLockType sl (p.bankLock);
         Step& st = stepRef (downRow, downStep);
-        const int dx = e.getDistanceFromDragStartX(), dy = e.getDistanceFromDragStartY();
         if (mode == Pending)
         {
             if (std::abs (dy) > 4 && std::abs (dy) > std::abs (dx)) { mode = Vertical; st.on = true; }
             else if (std::abs (dx) > 6) mode = Paint;
         }
+        if (mode == AltPending && std::abs (dy) > 4) mode = Curve;
         if (mode == Vertical)
         {
             if (nRows > 1) st.vel = juce::jlimit (0.05f, 1.0f, startVel - dy / 80.0f);
             else st.slice = juce::jlimit (0, 31, startSlice - dy / 8);
         }
         else if (mode == Micro) st.micro = juce::jlimit (-1.0f, 1.0f, startMicro + dx / (cellW() * 1.4f));
+        else if (mode == Curve) st.curve = juce::jlimit (-7, 7, startCurve - dy / 8);
         else if (mode == Paint)
         {
             int r, s;
             if (find ({ e.position.x, cell (downRow, 0).getCentreY() }, r, s))
             {
                 Step& t = stepRef (downRow, s);
-                if (t.on != paintOn) { t.on = paintOn; if (paintOn) { t.vel = 0.8f; t.prob = 1; t.ratchet = 1; t.micro = 0; if (nRows == 1) t.slice = s % 16; } }
+                if (t.on != paintOn) { t.on = paintOn; if (paintOn) { t.vel = 0.8f; t.prob = 1; t.ratchet = 1; t.micro = 0; t.curve = 0; if (nRows == 1) t.slice = s % 16; } }
             }
         }
         repaint();
@@ -507,13 +573,36 @@ public:
             const juce::SpinLock::ScopedLockType sl (p.bankLock);
             stepRef (downRow, downStep).on = false;
         }
+        if (mode == AltPending)
+        {
+            const juce::SpinLock::ScopedLockType sl (p.bankLock);
+            Step& st = stepRef (downRow, downStep);
+            if (nRows == 1) st.rev = ! st.rev;
+            else st.prob = st.prob > 0.99f ? 0.75f : st.prob > 0.7f ? 0.5f : st.prob > 0.45f ? 0.25f : 1.0f;
+        }
         mode = None; repaint();
+    }
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+    {
+        int r, s;
+        if (! find (e.position, r, s)) return;
+        const int dir = (w.deltaY + w.deltaX) > 0 ? 1 : (w.deltaY + w.deltaX) < 0 ? -1 : 0;
+        if (dir == 0) return;
+        if (e.mods.isShiftDown() || e.mods.isAltDown())
+        {
+            const juce::SpinLock::ScopedLockType sl (p.bankLock);
+            Step& st = stepRef (r, s);
+            if (e.mods.isAltDown()) st.curve = juce::jlimit (-7, 7, st.curve + dir);          // the ratchet's curve
+            else st.micro = juce::jlimit (-1.0f, 1.0f, st.micro + 0.1f * (float) dir);        // microtiming
+        }
+        else if (nRows == 1) p.setParam ("pitch" + juce::String (s + 1), (float) juce::jlimit (-24, 24, stepPitch (s) + dir));   // pitch
+        repaint();
     }
 
 private:
     Processor& p; ui::Theme theme; int nRows;
-    enum Mode { None, Pending, Vertical, Paint, Micro } mode = None;
-    int downRow = 0, downStep = 0, startSlice = 0;
+    enum Mode { None, Pending, Vertical, Paint, Micro, AltPending, Curve, Pitch } mode = None;
+    int downRow = 0, downStep = 0, startSlice = 0, startCurve = 0, startPitch = 0;
     float startVel = 0, startMicro = 0;
     bool paintOn = true, turnedOn = false;
 };
@@ -832,11 +921,14 @@ public:
         for (auto id : { "slices", "slicemode" }) { auto* c = top.add (new ui::ChoiceBox (P (p, id), theme)); addAndMakeVisible (c); }
         for (auto id : { "fit", "run" }) { auto* c = top.add (new ui::ToggleBox (P (p, id), theme)); addAndMakeVisible (c); }
         for (auto id : { "pitch", "gate", "attack", "release", "tone", "revprob", "start", "spread", "vel", "level", "loopbeats", "len",
-                         "prob", "shift", "swing", "micro", "bpm", "master" })
+                         "prob", "shift", "curve", "curveamt", "swing", "micro", "bpm", "master" })
         {
-            auto* s = sliders.add (new ui::ParamSlider (P (p, id), theme));
-            s->setLabelWidth (78);
-            addAndMakeVisible (s);
+            if (juce::String (id) == "curve")
+            {
+                auto* c = new ui::ChoiceBox (P (p, id), theme); c->labelW = 78; sliders.add (c);
+            }
+            else { auto* s = new ui::ParamSlider (P (p, id), theme); s->setLabelWidth (78); sliders.add (s); }
+            addAndMakeVisible (sliders.getLast());
         }
         setSize (pi.w, pi.h);
     }
@@ -860,7 +952,7 @@ public:
         g.fillAll (theme.ground);
         g.setColour (theme.ink.withAlpha (0.7f));
         g.setFont (ui::mono (10.0f));
-        g.drawText (ui::U ("midi c1 and up plays slices 0, 1, 2 … · click a slice to hear it · fit = loop length follows the tempo"),
+        g.drawText (ui::U ("midi c1 and up plays slices 0, 1, 2 … · click a slice to hear it · steps: cmd-drag or scroll = pitch · alt-drag = ratchet curve · click a step number = length"),
                     Rectangle<float> (36.0f, (float) getHeight() - 22.0f, (float) getWidth() - 72.0f, 14.0f), juce::Justification::centredLeft);
     }
     void tick() override { if (theme.mirror) backdrop.tick(); wave.tick(); steps.repaint(); }
@@ -875,7 +967,7 @@ private:
     PatternBar patterns;
     ui::TextLink load;
     juce::OwnedArray<juce::Component> top;
-    juce::OwnedArray<ui::ParamSlider> sliders;
+    juce::OwnedArray<juce::Component> sliders;
     std::unique_ptr<juce::FileChooser> chooser;
 };
 

@@ -20,6 +20,7 @@ g = globals()
 exec (MAIN[MAIN.index('SLOT = {'):MAIN.index('INTRO = {')], g)
 exec (MAIN[MAIN.index('def ptable'):MAIN.index('def chevrons')], g)
 exec (MAIN[MAIN.index('WBMOD = {'):MAIN.index("add(divider('wb1 wub'")], g)
+exec (MAIN[MAIN.index('def loop_desc'):MAIN.index('add(f\'\'\'<section class="page" id="kt2"')], g)   # the step-feature text of kt2
 
 def shot(code, cls='shot'):
     return f'<img class="{cls}" src="img/{code}.jpg" alt="{code}">'
@@ -114,7 +115,9 @@ bottom the step grid and the global row: run, internal bpm, swing, micro range, 
 '''</table><h3>editing steps</h3><table class="params">
 <tr><td class="n">click</td><td>step on / off</td></tr><tr><td class="n">drag up / down</td><td>velocity</td></tr><tr><td class="n">drag across</td><td>paint</td></tr>
 <tr><td class="n">shift-drag</td><td>microtiming — the step slides early or late</td></tr><tr><td class="n">alt-click</td><td>probability 100 → 75 → 50 → 25 %</td></tr>
-<tr><td class="n">right-click</td><td>ratchet 1–4</td></tr></table>
+<tr><td class="n">right-click</td><td>ratchet 1–4</td></tr>
+<tr><td class="n">alt-drag up / down · alt-scroll</td><td>the ratchet's curve, out 7 … even … in 7 (see kt2)</td></tr>
+<tr><td class="n">click a step number</td><td>the selected track's length ends there</td></tr></table>
 <p>Grooves: <b>warehouse</b> (four to the floor, offbeat open hat, shaker 16ths, conga answers), <b>jazzy</b> (broken kick, busy hats, rim
 syncopation), <b>minimal deep</b> (half-probability shaker, sparse rims), <b>broken</b> (off-grid kick). Shaker and conga sit a little late
 in every factory pattern; push them further with the track <i>shift</i>.</p>''' + f'''<h3>controls</h3>{ptable(kt1_rows())}{presets('kt1')}</section>''')
@@ -123,8 +126,9 @@ in every factory pattern; push them further with the track <i>shift</i>.</p>''' 
 add(f'''<section class="page" id="kt2"><h2>kt2 loop</h2><p class="lead">A loop slicer for chopped breaks and resampled grooves. It starts with
 a bar of kt1's "warehouse" groove; drop any loop onto the waveform to replace it.</p>{shot('kt2')}
 <p>Slices are cut on a grid or on the hits (<b>onsets</b>); each lit step shows the slice it plays — drag up/down to choose another,
-alt-click to reverse, shift-drag for microtiming. <b>fit</b> keeps the loop in time with the host tempo.</p>
-<h3>controls</h3>{ptable(params_rows('kt2', lambda pid: LOOP.get(pid) or SEQ.get(pid, '')))}{presets('kt2')}</section>''')
+alt-click to reverse, shift-drag (or shift-scroll) for microtiming, right-click for a ratchet of 1–4 hits. <b>fit</b> keeps the loop in time with the host tempo.</p>
+{g["STEP_FEATURES"]}{shot('kt2-steps')}
+<h3>controls</h3>{ptable(params_rows('kt2', lambda pid: LOOP.get(pid) or SEQ.get(pid, ''), g["loop_skip"], g["loop_name"]))}{presets('kt2')}</section>''')
 
 # ---- modules ----------------------------------------------------------------------------------------------
 add(sleeve('bd1', 'DRUM MODULES', ['bd1 kick', 'sd2 snare', 'rm3 rim', 'hh4 hats'], ['cp6 clap', 'pc7 perc', 'cl8 dust', 'tm9 tom'], 'FDP003', 'tree-bd1.jpg'))

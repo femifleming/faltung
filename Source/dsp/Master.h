@@ -567,7 +567,7 @@ class MasterChain
 {
 public:
     // meters + editor feeds
-    Loudness outMeter, inMeter;
+    Loudness outMeter, inMeter, wetMeter;   // wetMeter: the processed signal before the compare switch (for level matching)
     std::atomic<float> truePeak { -100 }, corr { 1 }, limGr { 0 }, glueGr { 0 };
     std::array<std::atomic<float>, 4> bandGr {}, bandWidth {};
     std::array<std::atomic<float>, 2> dynGr {};
@@ -596,14 +596,14 @@ public:
         for (auto& o : limOver) o.prepare (4096);
         for (auto& o : satOver) o.prepare (4096);
         osL.assign (4096 * 8 + 8, 0.0f); osR.assign (4096 * 8 + 8, 0.0f); osT.assign (4096 * 8 + 8, 0.0f);
-        for (auto& d : dlyDry) d.prepare (latencyNoDry() + 8);
+        for (auto& d : dlyDry) d.prepare (latencyNoDry() + kMax + 8);   // a block of input sits in front of the latency
         for (auto& d : satDry) d.prepare (kSatOs + 8);
         for (auto& d : dcIn) { d.reset(); d.r = 1.0f - kTwoPi * 3.0f / (float) sr; }
         midSm.prepare ((float) sr, 20.0f); sideSm.prepare ((float) sr, 20.0f); midSm.snap (1.0f); sideSm.snap (1.0f);
         for (auto& t : tpOut) t.reset();
         room.prepare ((float) sr);
         glue.prepare ((float) sr);
-        outMeter.prepare (sr); inMeter.prepare (sr);
+        outMeter.prepare (sr); inMeter.prepare (sr); wetMeter.prepare (sr);
         matchSm.prepare ((float) sr, 400.0f); matchSm.snap (1.0f);
         bypSm.prepare ((float) sr, 30.0f); bypSm.snap (0.0f);
         trimSm.prepare ((float) sr, 20.0f); outSm.prepare ((float) sr, 20.0f); limGainSm.prepare ((float) sr, 20.0f);
@@ -843,8 +843,10 @@ public:
         // ---- output trim, dither, bypass / match, listen, meters -----------------------------------
         outSm.target = dbToGain (p.out);
         bypSm.target = p.bypass ? 1.0f : 0.0f;
-        const float inLu = inMeter.shortTerm.load(), outLu = outMeter.shortTerm.load();
-        matchSm.target = (p.match && inLu > -70 && outLu > -70) ? dbToGain (clampf (outLu - inLu, -24.0f, 24.0f)) : 1.0f;
+        // the match gain brings the dry signal to the loudness of the processed one: measured on the processed
+        // signal itself (wetMeter), not on what leaves the plug-in, so it holds while compare is on
+        const float inLu = inMeter.shortTerm.load(), wetLu = wetMeter.shortTerm.load();
+        matchSm.target = (p.match && inLu > -70 && wetLu > -70) ? dbToGain (clampf (wetLu - inLu, -24.0f, 24.0f)) : 1.0f;
         const int totalLat = latencyNoDry();
         float peak = 0;
         for (int i = 0; i < n; ++i)
@@ -852,14 +854,19 @@ public:
             const float og = outSm.tick();
             float l = L[i] * og, r = R[i] * og;
             if (p.dither > 0) { l = dither (l, 0, p); r = dither (r, 1, p); }
+            aL[(size_t) i] = l; aR[(size_t) i] = r;
             const float bp = bypSm.tick(), mg = matchSm.tick();
             if (bp > 0.0001f)
             {
-                const float dl = dlyDry[0].readInt (totalLat + 1) * mg, dr = dlyDry[1].readInt (totalLat + 1) * mg;
+                // the whole block was pushed into the dry line at the input: input sample j is (n - j) back,
+                // and output sample i belongs to input sample i - latency
+                const int d = n - i + totalLat;
+                const float dl = dlyDry[0].readInt (d) * mg, dr = dlyDry[1].readInt (d) * mg;
                 l = lerp (l, dl, bp); r = lerp (r, dr, bp);
             }
             L[i] = l; R[i] = r;
         }
+        wetMeter.process (aL.data(), aR.data(), n);
         outMeter.process (L, R, n);
         for (int i = 0; i < n; ++i)
         {
@@ -883,7 +890,7 @@ public:
         const double den = std::sqrt (corrLL * corrRR);
         corr.store (den > 1.0e-9 ? (float) (corrLR / den) : 1.0f);
     }
-    void resetMeters() { outMeter.reset(); inMeter.reset(); tpHold = 0; }
+    void resetMeters() { outMeter.reset(); inMeter.reset(); wetMeter.reset(); tpHold = 0; }
 
 private:
     double sr = 48000;

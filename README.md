@@ -27,7 +27,7 @@ and standalone on Linux.
 | | name | what it is |
 |---|---|---|
 | **kt1** | kit | 8 synthesized voices (bd1 sd2 rm3 hh4 oh5 cp6 pc7 cl8) with a 16-step sequencer: microtiming per step, per-track shift, probability, ratchets, per-track length (polymeter), 8 patterns, swing. 8 extra stereo outputs. |
-| **kt2** | loop | loop slicer + sequencer. Drop in a break, cut it into 4–32 slices (grid or detected hits), sequence the slices, reverse, re-pitch, gate. Loop follows the tempo. Starts with a break made from kt1. |
+| **kt2** | loop | loop slicer + sequencer. Drop in a break, cut it into 4–32 slices (grid or detected hits), sequence the slices, reverse, re-pitch, gate. Per step: pitch (`step 1 pitch` … `step 16 pitch`, ±24 st), microtiming, ratchet 1–4 with a curve (AERIA's: the hits crowd in or spread out), probability; pattern length 1–16 (click a step number); a clock curve over the loop (accel / decel / arch / bulge / wave / rand). Loop follows the tempo. Starts with a break made from kt1. |
 | **bd1** | kick | tok, thud, 909, sine. Pitch sweep, click, sub, wooden "tok" overtone, drive. |
 | **sd2** | snare | tuned modes + wires, fm crack, brush, 808. |
 | **rm3** | rim | modal rim / wood / tok / metal with mallet hardness. |
@@ -36,7 +36,7 @@ and standalone on Linux.
 | **pc7** | perc | membranes (conga, bongo), bell, glass. |
 | **cl8** | click | ticks, pops, dust, blips: the "micro" in microhouse. |
 | **tm9** | tom | toms, minimal blips, fm toms, low toms. |
-| **mc3** | micro | live micro-sampling of its input: stutter cuts, scattered grains, clicks made from the input, synced to the host. |
+| **mc3** | micro | live micro-sampling of its input: stutter cuts, scattered grains, clicks made from the input, synced to the host — or free-running: the last entry of *rate* is **free**, and *free rate* (0.5–200 Hz) sets the grid on its own. |
 | **dl4** | dub | tape / bbd echo with the filters and saturation inside the feedback loop, wow and flutter, ping-pong, freeze. |
 | **rv5** | room | 8-line feedback delay network: room, plate, air, chamber, with a tail gate. |
 | **sw6** | swing | moves the audio itself onto a groove: every 16th is read from a delay line with its own offset. Templates, 16 per-step offsets, humanize, accents, and *learn groove* from a playing loop. 70 ms latency, reported to the host. |
@@ -69,7 +69,8 @@ Every control is a normal host parameter with a fixed id and a readable name, so
 Ableton's automation chooser (and Configure). In kt1 the names carry the voice: `rm3 tune`, `bd1 decay`,
 `hh4 length`. All parameter moves are smoothed. The pattern (`pattern` a1–a8), mutes, track lengths,
 probabilities and shifts are parameters too, so arrangement automation can switch patterns and thin
-out tracks. In sw6 every step offset (`step 1` … `step 16`) is a parameter.
+out tracks. In sw6 every step offset (`step 1` … `step 16`) is a parameter; in kt2 every step's pitch
+(`step 1 pitch` … `step 16 pitch`), the `length`, the `clock curve` and `curve amount` are.
 
 ## MIDI
 
@@ -81,8 +82,12 @@ out tracks. In sw6 every step offset (`step 1` … `step 16`) is a parameter.
 
 ## Step grid (kt1, kt2)
 
-click: on / off · drag up/down: velocity (kt2: slice) · drag across: paint · shift-drag: microtiming ·
-alt-click: probability (kt2: reverse) · right-click: ratchet 1–4 · copy / paste / clear per pattern.
+click: on / off · drag up/down: velocity (kt2: slice) · drag across: paint · shift-drag or shift-scroll: microtiming ·
+alt-click: probability (kt2: reverse) · right-click: ratchet 1–4 · alt-drag or alt-scroll: the ratchet's curve
+(out 7 … even … in 7, after AERIA OS: the hits spread out or crowd together toward the end of the step) ·
+kt2: cmd-drag or scroll: pitch per step (±24 st) · click a step number: pattern length (the loop ends there) ·
+copy / paste / clear per pattern. kt2's *clock curve* (accel, decel, arch, bulge, wave, rand) and *curve amount*
+speed the steps up or slow them down over each loop; the loop keeps its length, so step 1 always lands on time.
 
 ## Building
 

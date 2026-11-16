@@ -55,15 +55,23 @@ static void parseLoop (const juce::String& text, Pattern<1>& pat)
     for (auto line : juce::StringArray::fromLines (text))
     {
         line = line.trim();
-        if (! line.startsWith ("sl ")) continue;
+        // "sl" 16 hex slice indices ('.' = off); "rt" ratchets 1-4; "cv" the ratchet's curve: 0 even, 1-7 in, a-g out
+        const bool sl = line.startsWith ("sl "), rt = line.startsWith ("rt "), cv = line.startsWith ("cv ");
+        if (! sl && ! rt && ! cv) continue;
         const auto steps = line.substring (3).trim();
         for (int s = 0; s < kSteps && s < steps.length(); ++s)
         {
             const auto c = steps[s];
             auto& st = pat.t[0][(size_t) s];
-            st = Step();
-            const int v = juce::CharacterFunctions::getHexDigitValue (c);
-            if (v >= 0) { st.on = true; st.slice = v; st.vel = (s % 4 == 0) ? 1.0f : 0.8f; }
+            if (sl)
+            {
+                st = Step();
+                const int v = juce::CharacterFunctions::getHexDigitValue (c);
+                if (v >= 0) { st.on = true; st.slice = v; st.vel = (s % 4 == 0) ? 1.0f : 0.8f; }
+            }
+            else if (rt) st.ratchet = juce::jlimit (1, 4, (int) c - '0');
+            else if (c >= 'a' && c <= 'g') st.curve = -((int) c - 'a' + 1);
+            else st.curve = juce::jlimit (0, 7, (int) c - '0');
         }
     }
 }
@@ -414,14 +422,14 @@ std::vector<std::pair<int, int>> Processor::currentSlices (const LoopSample& s) 
     return out;
 }
 
-void Processor::triggerSlice (int slice, float vel, bool rev)
+void Processor::triggerSlice (int slice, float vel, bool rev, float stepSemis)
 {
     const juce::SpinLock::ScopedTryLockType tl (sampleLock);
     if (! tl.isLocked() || ! sample) return;
     const auto sl = currentSlices (*sample);
     if (sl.empty()) return;
     const auto [a, b] = sl[(size_t) (((slice % (int) sl.size()) + (int) sl.size()) % (int) sl.size())];
-    double rate = sample->rate / sr * semis (param ("pitch"));
+    double rate = sample->rate / sr * semis (param ("pitch") + stepSemis);
     if (param ("fit") > 0.5f)
     {
         const double want = param ("loopbeats") * 60.0 / std::max (20.0, (double) lastBpm);
@@ -485,7 +493,7 @@ void Processor::processLoop (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     const bool run = param ("run") > 0.5f;
     lastBpm = (float) ((tr.playing && tr.hasPpq) || ! run ? tr.bpm : param ("bpm"));
 
-    struct Ev { int s; int slice; float vel; bool rev; };
+    struct Ev { int s; int slice; float vel; bool rev; float semis; };
     std::array<Ev, 256> evs; int ne = 0;
     auto push = [&] (Ev e) { if (ne < (int) evs.size()) evs[(size_t) ne++] = e; };
 
@@ -494,24 +502,27 @@ void Processor::processLoop (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     for (int i = 0; i < n1 + n2; ++i)
     {
         const auto& q = uiQueue[(size_t) (i < n1 ? s1 + i : s2 + i - n1)];
-        push ({ 0, q.first, q.second, false });
+        push ({ 0, q.first, q.second, false, 0.0f });
     }
     uiFifo.finishedRead (n1 + n2);
     for (const auto m : midi)
     {
         const auto msg = m.getMessage();
-        if (msg.isNoteOn() && msg.getNoteNumber() >= 36) push ({ m.samplePosition, msg.getNoteNumber() - 36, msg.getFloatVelocity(), false });
+        if (msg.isNoteOn() && msg.getNoteNumber() >= 36) push ({ m.samplePosition, msg.getNoteNumber() - 36, msg.getFloatVelocity(), false, 0.0f });
     }
     std::array<TrackCtl, 1> ctl { TrackCtl { (int) std::round (param ("len")), param ("prob"), param ("shift"), param ("mute") > 0.5f } };
     Pattern<1> pat;
     { const juce::SpinLock::ScopedLockType sl (bankLock); pat = loopBank.p[(size_t) currentPattern()]; }
     const float revp = param ("revprob");
+    std::array<float, kSteps> stepPitch {};
+    for (int s = 0; s < kSteps; ++s) stepPitch[(size_t) s] = std::round (param ("pitch" + juce::String (s + 1)));
+    const SeqCurve curve { (int) param ("curve"), param ("curveamt") };
     loopSeq.run (pat, ctl, n, tr.playing, tr.hasPpq, tr.ppq, lastBpm, run, param ("swing"), param ("micro"), rng,
                  [&] (const SeqEvent& e)
                  {
                      const Step& st = pat.t[0][(size_t) e.step];
-                     push ({ e.sample, st.slice, e.vel, st.rev || rng.uni() < revp });
-                 });
+                     push ({ e.sample, st.slice, e.vel, st.rev || rng.uni() < revp, stepPitch[(size_t) e.step] });
+                 }, curve);
     playPpq.store (loopSeq.isRunning() ? (float) loopSeq.positionPpq() : -1.0f);
     std::sort (evs.begin(), evs.begin() + ne, [] (const Ev& a, const Ev& b) { return a.s < b.s; });
 
@@ -520,7 +531,7 @@ void Processor::processLoop (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     {
         const int at = std::clamp (evs[(size_t) i].s, 0, n);
         renderSlices (L + pos, R + pos, at - pos); pos = std::max (pos, at);
-        triggerSlice (evs[(size_t) i].slice, evs[(size_t) i].vel, evs[(size_t) i].rev);
+        triggerSlice (evs[(size_t) i].slice, evs[(size_t) i].vel, evs[(size_t) i].rev, evs[(size_t) i].semis);
     }
     renderSlices (L + pos, R + pos, n - pos);
     const float lv = levelToGain (param ("level"));
@@ -696,7 +707,7 @@ void Processor::processEffect (juce::AudioBuffer<float>& buffer, const Transport
         case Pid::mc3:
         {
             MicroParams m;
-            m.mode = (int) p ("mode"); m.division = (int) p ("division"); m.density = p ("density"); m.sizeMs = p ("size");
+            m.mode = (int) p ("mode"); m.division = (int) p ("division"); m.freeHz = p ("freerate"); m.density = p ("density"); m.sizeMs = p ("size");
             m.pitch = p ("pitch"); m.scatter = p ("scatter"); m.reverse = p ("reverse"); m.shape = p ("shape");
             m.mix = p ("mix"); m.hold = p ("hold") > 0.5f;
             microFx->process (L, R, n, m, tr);
