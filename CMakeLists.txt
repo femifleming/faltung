@@ -132,6 +132,67 @@ faltung_plugin(fl7 14 Ffl7 effect  "filter")
 faltung_plugin(gl8 15 Fgl8 effect  "glue")
 faltung_plugin(wb1 16 Fwb1 module  "dubstep + neuro bass synth")
 faltung_plugin(ms0 17 Fms0 effect  "mastering bus")
+
+# st0 studio: the daw (Source/daw). 64 stereo output buses, hosts VST3 / AU, its own standalone app.
+set(FAL_DAW_SOURCES Source/daw/Device.cpp Source/daw/Session.cpp Source/daw/Engine.cpp Source/daw/Project.cpp
+    Source/daw/StudioProcessor.cpp Source/daw/StudioEditor.cpp)
+set(FAL_HOST_DEFS JUCE_PLUGINHOST_VST3=1)
+if(APPLE)
+    list(APPEND FAL_HOST_DEFS JUCE_PLUGINHOST_AU=1)
+endif()
+function(faltung_studio DEEP)
+    if(DEEP)
+        set(T faltung_deep_st0)
+        set(PNAME "faltung deep st0")
+        set(BID "com.freakiepie.faltungdeep.st0")
+        set(CODE Dst0)
+        set(DESC "deep house studio: tracks, scenes, song, sends, 128 outputs")
+    else()
+        set(T faltung_st0)
+        set(PNAME "faltung st0")
+        set(BID "com.freakiepie.faltung.st0")
+        set(CODE Fst0)
+        set(DESC "microhouse studio: tracks, scenes, song, sends, 128 outputs")
+    endif()
+    juce_add_plugin(${T}
+        VERSION ${PROJECT_VERSION}
+        COMPANY_NAME "FreakiePie"
+        BUNDLE_ID "${BID}"
+        PLUGIN_MANUFACTURER_CODE Frkp
+        PLUGIN_CODE ${CODE}
+        FORMATS ${FAL_FORMATS}
+        PRODUCT_NAME "${PNAME}"
+        DESCRIPTION "${DESC}"
+        IS_SYNTH TRUE
+        NEEDS_MIDI_INPUT TRUE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+        AU_MAIN_TYPE kAudioUnitType_MusicDevice
+        VST3_CATEGORIES Instrument
+        VST2_CATEGORY kPlugCategSynth
+        LV2URI "urn:freakiepie:faltung:st0"
+        COPY_PLUGIN_AFTER_BUILD ${FALTUNG_COPY_AFTER_BUILD})
+    target_sources(${T} PRIVATE ${FAL_SOURCES} ${FAL_DAW_SOURCES} Source/daw/StudioApp.cpp Source/daw/StudioEntry.cpp)
+    target_compile_definitions(${T} PUBLIC ${FAL_DEFS} ${FAL_HOST_DEFS} FALTUNG_PRODUCT=18 FALTUNG_DEEP=${DEEP}
+        JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+    target_include_directories(${T} PRIVATE Source)
+    target_link_libraries(${T}
+        PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+    if(APPLE)
+        target_link_libraries(${T} PRIVATE "-framework CoreAudioKit")
+    endif()
+    if(FALTUNG_LTO)
+        target_link_libraries(${T} PUBLIC juce::juce_recommended_lto_flags)
+    endif()
+    if(DEEP)
+        set(FAL_DEEP_TARGETS ${FAL_DEEP_TARGETS} ${T}_All PARENT_SCOPE)
+    else()
+        set(FAL_ALL_TARGETS ${FAL_ALL_TARGETS} ${T}_All PARENT_SCOPE)
+    endif()
+endfunction()
+faltung_studio(0)
 add_custom_target(faltung_all DEPENDS ${FAL_ALL_TARGETS})
 
 # faltung deep: the deep house suite (everything except the mastering bus and Partials)
@@ -154,6 +215,7 @@ if(FALTUNG_BUILD_DEEP)
     faltung_plugin(fl7 14 Dfl7 effect  "filter" DEEP)
     faltung_plugin(gl8 15 Dgl8 effect  "glue" DEEP)
     faltung_plugin(sb1 16 Dsb1 module  "chord stabs and bass" DEEP)
+    faltung_studio(1)
     add_custom_target(faltung_deep_all DEPENDS ${FAL_DEEP_TARGETS})
 endif()
 
@@ -205,6 +267,24 @@ if(FALTUNG_BUILD_TESTS)
         get_target_property(FT_DEFS faltungTest COMPILE_DEFINITIONS)
         target_compile_definitions(faltungDeepTest PRIVATE ${FT_DEFS} FALTUNG_DEEP=1)
         target_link_libraries(faltungDeepTest PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+    endif()
+
+    # the studio's own tests: renders projects offline (timing, locks, sends, outputs, automation, save / load, hosting)
+    function(faltung_studio_test T DEEP)
+        juce_add_console_app(${T} PRODUCT_NAME "${T}")
+        target_sources(${T} PRIVATE tests/StudioTest.cpp ${FAL_SOURCES} ${FAL_DAW_SOURCES})
+        target_include_directories(${T} PRIVATE Source)
+        get_target_property(FT_DEFS faltungTest COMPILE_DEFINITIONS)
+        list(FILTER FT_DEFS EXCLUDE REGEX "^FALTUNG_DEEP=")
+        target_compile_definitions(${T} PRIVATE ${FT_DEFS} ${FAL_HOST_DEFS} FALTUNG_DEEP=${DEEP})
+        if(APPLE)
+            target_link_libraries(${T} PRIVATE "-framework CoreAudioKit")
+        endif()
+        target_link_libraries(${T} PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+    endfunction()
+    faltung_studio_test(faltungStudioTest 0)
+    if(FALTUNG_BUILD_DEEP)
+        faltung_studio_test(faltungDeepStudioTest 1)
     endif()
 endif()
 
