@@ -1,0 +1,898 @@
+ConvoSolution response pack
+===========================
+
+These impulse responses come from open databases and are redistributed under their
+Creative Commons licences. They were modified as listed for each file. Files from the
+HybridReverb2 database (folder 'True Stereo Rooms') are CC BY-SA 4.0, so those converted
+files carry the same licence; everything else is CC BY 4.0.
+  CC BY 4.0     https://creativecommons.org/licenses/by/4.0/
+  CC BY-SA 4.0  https://creativecommons.org/licenses/by-sa/4.0/
+
+Internal/BOTTLEDUNGEON_48K
+  Falkland Palace Bottle Dungeon - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=468
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Internal/FALKLAND_PALACE_48K
+  Falkland Palace Royal Tennis Court - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=476
+  Changes: trimmed, normalised
+
+Internal/HAMILTON_MAUSOLEUM_48K
+  Hamilton Mausoleum - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=502
+  Changes: trimmed, normalised
+
+Internal/LADY_CHAPEL_48K
+  Lady Chapel, St Albans Cathedral - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Marcin Gorzel, Gavin Kearney, Aglaia Foteinou, Sorrel Hoare, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=595
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Internal/MIDDLE_TUNNEL_48K
+  Innocent Railway Tunnel - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=525
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Internal/R1_OMNI_48K
+  R1 Nuclear Reactor Hall - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=626
+  Changes: trimmed, normalised
+
+Internal/TERRYS_WAREHOUSE_48K
+  Terry's Factory Warehouse - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=735
+  Changes: trimmed, normalised
+
+Internal/YORK_MINSTER_48K
+  York Minster - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=797
+  Changes: trimmed, normalised
+
+Churches/1st Baptist Church Nashville 1.wav
+  1st Baptist Church Nashville - CC BY 4.0
+  Credit: www.openairlib.net, Adam Townsell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=406
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/1st Baptist Church Nashville 2.wav
+  1st Baptist Church Nashville - CC BY 4.0
+  Credit: www.openairlib.net, Adam Townsell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=406
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/1st Baptist Church Nashville 3.wav
+  1st Baptist Church Nashville - CC BY 4.0
+  Credit: www.openairlib.net, Adam Townsell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=406
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Industrial/Air Museum Hangar 1.wav
+  T2 Hangar, Yorkshire Air Museum - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1274
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Industrial/Air Museum Hangar 2.wav
+  T2 Hangar, Yorkshire Air Museum - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1274
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Industrial/Air Museum Hangar 3.wav
+  T2 Hangar, Yorkshire Air Museum - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1274
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Alcuin College 1.wav
+  Alcuin College, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=416
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Alcuin College 2.wav
+  Alcuin College, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=416
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Alcuin College 3.wav
+  Alcuin College, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=416
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Rymer Auditorium 1.wav
+  Arthur Sykes Rymer Auditorium, University of York. - CC BY 4.0
+  Credit: www.openairlib.net, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=425
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Rymer Auditorium 2.wav
+  Arthur Sykes Rymer Auditorium, University of York. - CC BY 4.0
+  Credit: www.openairlib.net, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=425
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Rymer Auditorium 3.wav
+  Arthur Sykes Rymer Auditorium, University of York. - CC BY 4.0
+  Credit: www.openairlib.net, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=425
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Central Hall 1.wav
+  Central Hall, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Alexander Vilkaitis, Ilias Antonopoulos, Joska De Langen, Xuan Liu
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=435
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Central Hall 2.wav
+  Central Hall, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Alexander Vilkaitis, Ilias Antonopoulos, Joska De Langen, Xuan Liu
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=435
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Central Hall 3.wav
+  Central Hall, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Alexander Vilkaitis, Ilias Antonopoulos, Joska De Langen, Xuan Liu
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=435
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Creswell Crags 1.wav
+  Creswell Crags - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=441
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Creswell Crags 2.wav
+  Creswell Crags - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=441
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Creswell Crags 3.wav
+  Creswell Crags - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=441
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Dixon Studio Theatre 1.wav
+  The Dixon Studio Theatre – University of York - CC BY 4.0
+  Credit: www.openairlib.net, Ben Lavin, Darren Robinson, Ya-Hsin Chou, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=452
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Dixon Studio Theatre 2.wav
+  The Dixon Studio Theatre – University of York - CC BY 4.0
+  Credit: www.openairlib.net, Ben Lavin, Darren Robinson, Ya-Hsin Chou, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=452
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Dixon Studio Theatre 3.wav
+  The Dixon Studio Theatre – University of York - CC BY 4.0
+  Credit: www.openairlib.net, Ben Lavin, Darren Robinson, Ya-Hsin Chou, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=452
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Elveden Hall 1.wav
+  Elveden Hall (Suffolk England) - CC BY 4.0
+  Credit: Matt Rogalsky
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=459
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Elveden Hall 2.wav
+  Elveden Hall (Suffolk England) - CC BY 4.0
+  Credit: Matt Rogalsky
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=459
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Elveden Hall 3.wav
+  Elveden Hall (Suffolk England) - CC BY 4.0
+  Credit: Matt Rogalsky
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=459
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Rooms/Falkland Palace Bottle Dungeon.wav
+  Falkland Palace Bottle Dungeon - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=468
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Falkland Palace Royal Tennis Court.wav
+  Falkland Palace Royal Tennis Court - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=476
+  Changes: trimmed, normalised
+
+Outdoor/Forest Scale Model 1.wav
+  Forest Scale Model - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1323
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Forest Scale Model 2.wav
+  Forest Scale Model - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1323
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Rooms/Genesis 6 Drum Room 1.wav
+  Genesis 6 Studio – Live Room Drum Set Up - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=483
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Rooms/Genesis 6 Drum Room 2.wav
+  Genesis 6 Studio – Live Room Drum Set Up - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=483
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Rooms/Genesis 6 Drum Room 3.wav
+  Genesis 6 Studio – Live Room Drum Set Up - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=483
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Gill Heads Mine 1.wav
+  Gill Heads Mine - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=494
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Gill Heads Mine 2.wav
+  Gill Heads Mine - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=494
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Gill Heads Mine 3.wav
+  Gill Heads Mine - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=494
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Other/Hamilton Mausoleum.wav
+  Hamilton Mausoleum - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=502
+  Changes: trimmed, normalised
+
+Halls/Hendrix Hall 1.wav
+  D/L/028 Hendrix Hall Derwent, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1346
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/Hendrix Hall 2.wav
+  D/L/028 Hendrix Hall Derwent, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1346
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/Hendrix Hall 3.wav
+  D/L/028 Hendrix Hall Derwent, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1346
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Churches/Heslington Church 1.wav
+  Heslington Church - CC BY 4.0
+  Credit: www.openairlib.net, University of York AudioLab, Marc Ciufo Green, Michael Lovedee-Turner, Yuchen Gong
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=508
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/Heslington Church 2.wav
+  Heslington Church - CC BY 4.0
+  Credit: www.openairlib.net, University of York AudioLab, Marc Ciufo Green, Michael Lovedee-Turner, Yuchen Gong
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=508
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/Heslington Church 3.wav
+  Heslington Church - CC BY 4.0
+  Credit: www.openairlib.net, University of York AudioLab, Marc Ciufo Green, Michael Lovedee-Turner, Yuchen Gong
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=508
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Industrial/Hoffmann Lime Kiln 1.wav
+  Hoffmann Lime Kiln (Langcliffe, UK) - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Jack Smith, Juan García, Hashim Riaz, Pau Rosell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=518
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Industrial/Hoffmann Lime Kiln 2.wav
+  Hoffmann Lime Kiln (Langcliffe, UK) - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Jack Smith, Juan García, Hashim Riaz, Pau Rosell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=518
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/Holy Trinity Church Goodramgate York.wav
+  Holy Trinity Church, Goodramgate, York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1565
+  Changes: trimmed, normalised
+
+Tunnels/Innocent Railway Tunnel 1.wav
+  Innocent Railway Tunnel - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=525
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Tunnels/Innocent Railway Tunnel 2.wav
+  Innocent Railway Tunnel - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=525
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Tunnels/Innocent Railway Tunnel 3.wav
+  Innocent Railway Tunnel - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=525
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Jack Lyons Concert Hall 1.wav
+  Jack Lyons Concert Hall (University of York) - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Alex Duffell, Aishwarya Sridhar, Zhong Li
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=571
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Jack Lyons Concert Hall 2.wav
+  Jack Lyons Concert Hall (University of York) - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Alex Duffell, Aishwarya Sridhar, Zhong Li
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=571
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Jack Lyons Concert Hall 3.wav
+  Jack Lyons Concert Hall (University of York) - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Alex Duffell, Aishwarya Sridhar, Zhong Li
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=571
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Koli National Park Summer 1.wav
+  Koli National Park – Summer - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=577
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Koli National Park Summer 2.wav
+  Koli National Park – Summer - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=577
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Koli National Park Summer 3.wav
+  Koli National Park – Summer - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=577
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Koli National Park Winter 1.wav
+  Koli National Park – Winter - CC BY 4.0
+  Credit: www.openairlib.net, Audio Lab, University of York, Andrew Chadwick, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=584
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Koli National Park Winter 2.wav
+  Koli National Park – Winter - CC BY 4.0
+  Credit: www.openairlib.net, Audio Lab, University of York, Andrew Chadwick, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=584
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Koli National Park Winter 3.wav
+  Koli National Park – Winter - CC BY 4.0
+  Credit: www.openairlib.net, Audio Lab, University of York, Andrew Chadwick, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=584
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Cathedrals/Lady Chapel St Albans Cathedral 1.wav
+  Lady Chapel, St Albans Cathedral - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Marcin Gorzel, Gavin Kearney, Aglaia Foteinou, Sorrel Hoare, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=595
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Cathedrals/Lady Chapel St Albans Cathedral 2.wav
+  Lady Chapel, St Albans Cathedral - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Marcin Gorzel, Gavin Kearney, Aglaia Foteinou, Sorrel Hoare, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=595
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Caves/Maes Howe.wav
+  Maes Howe - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=602
+  Changes: trimmed, normalised
+
+Caves/Newgrange 1.wav
+  Newgrange - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=611
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Newgrange 2.wav
+  Newgrange - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=611
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Caves/Newgrange 3.wav
+  Newgrange - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=611
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Physics Lecture Hall 1.wav
+  P/L/001 Physics, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1361
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/Physics Lecture Hall 2.wav
+  P/L/001 Physics, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1361
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/Physics Lecture Hall 3.wav
+  P/L/001 Physics, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1361
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Industrial/R1 Nuclear Reactor Hall.wav
+  R1 Nuclear Reactor Hall - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=626
+  Changes: trimmed, normalised
+
+Halls/Ron Cooke Hub 1.wav
+  Ron Cooke Hub, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=632
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Ron Cooke Hub 2.wav
+  Ron Cooke Hub, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=632
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/Ron Cooke Hub 3.wav
+  Ron Cooke Hub, University of York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=632
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/Saint Lawrence Church.wav
+  Saint Lawrence Church Molenbeek-Wersbeek Belgium - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=638
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/All Saints North Street 1.wav
+  The Shrine and Parish Church of All Saints North Street - CC BY 4.0
+  Credit: www.openairlib.net, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=644
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/All Saints North Street 2.wav
+  The Shrine and Parish Church of All Saints North Street - CC BY 4.0
+  Credit: www.openairlib.net, University of York
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=644
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Springs/Slinky IR.wav
+  Slinky IR - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=652
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Spokane Womans Club.wav
+  Spokane Woman's Club - CC BY 4.0
+  Credit: www.openairlib.net, James Cadwallader
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=659
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Sports Centre.wav
+  Sports Centre, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Aglaia Foteinou, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=665
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Spring Lane Building 1.wav
+  Spring Lane Building, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Gavin Davies, Ignacio Gomez-Lanzaco, James Geary, Thomas Wood
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=670
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Spring Lane Building 2.wav
+  Spring Lane Building, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Gavin Davies, Ignacio Gomez-Lanzaco, James Geary, Thomas Wood
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=670
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Spring Lane Building 3.wav
+  Spring Lane Building, University of York - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Gavin Davies, Ignacio Gomez-Lanzaco, James Geary, Thomas Wood
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=670
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Andrews Church.wav
+  St Andrew's Church - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=683
+  Changes: trimmed, normalised
+
+Churches/St Georges Episcopal Church 1.wav
+  St. George's Episcopal Church - CC BY 4.0
+  Credit: www.openairlib.net, Adam Townsell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=688
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Georges Episcopal Church 2.wav
+  St. George's Episcopal Church - CC BY 4.0
+  Credit: www.openairlib.net, Adam Townsell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=688
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Georges Episcopal Church 3.wav
+  St. George's Episcopal Church - CC BY 4.0
+  Credit: www.openairlib.net, Adam Townsell
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=688
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Margarets Church 1.wav
+  St. Margaret's Church – National Centre for Early Music - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Aglaia Foteinou, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=696
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/St Margarets Church 2.wav
+  St. Margaret's Church – National Centre for Early Music - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Aglaia Foteinou, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=696
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/St Margarets Church 3.wav
+  St. Margaret's Church – National Centre for Early Music - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Aglaia Foteinou, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=696
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/St Marys Abbey Reconstruction 1.wav
+  St. Mary's Abbey Reconstruction - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=709
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Marys Abbey Reconstruction 2.wav
+  St. Mary's Abbey Reconstruction - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=709
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Marys Abbey Reconstruction 3.wav
+  St. Mary's Abbey Reconstruction - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=709
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Matthews Church Walsall 1.wav
+  St Matthew's Church – Walsall - CC BY 4.0
+  Credit: www.openairlib.net, Dr Aglaia Foteinou, Eleni Tavelidou, University of Wolverhampton
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=715
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Matthews Church Walsall 2.wav
+  St Matthew's Church – Walsall - CC BY 4.0
+  Credit: www.openairlib.net, Dr Aglaia Foteinou, Eleni Tavelidou, University of Wolverhampton
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=715
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Matthews Church Walsall 3.wav
+  St Matthew's Church – Walsall - CC BY 4.0
+  Credit: www.openairlib.net, Dr Aglaia Foteinou, Eleni Tavelidou, University of Wolverhampton
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=715
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Patricks Church Patrington Model 1.wav
+  St. Patrick's Church, Patrington – Model - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy, Aglaia Foteinou
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=729
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/St Patricks Church Patrington Model 2.wav
+  St. Patrick's Church, Patrington – Model - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy, Aglaia Foteinou
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=729
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/St Patricks Church Patrington Model 3.wav
+  St. Patrick's Church, Patrington – Model - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy, Aglaia Foteinou
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=729
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Churches/St Patricks Church Patrington 1.wav
+  St. Patrick's Church, Patrington - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=722
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Patricks Church Patrington 2.wav
+  St. Patrick's Church, Patrington - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=722
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Churches/St Patricks Church Patrington 3.wav
+  St. Patrick's Church, Patrington - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=722
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Cathedrals/St Pauls Cathedral.wav
+  St. Paul's Cathedral - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1516
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Other/Stairway.wav
+  Stairway, University of York - CC BY 4.0
+  Credit: Audiolab, University of York, Simon Shelley
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=678
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Industrial/Terrys Factory Warehouse.wav
+  Terry's Factory Warehouse - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=735
+  Changes: trimmed, normalised
+
+Rooms/Terrys Typing Room.wav
+  Terry's Typing Room - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=740
+  Changes: trimmed, normalised, resampled to 48 kHz
+
+Halls/Theatre 41 York 1.wav
+  Theatre@41, York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1543
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/Theatre 41 York 2.wav
+  Theatre@41, York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1543
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/Theatre 41 York 3.wav
+  Theatre@41, York - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1543
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Outdoor/Trollers Gill 1.wav
+  Troller's Gill - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=745
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Trollers Gill 2.wav
+  Troller's Gill - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=745
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Outdoor/Trollers Gill 3.wav
+  Troller's Gill - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=745
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Other/Tvisongur Sound Sculpture 1.wav
+  Tvísöngur Sound Sculpture, Iceland (Model) - CC BY 4.0
+  Credit: Oliver McIntyre, AudioLab, Department of Electronic Engineering, University of York, www.olivermcintyre.co.uk, Lukas Kühne, Tvísöngur Architect, www.lukaskuehne.com
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=752
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Other/Tvisongur Sound Sculpture 2.wav
+  Tvísöngur Sound Sculpture, Iceland (Model) - CC BY 4.0
+  Credit: Oliver McIntyre, AudioLab, Department of Electronic Engineering, University of York, www.olivermcintyre.co.uk, Lukas Kühne, Tvísöngur Architect, www.lukaskuehne.com
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=752
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Other/Tyndall Bruce Monument.wav
+  Tyndall Bruce Monument - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Dr. Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=764
+  Changes: trimmed, normalised
+
+Halls/Usina del Arte Symphony Hall 1.wav
+  Usina del Arte Symphony Hall - CC BY 4.0
+  Credit: www.untref.edu.ar
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=770
+  Changes: trimmed, normalised
+
+Halls/Usina del Arte Symphony Hall 2.wav
+  Usina del Arte Symphony Hall - CC BY 4.0
+  Credit: www.untref.edu.ar
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=770
+  Changes: trimmed, normalised
+
+Halls/Usina del Arte Symphony Hall 3.wav
+  Usina del Arte Symphony Hall - CC BY 4.0
+  Credit: www.untref.edu.ar
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=770
+  Changes: trimmed, normalised
+
+Outdoor/Wheldrake Wood Forest 1.wav
+  Abies Grandis Forest, Wheldrake Wood - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1293
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Outdoor/Wheldrake Wood Forest 2.wav
+  Abies Grandis Forest, Wheldrake Wood - CC BY 4.0
+  Credit: www.openairlib.net
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=1293
+  Changes: B-format decoded to stereo, trimmed, normalised
+
+Halls/York Guildhall Council Chamber 1.wav
+  York Guildhall Council Chamber - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Benjamin Tsui, Oliver McIntyre, Elizabeth Wilson
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=790
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/York Guildhall Council Chamber 2.wav
+  York Guildhall Council Chamber - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Benjamin Tsui, Oliver McIntyre, Elizabeth Wilson
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=790
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Halls/York Guildhall Council Chamber 3.wav
+  York Guildhall Council Chamber - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Benjamin Tsui, Oliver McIntyre, Elizabeth Wilson
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=790
+  Changes: B-format decoded to stereo, trimmed, normalised, resampled to 48 kHz
+
+Cathedrals/York Minster.wav
+  York Minster - CC BY 4.0
+  Credit: www.openairlib.net, Audiolab, University of York, Damian T. Murphy
+  Source: https://www.openair.hosted.york.ac.uk/?page_id=797
+  Changes: trimmed, normalised
+
+True Stereo Rooms/Bathroom 1m.wav
+  bathroom (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Church 1m.wav
+  church (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Church 2m.wav
+  church (2m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Church 4m.wav
+  church (4m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Church 8m.wav
+  church (8m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Huge Concert Hall 16m.wav
+  huge_concert_hall (16m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Huge Concert Hall 1m.wav
+  huge_concert_hall (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Huge Concert Hall 2m.wav
+  huge_concert_hall (2m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Huge Concert Hall 4m.wav
+  huge_concert_hall (4m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Huge Concert Hall 8m.wav
+  huge_concert_hall (8m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Large Concert Hall 1m.wav
+  large_concert_hall (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Large Concert Hall 2m.wav
+  large_concert_hall (2m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Large Concert Hall 4m.wav
+  large_concert_hall (4m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Large Concert Hall 8m.wav
+  large_concert_hall (8m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Livingroom 1m.wav
+  livingroom (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Livingroom 2m.wav
+  livingroom (2m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Small Concert Hall 1m.wav
+  small_concert_hall (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Small Concert Hall 2m.wav
+  small_concert_hall (2m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Small Concert Hall 4m.wav
+  small_concert_hall (4m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Studio 1m.wav
+  studio (1m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
+True Stereo Rooms/Studio 2m.wav
+  studio (2m) - CC BY-SA 4.0
+  Credit: Impulse response database for HybridReverb2, Christian Borss and Rainer Martin, Institute of Communication Acoustics, Ruhr-Universitaet Bochum; redistributed under CC BY-SA 4.0 via github.com/jpcima/HybridReverb2-impulse-response-database
+  Source: https://github.com/jpcima/HybridReverb2-impulse-response-database
+  Changes: four mono responses combined into one true-stereo file, trimmed, normalised
+
