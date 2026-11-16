@@ -295,6 +295,19 @@ void Device::prepare (double sr, int bs)
 {
     if (proc)
     {
+        // the processor's own smoothers settle on the parameter values they find at prepare, so the bases go in first:
+        // a render right after loading then sounds the same as the next one
+        auto& params = proc->getParameters();
+        for (int i = 0; i < numParams() && i < params.size(); ++i)
+        {
+            const float v = mirrors[(size_t) i]->getValue();
+            if (std::abs (params[i]->getValue() - v) > 1.0e-6f)
+            {
+                writing.store (true, std::memory_order_relaxed);
+                params[i]->setValueNotifyingHost (v);
+                writing.store (false, std::memory_order_relaxed);
+            }
+        }
         proc->setRateAndBufferSizeDetails (sr, bs);
         proc->prepareToPlay (sr, bs);
         scratchChannels = std::max (2, std::max (proc->getTotalNumInputChannels(), proc->getTotalNumOutputChannels()));

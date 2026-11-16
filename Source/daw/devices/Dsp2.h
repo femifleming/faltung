@@ -209,7 +209,7 @@ struct ThrowDelay
 {
     DelayLine dl, dr; Svf hpL, hpR, lpL, lpR; AdaaTanh satL, satR; float sr = 48000; float fbL = 0, fbR = 0; double lfo = 0; float curD = 0; Rng rng; float drift = 0;
     void prepare (float s) { sr = s; dl.prepare ((int) (4.0f * sr)); dr.prepare ((int) (4.0f * sr)); reset(); }
-    void reset() { dl.clear(); dr.clear(); fbL = fbR = 0; hpL.reset(); hpR.reset(); lpL.reset(); lpR.reset(); satL.reset(); satR.reset(); }
+    void reset() { dl.clear(); dr.clear(); fbL = fbR = 0; hpL.reset(); hpR.reset(); lpL.reset(); lpR.reset(); satL.reset(); satR.reset(); curD = 0; lfo = 0; drift = 0; rng.seed (2020); }
     void process (float* L, float* R, int n, const ThrowParams& p, double bpm)
     {
         const double beats = p.sync ? divisionBeatsOf (p.div) : 0.0;
@@ -255,7 +255,7 @@ struct Spring
         for (int i = 0; i < kAp; ++i) { apL[(size_t) i].prepare ((int) (sr * (0.0011f + 0.00037f * i))); apR[(size_t) i].prepare ((int) (sr * (0.0013f + 0.00041f * i))); }
         loopL.prepare ((int) (0.2f * sr)); loopR.prepare ((int) (0.2f * sr)); hpL.set (120, sr); hpR.set (120, sr); reset();
     }
-    void reset() { for (auto& a : apL) a.clear(); for (auto& a : apR) a.clear(); loopL.clear(); loopR.clear(); fbL = fbR = 0; toneL.reset(); toneR.reset(); }
+    void reset() { for (auto& a : apL) a.clear(); for (auto& a : apR) a.clear(); loopL.clear(); loopR.clear(); fbL = fbR = 0; toneL.reset(); toneR.reset(); lfo = 0; }
     void process (float* L, float* R, int n, const SpringParams& p)
     {
         const float g = 0.5f + 0.35f * p.drip;            // dispersion: allpass coefficient
@@ -322,7 +322,7 @@ struct Repeater
     std::vector<float> bufL, bufR; int cap = 1, w = 0; float sr = 48000; Rng rng;
     bool active = false; int start = 0, len = 1, rep = 0, maxRep = 0; double pos = 0; float rate = 1; bool rev = false; long long lastTick = -1;
     float holdL = 0, holdR = 0; int holdN = 0;
-    void prepare (float s, uint32_t seed) { sr = s; rng.seed (seed); cap = (int) (sr * 4.0f); bufL.assign ((size_t) cap, 0.0f); bufR.assign ((size_t) cap, 0.0f); w = 0; active = false; }
+    void prepare (float s, uint32_t seed) { sr = s; rng.seed (seed); cap = (int) (sr * 4.0f); bufL.assign ((size_t) cap, 0.0f); bufR.assign ((size_t) cap, 0.0f); w = 0; active = false; lastTick = -1; pos = 0; rep = 0; holdN = 0; }
     void process (float* L, float* R, int n, const RepeatParams& p, double ppq0, double bpm)
     {
         const double spb = 60.0 / bpm * sr;
@@ -479,7 +479,7 @@ struct ToneVoice
     bool on = false; double ph = 0; int age = 0, len = 0; float hz = 1000; float vel = 1; int note = 60; bool held = false; Rng rng; PinkNoise pink; DcBlock dc;
     void start (int n, float v, const ToneParams& p, float sr)
     {
-        on = true; age = 0; note = n; vel = v; held = true; ph = 0;
+        on = true; age = 0; note = n; vel = 1.0f; held = true; ph = 0; (void) v;
         hz = p.keytrack ? 440.0f * std::exp2 ((n - 69) / 12.0f) : p.hz;
         len = p.gate ? 1 << 30 : std::max (1, (int) (p.durationMs * 0.001f * sr));
         if (p.wave == 2) len = std::max (1, (int) (0.002f * sr));

@@ -143,6 +143,8 @@ void Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
     for (auto& pair : kitVoices) for (auto& v : pair) v.prepare ((float) sr, seed += 7919);
     for (auto& v : modVoices) v.prepare ((float) sr, seed += 7919);
     kitSeq.prepare (sr); loopSeq.prepare (sr);
+    modNext = 0; kitNext.fill (0); sliceNext = 0;   // voice rotation starts over, so offline renders repeat exactly
+    rng.seed (4321);
     for (auto& s : slicers) s.on = false;
     masterSm.prepare ((float) sr, 20.0f); masterSm.snap (1.0f);
     if (dubFx) dubFx->prepare ((float) sr);

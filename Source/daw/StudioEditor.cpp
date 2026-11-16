@@ -68,6 +68,7 @@ public:
     }
     void setPage (int pg)
     {
+        status.clear();
         page = juce::jlimit (0, pages.size() - 1, pg);
         for (int i = 0; i < pages.size(); ++i) { pages[i]->setVisible (i == page); tabs[i]->setLit (i == page); }
         pages[page]->rebuild();
@@ -161,12 +162,12 @@ public:
         const double bar = s.currentBar();
         const int b = (int) std::floor (bar), beat = (int) std::floor ((bar - b) * 4.0);
         g.setFont (uiFont (11.0f, true)); g.setColour (s.playPpq.load() >= 0 ? juce::Colours::white : theme.ink);
-        g.drawText (juce::String (b + 1) + "." + juce::String (beat + 1) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm", 1052, 34, 240, 14, juce::Justification::centredLeft);
+        g.drawText (juce::String (b + 1) + "." + juce::String (beat + 1) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm", getWidth() - 330, 34, 240, 14, juce::Justification::centredLeft);
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.7f));
         juce::String info = juce::String (s.hostDriven.load() ? "host clock" : "internal clock") + ui::U ("  ·  ") + juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
         info << ui::U ("  ·  latency ") << juce::String (s.totalLatency() * 1000.0 / s.sampleRate(), 1) << " ms" << ui::U ("  ·  cpu ") << juce::String (juce::roundToInt (s.cpu.load() * 100)) << "%";
         if (s.isRecording()) info << ui::U ("  ·  recording");
-        g.drawText (info, 150, 34, 900, 14, juce::Justification::centredLeft, true);
+        g.drawText (info, 150, 34, getWidth() - 490, 14, juce::Justification::centredLeft, true);
         g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (0, 68, getWidth(), 1);
         g.setColour (theme.ink.withAlpha (0.8f)); g.setFont (uiFont (9.5f));
         g.drawText (status.isEmpty() ? ui::U ("space: play / stop · 1-8: scenes · shift+1-8: patterns of the selected track · m / s: mute / solo · f: fill · r: record · ↑↓: track · tab: next page") : status, 12, getHeight() - 18, getWidth() - 24, 14, juce::Justification::centredLeft, true);

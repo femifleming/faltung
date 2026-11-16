@@ -688,7 +688,7 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
     if (! t.isMaster() && ! t.isReturn() && anySolo && ! t.solo.load (std::memory_order_relaxed)) gain = 0.0f;
     t.levelSm.target = gain;
     t.panSm.target = t.mixer->finalValue (MP_PAN) * 2.0f - 1.0f;
-    if (t.snapMixer) { t.snapMixer = false; t.levelSm.snap (gain); t.panSm.snap (t.panSm.target); }
+    if (t.snapMixer) { t.snapMixer = false; t.levelSm.snap (gain); t.panSm.snap (t.panSm.target); for (size_t r = 0; r < returns.size(); ++r) t.sendSm[r].snap (sendGain (t.mixer->finalValue (MP_SEND1 + (int) r))); }
     // 4. routes read the chain output before alignment (each route has its own delay to the destination's arrival)
     for (size_t ri = 0; ri < t.routes->size() && ri < t.routeRun.size(); ++ri)
     {

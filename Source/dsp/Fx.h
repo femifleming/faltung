@@ -55,6 +55,7 @@ public:
         fbSm.prepare (sr, 30.0f); mixSm.prepare (sr, 30.0f); frzSm.prepare (sr, 40.0f); inSm.prepare (sr, 20.0f);
         driftLp.set (0.7f, sr);
         for (auto& d : dcb) d.set (sr);
+        rng.seed (555);
         reset();
     }
     void reset()
@@ -65,8 +66,8 @@ public:
         for (auto& f : bbdF) f.reset();
         for (auto& s : sat) s.reset();
         for (auto& d : dcb) d.reset();
-        fbL = fbR = 0; lfo = 0; flut = 0; drift = 0;
-        timeSm.snap (-1.0f);
+        fbL = fbR = 0; lfo = 0; flut = 0; drift = 0; driftLp.reset();
+        timeSm.snap (-1.0f); first = true;
     }
     /** echo spacing in seconds, for the editor */
     std::atomic<float> shownTime { 0.375f };
@@ -84,6 +85,7 @@ public:
         mixSm.target = clampf (p.mix, 0.0f, 1.0f);
         frzSm.target = p.freeze ? 1.0f : 0.0f;
         inSm.target = p.input;
+        if (first) { fbSm.snap (fbSm.target); mixSm.snap (mixSm.target); frzSm.snap (frzSm.target); inSm.snap (inSm.target); first = false; }
 
         const float lpHz = std::min (p.lp, p.mode == 1 ? 4200.0f : 20000.0f) * (1.0f - 0.55f * p.age * (p.mode == 2 ? 0.0f : 1.0f));
         for (int c = 0; c < 2; ++c)
@@ -147,7 +149,7 @@ private:
     std::array<DcBlock, 2> dcb;
     Smooth timeSm, fbSm, mixSm, frzSm, inSm;
     OnePole driftLp;
-    Rng rng;
+    Rng rng; bool first = true;
     float fbL = 0, fbR = 0, lfo = 0, flut = 0, drift = 0;
 };
 
@@ -191,7 +193,8 @@ public:
         for (auto& a : ap) a.clear();
         for (auto& f : damp) f.reset();
         for (auto& f : lc) f.reset();
-        state.fill (0); env = 0; holdCount = 0; gateSm.snap (1.0f);
+        state.fill (0); env = 0; holdCount = 0; gateSm.snap (1.0f); lfo = 0; first = true;
+        for (auto& d : dcb) d.reset();
     }
     std::atomic<float> gateOpen { 1.0f };
 
@@ -215,6 +218,7 @@ public:
         const float preS = std::max (1.0f, p.predelay * 0.001f * sr);
         const float modDepth = p.mod * 6.0f * k;
         mixSm.target = clampf (p.mix, 0.0f, 1.0f);
+        if (first) { mixSm.snap (mixSm.target); first = false; }
         const float gateThr = dbToGain (lerp (-60.0f, -12.0f, p.gate));
         const int hold = (int) (0.06f * sr);
         const float envK = tcoef (5.0f, sr);
@@ -295,7 +299,7 @@ private:
     std::array<DcBlock, 2> dcb;
     DelayLine pre;
     Smooth mixSm, gateSm;
-    float lfo = 0, env = 0; int holdCount = 0;
+    float lfo = 0, env = 0; int holdCount = 0; bool first = true;
 };
 
 // =================================================================================================
@@ -321,6 +325,7 @@ public:
         for (auto* s : { &lo, &mi, &hi, &sw }) s->prepare (sr, 25.0f);
         lo.snap (1); mi.snap (1); hi.snap (1); sw.snap (0);
         mixSm.prepare (sr, 25.0f); mixSm.snap (1);
+        rng.seed (777);
         reset();
     }
     void reset()
@@ -447,7 +452,7 @@ public:
         for (auto& b : bumpF) b.reset();
         for (auto& b : hfF) b.reset();
         for (auto& d : dcb) d.reset();
-        gr.store (0.0f);
+        gr.store (0.0f); first = true;
     }
     std::atomic<float> gr { 0.0f }, inLevel { 0.0f }, outLevel { 0.0f };
 
@@ -463,6 +468,7 @@ public:
             hfF[c].highShelf (9000.0f, -9.0f * p.hf * (0.3f + p.tape), sr);
         }
         mixSm.target = p.mix; outSm.target = dbToGain (p.out); mkSm.target = dbToGain (p.makeup);
+        if (first) { mixSm.snap (mixSm.target); outSm.snap (outSm.target); mkSm.snap (mkSm.target); first = false; }
         const float drive = p.tape * p.tape * 6.0f;
         float maxGr = 0, inPk = 0, outPk = 0;
 
@@ -523,7 +529,7 @@ private:
     std::array<AdaaTanh, 2> sat;
     std::array<Biquad, 2> bumpF, hfF;
     std::array<DcBlock, 2> dcb;
-    Smooth mixSm, outSm, mkSm;
+    Smooth mixSm, outSm, mkSm; bool first = true;
 };
 
 // =================================================================================================
@@ -555,6 +561,7 @@ public:
         cap = (int) (sr * 4.0f);
         for (auto& b : buf) b.assign ((size_t) cap, 0.0f);
         mixSm.prepare (sr, 25.0f);
+        rng.seed (888);
         reset();
     }
     void reset()
@@ -562,14 +569,15 @@ public:
         for (auto& b : buf) std::fill (b.begin(), b.end(), 0.0f);
         w = 0; filled = 0; freeCount = 0; lastTick = -1;
         for (auto& g : grains) g.on = false;
-        cutOn = false;
+        cutOn = false; first = true;
     }
-    std::atomic<int> activity { 0 };
+    std::atomic<int> activity { 0 }; bool first = true;
     std::atomic<int> ticks { 0 };   // grid ticks so far (tests)
 
     void process (float* L, float* R, int n, const MicroParams& p, const Transport& tr)
     {
         mixSm.target = p.mix;
+        if (first) { mixSm.snap (mixSm.target); first = false; }
         const bool free = p.division >= MicroParams::kFree;
         const double beats = divisions()[(size_t) std::clamp (p.division, 0, 18)].beats;
         const double spb = 60.0 / std::max (20.0, tr.bpm) * sr;      // samples per beat

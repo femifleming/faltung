@@ -56,7 +56,7 @@ add(f'''<section class="cover">{chevrons(dark_accent('#9fd3ec'))}
 add('''<section class="page"><h2>contents</h2><ol class="toc">
 <li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">the controls and the pictures</a></li>
 <li><a href="#auto">automation and midi</a></li><li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li>
-<li><a href="#modules">the drum modules</a></li><li><a href="#fx">the processes</a></li><li><a href="#sb1">sb1 stabs</a></li><li><a href="#recipes">recipes</a></li></ol>
+<li><a href="#modules">the drum modules</a></li><li><a href="#fx">the processes</a></li><li><a href="#sb1">sb1 stabs</a></li><li><a href="#sndstudio">sndstudio</a></li><li><a href="#recipes">recipes</a></li></ol>
 <h2 id="intro">introduction</h2>
 <p class="lead">faltung deep is the deep house twin of faltung: the same synthesis and processing engines, retuned and re-preset for
 warm, swung, late-night house — round kicks, wooden rims, soft claps, shakers and congas, chord stabs and sub bass.</p>
@@ -215,6 +215,12 @@ movement on pads, tremolo on the electric piano (as in its preset), stepped vowe
 <h3>controls</h3>{ptable(params_rows('sb1', wb_desc, wb_skip))}<p class="small">steps 2 – 15 and matrix slots 2 – 8 work like the ones shown.</p>{presets('sb1')}</section>''')
 
 # ---- recipes ------------------------------------------------------------------------------------------------
+import sys
+sys.path.insert(0, os.path.join(ROOT, 'docs', 'manual'))
+from make_sndstudio import chapter as sndstudio_chapter
+add(sleeve('kt1', 'SNDSTUDIO', ['session', 'arrange', 'seq', 'mix'], ['mod', 'browse', 'devices', 'outputs'], 'FDP020', 'tree-kt1.jpg'))
+add(sndstudio_chapter(shot))
+
 add('''<section class="page" id="recipes"><h2>recipes</h2>
 <h3>a deep house groove in five minutes</h3><ol><li>kt1, preset <b>warehouse</b>, 122 bpm.</li><li>Shift the clap +6 ms and the shaker +4 ms (track shift).</li>
 <li>Give the conga track length 12 so it rolls against the bar.</li><li>Clap and rim to a send with rv5 <b>warm room</b>.</li><li>Drum group: sw6 <b>deep swing 56</b>, then gl8 <b>warm glue</b>.</li></ol>

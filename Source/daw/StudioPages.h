@@ -262,6 +262,9 @@ public:
         const auto la = lanesArea();
         g.setFont (uiFont (10.0f));
         // ruler
+        paintSong (g);
+        juce::Graphics::ScopedSaveState clipAll (g);
+        g.reduceClipRegion (0, 0, la.getWidth(), getHeight());
         const double b0 = scrollBar, b1 = bar (la.getRight());
         const int step = pxPerBar >= 40 ? 1 : pxPerBar >= 12 ? 4 : 16;
         for (int b = (int) std::floor (b0 / step) * step; b <= (int) b1 + step; b += step)
@@ -315,10 +318,9 @@ public:
         const double cb = s.currentBar();
         if (cb >= b0) { g.setColour (juce::Colours::white); g.fillRect (x (cb), 0, 1, la.getBottom()); }
         paintLanes (g);
-        paintSong (g);
         g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (left - 1, 0, 1, la.getBottom());
         g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (9.5f));
-        g.drawText (ui::U ("drag clips · edge: length · double-click a lane: add the track's pattern · drop audio files here · right-click a clip · ruler drag: loop · shift-click ruler: marker"), left + 110, 4, la.getWidth() - left - 120, 16, juce::Justification::centredLeft, true);
+        if (ctx.status) ctx.status (ui::U ("arrange: drag clips · edge: length · double-click a lane: add the track's pattern · drop audio files here · right-click a clip · ruler drag: loop · shift-click ruler: marker"));
     }
     void drawWave (juce::Graphics& g, const AudioClip& c, juce::Rectangle<float> r, juce::Colour ink)
     {
@@ -432,7 +434,7 @@ public:
             b += e.bars;
         }
         g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (juce::String (b) + " bars  " + juce::String (b * 4.0 * 60.0 / s.tempo() / 60.0, 1) + " min", sa.getX() + 8, sa.getBottom() - 40, sa.getWidth() - 16, 16, juce::Justification::centredLeft);
-        g.drawText ("click: scene · drag: bars · right-click: remove", sa.getX() + 8, sa.getBottom() - 22, sa.getWidth() - 16, 16, juce::Justification::centredLeft, true);
+        g.drawText (ui::U ("click: scene · drag: bars · right-click: remove"), sa.getX() + 8, sa.getBottom() - 22, sa.getWidth() - 16, 16, juce::Justification::centredLeft, true);
     }
     // ---- mouse --------------------------------------------------------------------------------------
     struct Hit { Track* t = nullptr; int clip = -1; bool audio = false; bool edge = false; };
@@ -844,8 +846,8 @@ public:
         for (auto* r : { rPattern, rLength, rSpeed, rSwing, rShift, rProb, rRoot, rFree, rStepMs, rChain, rQuant }) { r->setBounds (8, y, 210, 18); y += 20; }
         const int gx = 236, gw = w - gx - 8;
         int x = gx;
-        for (auto* l : { tEuclid, tRotL, tRotR, tRev, tMutate, tHuman, tRandom, tMarkov, tRules, tDouble, tClear, tCopy, tPaste }) { const int lw = (int) uiFont (11.0f).getStringWidthFloat (l->text) + 16; l->setBounds (x, 196, lw, 18); x += lw + 2; }
-        tAddLock->setBounds (gx + 470, 222, 60, 18);
+        for (auto* l : { tEuclid, tRotL, tRotR, tRev, tMutate, tHuman, tRandom, tMarkov, tRules, tDouble, tClear, tCopy, tPaste }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 196, lw, 18); x += lw + 2; }
+        tAddLock->setBounds (gx + 540, 222, 60, 18);
         int sy = 222;
         ValueRow* steps[] = { sVel, sPitch, sProb, sRatchet, sMicro, sLen, sCond, sSlide, sSlice };
         for (int i = 0; i < 9; ++i) steps[i]->setBounds (gx + (i % 2) * 230, sy + (i / 2) * 20, 220, 18);
@@ -862,7 +864,7 @@ public:
         auto* t = ctx.selected();
         g.setFont (uiFont (11.0f, true)); g.setColour (theme.ink);
         g.drawText (t ? t->name + "  ·  " + (t->isAudio() ? "audio track" : (t->instrument ? t->instrument->name : "no instrument")) : "no track selected", 8, 6, 400, 18, juce::Justification::centredLeft, true);
-        g.setFont (uiFont (11.0f)); g.drawText ("step " + juce::String (selectedStep + 1), 236, 204 + 18, 100, 16, juce::Justification::centredLeft);
+        g.setFont (uiFont (11.0f, true)); g.drawText ("step " + juce::String (selectedStep + 1), 236 + 470, 222, 100, 16, juce::Justification::centredLeft);
         g.drawText ("devices", 90, 332, 200, 18, juce::Justification::centredLeft);
         if (! t) return;
         auto p = t->patternAt (t->pattern.load());
@@ -870,7 +872,7 @@ public:
         const int pages = (len + 15) / 16;
         page = juce::jlimit (0, pages - 1, page);
         const int playing = t->playStep.load();
-        const juce::Colour col = trackColour (t);
+        const juce::Colour col = trackColour (*t);
         // page tabs
         for (int k = 0; k < pages; ++k) { g.setColour (k == page ? theme.ink : theme.ink.withAlpha (0.4f)); g.drawText ("page " + juce::String (k + 1), 236 + k * 60, 34, 56, 16, juce::Justification::centredLeft); }
         g.setFont (uiFont (9.0f));
@@ -975,7 +977,6 @@ public:
         route.onClick = [this] { routeMenu(); };
         input.onClick = [this] { inputMenu(); };
         key.onClick = [this] { keyMenu(); };
-        level.onMenu = nullptr;
     }
     void outMenu()
     {
@@ -1055,7 +1056,7 @@ public:
         for (int r = 0; r < kReturns; ++r) { sends[r]->setVisible (r < nr && ! track.isReturn() && ! track.isMaster()); if (r < nr) { sends[r]->setBounds (2, y, w - 4, 16); y += 17; } }
         y += 6;
         mute.setBounds (2, y, (w - 4) / 2, 18); solo.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
-        arm.setBounds (2, y, (w - 4) / 2, 18); toMaster.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
+        arm.setBounds (2, y, (w - 4) / 3, 18); toMaster.setBounds (2 + (w - 4) / 3, y, (w - 4) * 2 / 3, 18); y += 20;
         out.setBounds (2, y, (w - 4) / 2, 18); width.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
         route.setBounds (2, y, (w - 4) / 2, 18); input.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
         key.setBounds (2, y, (w - 4) / 2, 18);
@@ -1262,14 +1263,14 @@ public:
     {
         for (auto* l : { &scan, &folder, &newTemplate, &up }) addAndMakeVisible (l);
         scan.onClick = [this] { if (! isThreadRunning()) startThread(); };
-        folder.onClick = [this] { chooser = std::make_unique<juce::FileChooser> ("samples folder", dir); chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& fc) { if (fc.getResult().isDirectory()) { dir = fc.getResult(); list(); } }); };
-        up.onClick = [this] { dir = dir.getParentDirectory(); list(); };
+        folder.onClick = [this] { chooser = std::make_unique<juce::FileChooser> ("samples folder", dir); chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& fc) { if (fc.getResult().isDirectory()) { dir = fc.getResult(); ctx.s.browseDir = dir; list(); } }); };
+        up.onClick = [this] { dir = dir.getParentDirectory(); ctx.s.browseDir = dir; list(); };
         newTemplate.onClick = [this] { juce::PopupMenu m; auto n = Session::templateNames(); for (int i = 0; i < n.size(); ++i) m.addItem (i + 1, n[i]); m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&newTemplate), [this] (int r) { if (r > 0) { ctx.s.newFromTemplate (r - 1); ctx.select (nullptr); ctx.showPage (0); } }); };
-        dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+        dir = ctx.s.browseDir.isDirectory() ? ctx.s.browseDir : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
         list();
     }
     ~BrowsePage() override { stopThread (5000); }
-    void list() { files = dir.findChildFiles (juce::File::findFilesAndDirectories, false); files.sort(); fileScroll = 0; repaint(); }
+    void list() { files.clear(); for (auto& f : dir.findChildFiles (juce::File::findFilesAndDirectories, false)) if (! f.getFileName().startsWith (".")) files.add (f); files.sort(); fileScroll = 0; repaint(); }
     void run() override
     {
         auto& s = ctx.s;
@@ -1295,8 +1296,8 @@ public:
     }
     void paint (juce::Graphics& g) override
     {
-        paintPanel (g, devArea(), "devices  (click: add to the selected track · right-click: as instrument / insert / on a return / on the master)");
-        paintPanel (g, fileArea(), "files  (click: play on the sampler of the selected track · drag onto the arrangement · double-click a folder)");
+        paintPanel (g, devArea(), ui::U ("devices  (click: add to the selected track · right-click: as instrument / insert / on a return / on the master)"));
+        paintPanel (g, fileArea(), ui::U ("files  (double-click: onto the selected track · drag onto the arrangement · double-click a folder)"));
         g.setFont (uiFont (10.5f));
         g.setColour (theme.ink.withAlpha (0.7f)); g.drawText (progress, 270, 32, devArea().getWidth() - 280, 16, juce::Justification::centredLeft, true);
         types = ctx.s.deviceTypes();

@@ -130,6 +130,7 @@ public:
     std::shared_ptr<const std::vector<Marker>> markers;
     std::shared_ptr<const std::vector<LanePtr>> lanes;
     std::shared_ptr<const std::vector<MidiMap>> midiMaps;
+    juce::File browseDir;                           // the browser's folder (the music folder when empty)
     juce::String projectName { "untitled" };
     juce::File projectFile;
     std::atomic<bool> dirty { false };

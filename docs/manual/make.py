@@ -224,7 +224,7 @@ add('''<section class="page"><h2>contents</h2><ol class="toc">
 <li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">using the controls</a></li>
 <li><a href="#auto">automation in ableton</a></li><li><a href="#midi">midi</a></li>
 <li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li><li><a href="#modules">the drum modules</a> — bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9</li>
-<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#ballon">ballonwinkel · ballonpaleis</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
+<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#ballon">ballonwinkel · ballonpaleis</a></li><li><a href="#sndstudio">sndstudio</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
 <h2 id="intro">introduction</h2>
 <p>faltung is a set of eighteen instruments and effects for the sound of 2000s minimal and microhouse — Perlon, [a:rpia:r], Villalobos, the Romanian
 labels — and for the bass of early dubstep and neuro. Everything is synthesized or processed live; there are no sample libraries.</p>
@@ -702,6 +702,13 @@ pendulum, column and soundcube; after Iannis Xenakis sonotron, paraboloid, gas, 
 <p>The weather happens in 3-d here (patches of cloud, rain, snow and heat drift through the sphere and shake up the grains they pass), and the boom
 breaks where the dive ends, its rings opening out through the sphere.</p></section>''')
 
+# ---- sndstudio -------------------------------------------------------------------------------------------
+import sys
+sys.path.insert(0, HERE)
+from make_sndstudio import chapter as sndstudio_chapter
+add(divider('sndstudio', 'the studio: tracks · scenes · song · sends · modulators · 128 outputs', '#2b3a40', wire('#8ec3e6'), '#f6f6f0', '#f6f6f0'))
+add(sndstudio_chapter(shot))
+
 # ---- recipes + tech -----------------------------------------------------------------------------------------
 add('''<section class="page" id="recipes"><h2>recipes</h2>
 <h3>a long shuffled groove (kt1)</h3><ol><li>Load <b>a3 tok</b>. Set rm3 length 15, pc7 length 12, cl8 length 7.</li><li>Shift-drag a few rim steps early and hats late.</li>
@@ -783,3 +790,4 @@ def to_pdf(html_name, pdf_name):
     print(pdf)
 to_pdf('manual.html', 'faltung Manual.pdf')
 if '--no-ms0' not in sys.argv: to_pdf('ms0.html', 'ms0 master Manual.pdf')
+if '--no-sndstudio' not in sys.argv: subprocess.run([sys.executable, os.path.join(HERE, 'make_sndstudio.py')], check=True)

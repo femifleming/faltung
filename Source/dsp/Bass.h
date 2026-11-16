@@ -277,7 +277,11 @@ public:
         for (auto& c : comb) c.clear();
         for (auto& s : sat) s.reset();
         for (auto& t : toneLp) t.reset();
-        note = -1; gate = false;
+        note = -1; root = -1; gate = false; age = 0;
+        // free-running state too, so an offline render repeats exactly
+        subPh = 0; crushHold.fill (0); crushCount = 0; ctl = 0; pitch = pitchTarget = 60;
+        lfoPh = lfoVal = shVal = 0; lastWob = lastMenv = lastL2 = lastL3 = lastSteps = 0; l2s = {}; l3s = {}; stepPh = stepOut = noteRand = 0; lastMod.fill (0);
+        a.reset (rng, false); b.reset (rng, false);
     }
     bool active() const { return amp.st != Adsr::Idle; }
     void setEnv (const BassParams& p, float osRate)
@@ -547,7 +551,8 @@ public:
         bandEnv.fill (0);
         sideHp.reset();
         heldCount = 0;
-        hostPh = 0;
+        hostPh = 0; lastHostPh = 0; hostSh = 0; clock = 0;
+        rng.seed (4242);
     }
 
     void process (float* L, float* R, int n, const BassParams& p, const Transport& tr, const BassEvent* ev, int nev)
