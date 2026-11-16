@@ -1,4 +1,4 @@
-# st0 studio — how it is built
+# sndstudio — how it is built
 
 Source/daw. One engine (`Session`) shared by the standalone app (`StudioApp.cpp`, its own audio callback so any
 device's 128 channels are reachable) and the plug-in (`StudioProcessor`, 64 stereo output buses, host sync, the

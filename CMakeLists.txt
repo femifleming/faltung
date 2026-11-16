@@ -133,25 +133,25 @@ faltung_plugin(gl8 15 Fgl8 effect  "glue")
 faltung_plugin(wb1 16 Fwb1 module  "dubstep + neuro bass synth")
 faltung_plugin(ms0 17 Fms0 effect  "mastering bus")
 
-# st0 studio: the daw (Source/daw). 64 stereo output buses, hosts VST3 / AU, its own standalone app.
+# sndstudio: the daw (Source/daw). 64 stereo output buses, hosts VST3 / AU, its own standalone app.
 set(FAL_DAW_SOURCES Source/daw/Device.cpp Source/daw/Session.cpp Source/daw/Engine.cpp Source/daw/Project.cpp
-    Source/daw/StudioProcessor.cpp Source/daw/StudioEditor.cpp)
+    Source/daw/StudioProcessor.cpp Source/daw/StudioEditor.cpp Source/daw/devices/StudioDevices.cpp)
 set(FAL_HOST_DEFS JUCE_PLUGINHOST_VST3=1)
 if(APPLE)
     list(APPEND FAL_HOST_DEFS JUCE_PLUGINHOST_AU=1)
 endif()
 function(faltung_studio DEEP)
     if(DEEP)
-        set(T faltung_deep_st0)
-        set(PNAME "faltung deep st0")
-        set(BID "com.freakiepie.faltungdeep.st0")
-        set(CODE Dst0)
+        set(T faltung_deep_sndstudio)
+        set(PNAME "faltung deep sndstudio")
+        set(BID "com.freakiepie.faltungdeep.sndstudio")
+        set(CODE Dsnd)
         set(DESC "deep house studio: tracks, scenes, song, sends, 128 outputs")
     else()
-        set(T faltung_st0)
-        set(PNAME "faltung st0")
-        set(BID "com.freakiepie.faltung.st0")
-        set(CODE Fst0)
+        set(T faltung_sndstudio)
+        set(PNAME "faltung sndstudio")
+        set(BID "com.freakiepie.faltung.sndstudio")
+        set(CODE Fsnd)
         set(DESC "microhouse studio: tracks, scenes, song, sends, 128 outputs")
     endif()
     juce_add_plugin(${T}
@@ -171,7 +171,7 @@ function(faltung_studio DEEP)
         AU_MAIN_TYPE kAudioUnitType_MusicDevice
         VST3_CATEGORIES Instrument
         VST2_CATEGORY kPlugCategSynth
-        LV2URI "urn:freakiepie:faltung:st0"
+        LV2URI "urn:freakiepie:faltung:sndstudio"
         COPY_PLUGIN_AFTER_BUILD ${FALTUNG_COPY_AFTER_BUILD})
     target_sources(${T} PRIVATE ${FAL_SOURCES} ${FAL_DAW_SOURCES} Source/daw/StudioApp.cpp Source/daw/StudioEntry.cpp)
     target_compile_definitions(${T} PUBLIC ${FAL_DEFS} ${FAL_HOST_DEFS} FALTUNG_PRODUCT=18 FALTUNG_DEEP=${DEEP}
@@ -282,9 +282,9 @@ if(FALTUNG_BUILD_TESTS)
         endif()
         target_link_libraries(${T} PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
     endfunction()
-    faltung_studio_test(faltungStudioTest 0)
+    faltung_studio_test(sndstudioTest 0)
     if(FALTUNG_BUILD_DEEP)
-        faltung_studio_test(faltungDeepStudioTest 1)
+        faltung_studio_test(sndstudioDeepTest 1)
     endif()
 endif()
 

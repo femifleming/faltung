@@ -7,7 +7,7 @@
 [releases](https://github.com/femifleming/faltung/releases). Partials alone: `brew install --cask femifleming/tap/partials`; Cloudfin alone: `brew install --cask femifleming/tap/cloudfin`.
 ConvoSolution, ObliqSound and ObliqSonic come with the faltung cask and zips (their old casks and repositories are retired); ConvoSolution's full response library, `ConvoSolution-IRs.zip` (140 spaces, CC BY / CC BY-SA), is a separate download on the releases page: unpack it into `Music/ConvoSolution`.
 
-**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) (ballonwinkel and ballonpaleis included) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) · [Cloudfin Manual.pdf](cloudfin/docs/manual/Cloudfin%20Manual.pdf) · [convosolution Manual.pdf](convosolution/docs/manual/convosolution%20Manual.pdf) · [obliqsound Manual.pdf](obliqsound/docs/manual/obliqsound%20Manual.pdf) (ObliqSound and ObliqSonic) · [faltung deep Manual.pdf](docs/manual-deep/faltung%20deep%20Manual.pdf) (also in every download).
+**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) (ballonwinkel and ballonpaleis included) · [sndstudio Manual.pdf](docs/manual/sndstudio%20Manual.pdf) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) · [Cloudfin Manual.pdf](cloudfin/docs/manual/Cloudfin%20Manual.pdf) · [convosolution Manual.pdf](convosolution/docs/manual/convosolution%20Manual.pdf) · [obliqsound Manual.pdf](obliqsound/docs/manual/obliqsound%20Manual.pdf) (ObliqSound and ObliqSonic) · [faltung deep Manual.pdf](docs/manual-deep/faltung%20deep%20Manual.pdf) (also in every download).
 
 **Two suites, one repository:** *faltung* (minimal / microhouse, below) and *faltung deep* (deep house, drawn as faltung's dark mode, [further down](#faltung-deep)).
 `brew install --cask femifleming/tap/faltung-deep`, or `faltung-deep-macOS.zip`, `faltung-deep-Windows.zip`, `faltung-deep-Linux.tar.gz` from the releases. They install side by side.
@@ -53,14 +53,49 @@ and standalone on Linux. (ObliqSound and ObliqSonic on Windows and Linux keep an
 | **ObliqSonic** | obliqsonic | ObliqSound as a sound source for third-order Ambisonics (16 channels, ACN / SN3D, for the IEM and SPARTA decoders): every voice, six copies of the field recording, the effects and the nature bed are points that fly on a flock, Lorenz attractors or gravity wells, with Doppler, distance and air; a space page with a thin wireframe sphere. Same manual as ObliqSound. |
 | **ballonwinkel** | ballonwinkel | the faltung-series twin of Pinkie Pie's Balloon Shop (which carries on as it is, in its own repository): the same multi-effect and every one of its controls, played as balloons. Spectral smear / freeze / tilt, a scale-locked pitch shifter with feedback, a granulator (a shape you draw), a reverb, main feedback, the stutter and eleven more effects from the store in any order, a pop pump, sounds caught in balloons, helium, ten weather switches and a rainbow, and the sonic boom. A rose field; the balloons are faceted wire solids that fill with colour to their value; a sliders page. Stereo (1 > 1, 1 > 2, 2 > 1, 2 > 2). |
 | **ballonpaleis** | ballonpaleis | the faltung-series twin of Pinkie Pie's Balloon Palace (which carries on as it is): ballonwinkel inside a sphere, as an Ambisonics encoder from 1st to 7th order (4 to 64 channels, ACN / SN3D): up to 16 grains fly on 20 flights (orbit, Lorenz, flock, Leitner's lines and Soundcube, Xenakis's sonotron, gas, Nomos …) with distance, doppler and a 64-line reverb; an energy map. A deep plum field with the sphere as a thin wireframe. In REAPER the VST2 carries all 64 channels and the AU 16; the VST3 opens there in stereo, as the original's does. |
+| **sndstudio** | studio | the daw: see [sndstudio](#sndstudio) below. |
 | **wb1** | wub | dubstep / neuro bass synth, after DMZ, Hench, Skream, Rusko, Noisa, Current Value, Billain. Two oscillators (sine to saw to square to "hard", up to 7-voice unison, b phase-modulates a), clean sub, noise; lp24/lp12/bp/hp/notch filter with drive; formant filter (a e i o u, the "yoy"); comb tuned to the note; 6 distortions (pre or post filter); host-synced wobble with sine, wow, yoy, ramps, square, random, routable to cutoff, vowel, fm, drive, pitch, volume, comb; mod envelope; mono / legato / glide; mod wheel to wobble depth or rate; 3-band "ott" compression; mono below 140 Hz. Runs at 2× oversampling. 10 presets (sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl, talk box, neuro stab). |
+
+## sndstudio
+
+A whole studio made from the suite, for producing full-length microhouse / rominimal (and deep house, in *faltung deep sndstudio*)
+tracks, as a standalone app and as a VST3 / AU / VST2 plug-in with **64 stereo output buses (128 channels)** so every track, return
+and the master can be recorded on its own channel in Ableton (or any other DAW) and mixed and mastered there.
+
+- **tracks**: any number of instrument tracks (every faltung drum engine, wb1 / sb1, the studio's own devices, and hosted VST3 / AU
+  instruments), audio tracks (drag files onto the timeline; clips with gain, fades, reverse, repitch, transient-preserving stretch,
+  warp to tempo; recording from any input, resampling of the master or any track), up to eight returns, a master; per track an insert
+  chain (faltung effects, studio devices, hosted plug-ins), eight sends (pre / post), pan, level, mute, solo, an output channel, a
+  width of 1 … 64 channels, routes into other tracks (spatial audio and ambisonics: a stereo clip into a 16-channel encoder track,
+  routed over 16 channels to a 24-channel decoder, the master at 24 channels).
+- **sequencer**: 64 patterns of up to 64 steps per track; per step velocity, pitch, chance, ratchet 1–8, micro-timing, length,
+  18 conditions (1:2 … 8:8, fill, first, prev), four parameter locks on any parameter with slides between them; per track length,
+  speed (x1/4 … x4), a free clock in ms, swing, shift, chance, root note, pattern chains; tools: euclid, rotate, reverse, mutate,
+  humanise, random, markov, rewrite, double, copy / paste.
+- **arrangement**: scenes (launch quantised), song mode (scenes × bars), a timeline of pattern and audio clips, loop region,
+  markers, automation lanes on any parameter (linear / curved, drawn or recorded) — sends, mutes, macros, tempo, swing included.
+- **modulation**: any control, right-click → *map a modulator*: lfo (12 shapes incl. s&h, drift, pulse, mpc shuffle), random
+  gates, slewed random, envelope, follower, steps, chaos, macros, velocity, midi cc; synced or free (hz), bipolar / up / down,
+  slew; a modulator can drive another's rate; 8 macros the host sees; midi learn on anything.
+- **mixer**: strips with multichannel meters, the output map (*produce*: everything to the stereo master; *multi-out*: every
+  track on its own channels — *assign all* lays them out consecutively), the master width (2 … 64), the ms0 chain on the master
+  with *bypass* (master in Ableton instead).
+- **studio devices**: strip, transient, sidechain (keyed from any track, duck / pump shapes), colour, stereo, throw (dub send delay
+  with throw and hold), spring (with freeze), vinyl, repeat (buffer glitch), grain, multiband, clip, noise bed, tone (precision
+  generator), data (byte bursts), fm perc, sampler (one-shots, loops, slices to steps).
+- **files**: `.fstudio` projects (xml), autosave, templates (microhouse / deep house starter, dub, long form, multi-out), stems
+  export (24-bit dithered or 32-bit float), a mastered stereo export with a true-peak limiter, midi export, resample to a new track.
+- **sync**: host tempo and position as a plug-in; internal clock, midi clock out and audio / midi settings in the standalone.
+
+The way into Ableton from the standalone: a 128-channel virtual device such as *BlackHole 128ch* as the output, *multi-out*
+and *assign all outputs* in the mixer, then one audio track per channel pair in Live.
 
 ## faltung deep
 
 The deep house twin: the same engines, retuned and re-preset for warm, swung house — round kicks, wooden
 rims, soft room claps, shakers and congas, chord stabs and sub bass. Seventeen plug-ins (no mastering bus,
 no Partials): **kt1** kit (kick, rim, clap, closed / open hat, shaker, conga, tom), **kt2** loop, the eight
-modules **bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9**, the six effects **mc3 dl4 rv5 sw6 fl7 gl8**, and **sb1 stabs** —
+modules **bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9**, the six effects **mc3 dl4 rv5 sw6 fl7 gl8**, **sb1 stabs** and **sndstudio** —
 the bass synth with a chord section (one key plays a minor 9, minor 7, 6/9 … in close, open or drop-2 voicing)
 and organ, electric piano, pad, stab and sub presets. Every plug-in is named *faltung deep …* and opens on a
 deep house preset.
@@ -110,8 +145,9 @@ speed the steps up or slow them down over each loop; the loop keeps its length, 
 git submodule update --init
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 obliqsound/sc/fetch_sc.sh                                     # once: SuperCollider's server for ObliqSound / ObliqSonic (skipped with a warning without it)
-cmake --build build --target faltung_all faltungTest PartialsTest
+cmake --build build --target faltung_all faltungTest sndstudioTest PartialsTest
 ./build/faltungTest_artefacts/Release/faltungTest              # renders and checks all seventeen faltung plug-ins
+./build/sndstudioTest_artefacts/Release/sndstudioTest          # sndstudio: timing, locks, sends, outputs, automation, clips, recording, hosting
 ./build/partials/PartialsTest_artefacts/Release/PartialsTest   # Partials' own tests
 ./build/cloudfin/CloudfinTest_artefacts/Release/CloudfinTest   # Cloudfin's (and CloudfinHostTest for its window)
 ./build/convosolution/ECRTest_artefacts/Release/ECRTest        # ConvoSolution's (and ECREngineTest for the convolution engine)

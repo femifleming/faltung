@@ -1,5 +1,6 @@
 #include "Device.h"
 #include "../Processor.h"
+#include "devices/StudioDevices.h"
 
 namespace fal::daw
 {
@@ -36,6 +37,7 @@ bool Device::isInstrument() const
 {
     if (kind == Kind::Internal) return info (pid).kind != fal::Kind::Effect;
     if (kind == Kind::Hosted) return desc.isInstrument;
+    if (kind == Kind::Studio) return proc && proc->acceptsMidi() && proc->getTotalNumInputChannels() == 0;
     return false;
 }
 
@@ -52,14 +54,25 @@ void Device::buildMirrors (std::function<juce::String (int)> nameOf, std::functi
     }
     holder->addListener (this);
     finals = std::vector<std::atomic<float>> ((size_t) n);
+    modLo = std::vector<std::atomic<float>> ((size_t) n);
+    modHi = std::vector<std::atomic<float>> ((size_t) n);
     lockOn = std::vector<std::atomic<int>> ((size_t) n);
     gestureOn = std::vector<std::atomic<int>> ((size_t) n);
-    for (int i = 0; i < n; ++i) { finals[(size_t) i].store (defOf (i)); lockOn[(size_t) i].store (0); gestureOn[(size_t) i].store (0); }
+    for (int i = 0; i < n; ++i) { finals[(size_t) i].store (defOf (i)); lockOn[(size_t) i].store (0); gestureOn[(size_t) i].store (0); modLo[(size_t) i].store (0); modHi[(size_t) i].store (0); }
     lastWritten.assign ((size_t) n, -1.0f);
     lockVal.assign ((size_t) n, 0.0f); slideFrom.assign ((size_t) n, 0.0f); slideTo.assign ((size_t) n, 0.0f);
     slideA.assign ((size_t) n, 0.0); slideB.assign ((size_t) n, 0.0);
     modOffset.assign ((size_t) n, 0.0f);
     macro = std::vector<Macro> ((size_t) n);
+}
+
+static void mirrorsFromProcessor (Device& d, juce::AudioProcessor* raw, std::unique_ptr<Device>& out,
+                                  void (Device::*build) (std::function<juce::String (int)>, std::function<juce::String (int, float)>, std::function<float (int)>, int))
+{
+    (d.*build) ([raw] (int i) { return raw->getParameters()[i]->getName (40); },
+                [raw] (int i, float v) { return raw->getParameters()[i]->getText (v, 24); },
+                [raw] (int i) { return raw->getParameters()[i]->getValue(); }, raw->getParameters().size());
+    juce::ignoreUnused (out);
 }
 
 std::unique_ptr<Device> Device::makeInternal (int uid, Pid pid)
@@ -69,14 +82,45 @@ std::unique_ptr<Device> Device::makeInternal (int uid, Pid pid)
     d->typeId = "fal:" + juce::String (info (pid).code);
     d->name = juce::String (info (pid).code) + " " + info (pid).name;
     auto p = std::make_unique<fal::Processor> (pid);
-    auto& params = p->getParameters();
-    auto* raw = p.get();
-    d->buildMirrors ([raw] (int i) { return raw->getParameters()[i]->getName (40); },
-                     [raw] (int i, float v) { return raw->getParameters()[i]->getText (v, 24); },
-                     [raw] (int i) { return raw->getParameters()[i]->getValue(); }, params.size());
+    mirrorsFromProcessor (*d, p.get(), d, &Device::buildMirrors);
     d->proc = std::move (p);
     d->proc->addListener (d.get());
+    d->inWidth = d->isInstrument() ? 0 : 2; d->outWidth = 2;
     return d;
+}
+
+std::unique_ptr<Device> Device::makeStudio (int uid, const juce::String& typeId)
+{
+    auto p = createStudioProcessor (typeId);
+    if (! p) return nullptr;
+    return makeFromProcessor (uid, std::move (p), typeId, studioDeviceName (typeId));
+}
+std::unique_ptr<Device> Device::makeFromProcessor (int uid, std::unique_ptr<juce::AudioProcessor> p, const juce::String& typeId, const juce::String& name)
+{
+    std::unique_ptr<Device> d (new Device());
+    d->uid = uid; d->kind = Kind::Studio; d->typeId = typeId; d->name = name;
+    mirrorsFromProcessor (*d, p.get(), d, &Device::buildMirrors);
+    d->proc = std::move (p);
+    d->proc->addListener (d.get());
+    d->inWidth = d->proc->getTotalNumInputChannels(); d->outWidth = d->proc->getTotalNumOutputChannels();
+    return d;
+}
+
+juce::AudioChannelSet channelSetFor (int width)
+{
+    switch (width)
+    {
+        case 1: return juce::AudioChannelSet::mono();
+        case 2: return juce::AudioChannelSet::stereo();
+        case 4: return juce::AudioChannelSet::ambisonic (1);
+        case 9: return juce::AudioChannelSet::ambisonic (2);
+        case 16: return juce::AudioChannelSet::ambisonic (3);
+        case 25: return juce::AudioChannelSet::ambisonic (4);
+        case 36: return juce::AudioChannelSet::ambisonic (5);
+        case 49: return juce::AudioChannelSet::ambisonic (6);
+        case 64: return juce::AudioChannelSet::ambisonic (7);
+        default: return juce::AudioChannelSet::discreteChannels (width);
+    }
 }
 
 std::unique_ptr<Device> Device::makeHosted (int uid, std::unique_ptr<juce::AudioPluginInstance> inst, const juce::PluginDescription& desc)
@@ -86,22 +130,63 @@ std::unique_ptr<Device> Device::makeHosted (int uid, std::unique_ptr<juce::Audio
     d->typeId = desc.pluginFormatName.toLowerCase() + ":" + desc.createIdentifierString();
     d->name = desc.name;
     auto* raw = inst.get();
-    // a plain stereo pair in and out; side-chains and extra outputs stay off
-    auto layout = inst->getBusesLayout();
-    for (int i = 0; i < layout.inputBuses.size(); ++i) layout.inputBuses.getReference (i) = i == 0 ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::disabled();
-    for (int i = 0; i < layout.outputBuses.size(); ++i) layout.outputBuses.getReference (i) = i == 0 ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::disabled();
-    if (! inst->checkBusesLayoutSupported (layout) || ! inst->setBusesLayout (layout))
-    {
-        auto l2 = inst->getBusesLayout();
-        if (l2.outputBuses.size() > 0) l2.outputBuses.getReference (0) = juce::AudioChannelSet::stereo();
-        inst->setBusesLayout (l2);
-    }
-    d->buildMirrors ([raw] (int i) { return raw->getParameters()[i]->getName (40); },
-                     [raw] (int i, float v) { return raw->getParameters()[i]->getText (v, 24); },
-                     [raw] (int i) { return raw->getParameters()[i]->getValue(); }, inst->getParameters().size());
+    mirrorsFromProcessor (*d, raw, d, &Device::buildMirrors);
     d->proc = std::move (inst);
     d->proc->addListener (d.get());
+    d->configure (2, 2);
     return d;
+}
+
+int Device::configure (int incoming, int trackWidth)
+{
+    if (kind == Kind::Internal) { inWidth = isInstrument() ? 0 : 2; outWidth = 2; return outWidth; }
+    if (kind == Kind::Studio)
+    {
+        if (proc)
+        {
+            // studio devices follow the chain width when they can (their buses accept any discrete layout)
+            auto l = proc->getBusesLayout();
+            const int want = juce::jlimit (1, kMaxWidth, incoming > 0 ? incoming : trackWidth);
+            if (l.inputBuses.size() > 0 && proc->getTotalNumInputChannels() > 0) l.inputBuses.getReference (0) = channelSetFor (want);
+            if (l.outputBuses.size() > 0) l.outputBuses.getReference (0) = channelSetFor (want);
+            if (proc->checkBusesLayoutSupported (l)) proc->setBusesLayout (l);
+            inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels();
+        }
+        return outWidth;
+    }
+    if (kind != Kind::Hosted || ! proc) return outWidth;
+    // hosted: the main input takes the incoming width, the main output the widest layout the plug-in offers up to the
+    // track's width (an encoder: 2 in, 16 out; a decoder: 16 in, 2 out); other buses stay off
+    auto layout = proc->getBusesLayout();
+    for (int i = 1; i < layout.inputBuses.size(); ++i) layout.inputBuses.getReference (i) = juce::AudioChannelSet::disabled();
+    for (int i = 1; i < layout.outputBuses.size(); ++i) layout.outputBuses.getReference (i) = juce::AudioChannelSet::disabled();
+    auto tryLayout = [&] (int in, int out)
+    {
+        auto l = layout;
+        if (l.inputBuses.size() > 0) l.inputBuses.getReference (0) = in <= 0 ? juce::AudioChannelSet::disabled() : channelSetFor (in);
+        if (l.outputBuses.size() > 0) l.outputBuses.getReference (0) = channelSetFor (out);
+        if (proc->checkBusesLayoutSupported (l) && proc->setBusesLayout (l)) return true;
+        return false;
+    };
+    const bool hasIn = layout.inputBuses.size() > 0 && ! desc.isInstrument;
+    const int inWant = hasIn ? std::max (1, incoming) : 0;
+    bool ok = false;
+    // preferred: in = incoming, out = track width; then any narrower out; then stereo
+    for (int out : { trackWidth, 64, 49, 36, 25, 16, 9, 8, 6, 4, 2, 1 })
+    {
+        if (out > trackWidth || out <= 0) continue;
+        if (tryLayout (inWant, out)) { ok = true; break; }
+    }
+    if (! ok && hasIn)
+        for (int in : { 2, 1, 16, 4, 9, 25, 36, 49, 64 })
+            for (int out : { trackWidth, 16, 2, 1 })
+                if (out <= trackWidth && tryLayout (in, out)) { ok = true; break; }
+    if (! ok) tryLayout (hasIn ? 2 : 0, 2);
+    inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels();
+    if (prepared) { proc->releaseResources(); proc->prepareToPlay (proc->getSampleRate() > 0 ? proc->getSampleRate() : 48000.0, std::max (16, proc->getBlockSize())); }
+    scratchChannels = std::max (2, std::max (inWidth, outWidth));
+    scratch.setSize (scratchChannels, std::max (16, scratch.getNumSamples()), false, false, true);
+    return outWidth;
 }
 
 juce::String mixerParamName (int i)
@@ -115,7 +200,7 @@ juce::String mixerParamText (int i, float v)
         case MP_LEVEL: return v <= 0.001f ? juce::String ("off") : (mixerLevelDb (v) > 0 ? "+" : "") + juce::String (mixerLevelDb (v), 1) + " db";
         case MP_PAN: { const int p = juce::roundToInt ((v * 2.0f - 1.0f) * 50.0f); return p == 0 ? juce::String ("c") : (p < 0 ? "l " + juce::String (-p) : "r " + juce::String (p)); }
         case MP_MUTE: return v > 0.5f ? "muted" : "on";
-        default: return v <= 0.001f ? juce::String ("off") : juce::String (-48.0f + 48.0f * v, 1) + " db";
+        default: return v <= 0.001f ? juce::String ("off") : (v > 0.889f ? "+" : "") + juce::String (-48.0f + 54.0f * v, 1) + " db";
     }
 }
 juce::String globalParamName (int i)
@@ -165,12 +250,19 @@ int Device::paramIndexForId (const juce::String& id) const
     for (int i = 0; i < numParams(); ++i) if (paramId (i) == id) return i;
     return -1;
 }
+int Device::paramIndexForName (const juce::String& name) const
+{
+    for (int i = 0; i < numParams(); ++i) if (paramName (i) == name) return i;
+    return -1;
+}
 
 void Device::setBase (int i, float v, bool notify)
 {
     if (i < 0 || i >= numParams()) return;
-    if (notify) { writing.store (true); mirrors[(size_t) i]->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v)); writing.store (false); }
-    else mirrors[(size_t) i]->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
+    v = juce::jlimit (0.0f, 1.0f, v);
+    if (notify) { writing.store (true); mirrors[(size_t) i]->setValueNotifyingHost (v); writing.store (false); }
+    else mirrors[(size_t) i]->setValueNotifyingHost (v);
+    if (! proc) finals[(size_t) i].store (v, std::memory_order_relaxed);   // the mixer and the globals: readable at once (the next block refines it)
 }
 
 // ---- listeners -------------------------------------------------------------------------------------
@@ -207,6 +299,7 @@ void Device::prepare (double sr, int bs)
         proc->prepareToPlay (sr, bs);
         scratchChannels = std::max (2, std::max (proc->getTotalNumInputChannels(), proc->getTotalNumOutputChannels()));
         scratch.setSize (scratchChannels, bs, false, false, true);
+        if (kind == Kind::Hosted || kind == Kind::Studio) { inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels(); }
     }
     std::fill (lastWritten.begin(), lastWritten.end(), -1.0f);
     prepared = true;
@@ -235,11 +328,6 @@ bool Device::clearLocksExcept (const Lock* keep, int n)
     }
     return dropped;
 }
-int Device::paramIndexForName (const juce::String& name) const
-{
-    for (int i = 0; i < numParams(); ++i) if (paramName (i) == name) return i;
-    return -1;
-}
 
 void Device::apply (const float* macros, double ppq)
 {
@@ -249,17 +337,20 @@ void Device::apply (const float* macros, double ppq)
     {
         float v = mirrors[(size_t) i]->getValue();
         const int m = macro[(size_t) i].index.load (std::memory_order_relaxed);
-        if (m >= 0 && m < kMacros) v = macro[(size_t) i].lo.load() + (macro[(size_t) i].hi.load() - macro[(size_t) i].lo.load()) * macros[m];
-        v += modOffset[(size_t) i];
+        if (macros && m >= 0 && m < kMacros) v = macro[(size_t) i].lo.load() + (macro[(size_t) i].hi.load() - macro[(size_t) i].lo.load()) * macros[m];
+        const float off = modOffset[(size_t) i];
+        v += off;
         const int lk = lockOn[(size_t) i].load (std::memory_order_relaxed);
-        if (lk == 1) v = lockVal[(size_t) i] + modOffset[(size_t) i];
+        if (lk == 1) v = lockVal[(size_t) i] + off;
         else if (lk == 2)
         {
             const double t = juce::jlimit (0.0, 1.0, (ppq - slideA[(size_t) i]) / (slideB[(size_t) i] - slideA[(size_t) i]));
-            v = slideFrom[(size_t) i] + (slideTo[(size_t) i] - slideFrom[(size_t) i]) * (float) t + modOffset[(size_t) i];
+            v = slideFrom[(size_t) i] + (slideTo[(size_t) i] - slideFrom[(size_t) i]) * (float) t + off;
         }
         v = juce::jlimit (0.0f, 1.0f, v);
         finals[(size_t) i].store (v, std::memory_order_relaxed);
+        modLo[(size_t) i].store (std::min (0.0f, off), std::memory_order_relaxed);
+        modHi[(size_t) i].store (std::max (0.0f, off), std::memory_order_relaxed);
         if (proc && std::abs (v - lastWritten[(size_t) i]) > 1.0e-6f)
         {
             writing.store (true, std::memory_order_relaxed);
@@ -270,28 +361,31 @@ void Device::apply (const float* macros, double ppq)
     }
 }
 
-void Device::process (juce::AudioBuffer<float>& stereo, juce::MidiBuffer& midi)
+void Device::process (juce::AudioBuffer<float>& track, juce::MidiBuffer& midi)
 {
     if (! proc || ! prepared) return;
+    const int n = track.getNumSamples(), width = track.getNumChannels();
     if (bypass.load (std::memory_order_relaxed)) { midi.clear(); return; }
-    const int n = stereo.getNumSamples();
-    if (kind == Kind::Internal)
+    if (kind == Kind::Internal && width == 2)
     {
-        proc->processBlock (stereo, midi);
+        proc->processBlock (track, midi);
         return;
     }
-    if (scratch.getNumSamples() < n) scratch.setSize (scratchChannels, n, false, false, true);
-    juce::AudioBuffer<float> b (scratch.getArrayOfWritePointers(), scratchChannels, n);
+    const int ins = kind == Kind::Internal ? (isInstrument() ? 0 : 2) : proc->getTotalNumInputChannels();
+    const int outs = kind == Kind::Internal ? 2 : proc->getTotalNumOutputChannels();
+    const int ch = std::max (2, std::max (ins, outs));
+    if (scratch.getNumChannels() < ch || scratch.getNumSamples() < n) { scratchChannels = ch; scratch.setSize (ch, std::max (n, scratch.getNumSamples()), false, false, true); }
+    juce::AudioBuffer<float> b (scratch.getArrayOfWritePointers(), kind == Kind::Internal ? 2 : ch, n);
     b.clear();
-    const int ins = proc->getTotalNumInputChannels();
-    for (int c = 0; c < std::min (2, ins); ++c) b.copyFrom (c, 0, stereo, c, 0, n);
+    for (int c = 0; c < std::min (ins, width); ++c) b.copyFrom (c, 0, track, c, 0, n);
+    if (kind == Kind::Hosted || kind == Kind::Studio)
+        if (auto* kp = dynamic_cast<KeyedProcessor*> (proc.get())) kp->setKey (keyL, keyR);
     proc->processBlock (b, midi);
-    const int outs = proc->getTotalNumOutputChannels();
-    for (int c = 0; c < 2; ++c)
+    for (int c = 0; c < width; ++c)
     {
-        if (c < outs) stereo.copyFrom (c, 0, b, c, 0, n);
-        else if (outs == 1) stereo.copyFrom (c, 0, b, 0, 0, n);
-        else stereo.clear (c, 0, n);
+        if (c < outs) track.copyFrom (c, 0, b, c, 0, n);
+        else if (outs == 1 && c == 1) track.copyFrom (c, 0, b, 0, 0, n);
+        else track.clear (c, 0, n);
     }
 }
 

@@ -59,7 +59,7 @@ const VoiceParams& defaultVoice (VType t);
 
 juce::String kitPrefix (int v);  // "v1_"
 
-/** st0 studio, the daw (Source/daw): registered here so its code, name and colours live with the other products */
+/** sndstudio, the daw (Source/daw): registered here so its name and colours live with the other products */
 struct StudioInfo { const char* code; const char* name; const char* blurb; juce::uint32 ground, accent; int w, h; };
 const StudioInfo& studioInfo();
 } // namespace fal

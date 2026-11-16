@@ -8,7 +8,7 @@ juce::AudioProcessor::BusesProperties StudioProcessor::buses()
     BusesProperties b;
     const auto st = juce::AudioChannelSet::stereo();
     b = b.withOutput ("main", st, true);
-    for (int p = 2; p <= kOutPairs; ++p) b = b.withOutput ("out " + juce::String (2 * p - 1) + "-" + juce::String (2 * p), st, false);
+    for (int p = 2; p <= kOutChannels / 2; ++p) b = b.withOutput ("out " + juce::String (2 * p - 1) + "-" + juce::String (2 * p), st, false);
     return b;
 }
 
@@ -31,7 +31,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout StudioProcessor::layout()
     };
     for (int i = 0; i < kMacros; ++i) add ("macro" + juce::String (i + 1), "macro " + juce::String (i + 1), 0.0f, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; });
     add ("master", "master level", 0.8f, [] (float v) { return mixerParamText (MP_LEVEL, v); });
-    for (int t = 0; t < kMaxTracks; ++t)
+    for (int t = 0; t < kHostTracks; ++t)
     {
         const juce::String n = "track " + juce::String (t + 1) + " ";
         add (hostParamId (t, MP_LEVEL), n + "level", 0.8f, [] (float v) { return mixerParamText (MP_LEVEL, v); });
@@ -60,7 +60,7 @@ void StudioProcessor::buildBridges()
     bridges.clear();
     for (int i = 0; i < kMacros; ++i) bridges.push_back ({ apvts.getParameter ("macro" + juce::String (i + 1)), -200, GP_MACRO1 + i });
     bridges.push_back ({ apvts.getParameter ("master"), -200, GP_MASTER });
-    for (int t = 0; t < kMaxTracks; ++t)
+    for (int t = 0; t < kHostTracks; ++t)
     {
         for (int p : { MP_LEVEL, MP_PAN, MP_MUTE }) bridges.push_back ({ apvts.getParameter (hostParamId (t, p)), t, p });
         for (int s = 0; s < 4; ++s) bridges.push_back ({ apvts.getParameter (hostParamId (t, MP_SEND1 + s)), t, MP_SEND1 + s });
@@ -75,9 +75,12 @@ void StudioProcessor::syncFromHost()
     for (auto& b : bridges)
     {
         const float hv = b.host->getValue();
+        if (std::abs (hv - b.lastHost) <= 1.0e-6f) continue;
+        b.lastHost = hv;
         Device* d = b.trackSel == -200 ? session.global.get() : (session.trackAt (b.trackSel) ? session.trackAt (b.trackSel)->mixer.get() : nullptr);
         if (! d) continue;
-        if (std::abs (hv - b.lastHost) > 1.0e-6f) { b.lastHost = hv; if (std::abs (hv - d->baseValue (b.param)) > 1.0e-6f) d->setBase (b.param, hv); b.lastBase = hv; }
+        if (std::abs (hv - d->baseValue (b.param)) > 1.0e-6f) d->setBase (b.param, hv);
+        b.lastBase = hv;
     }
 }
 
@@ -105,7 +108,6 @@ void StudioProcessor::timerCallback()
 void StudioProcessor::prepareToPlay (double sr, int bs)
 {
     session.prepare (sr, bs);
-    standaloneScratch.assign ((size_t) (2 * kOutPairs * bs), 0.0f);
     lastLatency = session.totalLatency();
     setLatencySamples (lastLatency);
 }
@@ -125,9 +127,16 @@ void StudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 {
     juce::ScopedNoDenormals nd;
     const int n = buffer.getNumSamples();
-    buffer.clear();
     HostInfo h;
     h.standalone = isStandaloneApp.load();
+    // the standalone's own callback puts the device inputs first (numInputs channels), then the outputs
+    const int ins = h.standalone ? standaloneInputs.load() : 0;
+    if (ins > 0 && buffer.getNumChannels() >= ins)
+    {
+        for (int c = 0; c < ins && c < (int) inPtrs.size(); ++c) inPtrs[(size_t) c] = buffer.getReadPointer (c);
+        h.in = inPtrs.data(); h.numIn = std::min (ins, (int) inPtrs.size());
+        h.inputLatency = standaloneInputLatency.load();
+    }
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
         {
@@ -138,12 +147,14 @@ void StudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     Outs outs;
     if (h.standalone)
     {
-        // the device's channels in order: pair p = channels 2p-1, 2p
-        for (int c = 0; c < std::min (buffer.getNumChannels(), 2 * kOutPairs); ++c) outs.ch[(size_t) c] = buffer.getWritePointer (c);
+        // output channels follow the inputs in the callback buffer: pair p = channels 2p-1, 2p of the device
+        for (int c = 0; c < std::min (buffer.getNumChannels() - ins, kOutChannels); ++c) { outs.ch[(size_t) c] = buffer.getWritePointer (ins + c); }
+        for (int c = ins; c < buffer.getNumChannels(); ++c) buffer.clear (c, 0, n);
     }
     else
     {
-        for (int b = 0; b < getBusCount (false) && b < kOutPairs; ++b)
+        buffer.clear();
+        for (int b = 0; b < getBusCount (false) && b < kOutChannels / 2; ++b)
         {
             auto* bus = getBus (false, b);
             if (! bus || ! bus->isEnabled()) continue;
@@ -166,7 +177,7 @@ void StudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         }
         else if (clockPpq >= 0) { midiClockOut (juce::MidiMessage::midiStop()); clockPpq = -1; }
     }
-    for (int c = 0; c < buffer.getNumChannels(); ++c)
+    for (int c = ins; c < buffer.getNumChannels(); ++c)
     {
         auto* d = buffer.getWritePointer (c);
         for (int i = 0; i < n; ++i) if (! std::isfinite (d[i])) d[i] = 0.0f;
@@ -187,22 +198,24 @@ void StudioProcessor::setStateInformation (const void* data, int size)
 
 juce::File StudioProcessor::projectsDir()
 {
-    auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (kDeep ? "faltung deep studio" : "faltung studio");
+    auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (kDeep ? "faltung deep sndstudio" : "faltung sndstudio");
     d.createDirectory();
     return d;
 }
 bool StudioProcessor::saveProject (const juce::File& f, juce::String& error)
 {
     session.projectName = f.getFileNameWithoutExtension();
+    session.projectFile = f;
     auto x = session.save();
     if (! x->writeTo (f)) { error = "could not write " + f.getFullPathName(); return false; }
-    session.projectFile = f; session.dirty = false;
+    session.dirty = false;
     return true;
 }
 bool StudioProcessor::loadProject (const juce::File& f, juce::String& error)
 {
     auto x = juce::XmlDocument::parse (f);
     if (! x) { error = "cannot read " + f.getFullPathName(); return false; }
+    session.projectFile = f; session.projectName = f.getFileNameWithoutExtension();
     if (! session.load (*x, &error)) return false;
     session.projectFile = f; session.projectName = f.getFileNameWithoutExtension(); session.dirty = false;
     return true;

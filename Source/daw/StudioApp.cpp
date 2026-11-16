@@ -1,6 +1,6 @@
-// faltung st0 studio — the standalone application. Its own audio callback (not JUCE's standalone wrapper) so the
-// engine can address up to 128 output channels of any device (BlackHole 128ch is the way into Ableton), with
-// midi inputs, a midi clock output and the project menu.
+// faltung sndstudio — the standalone application. Its own audio callback (not JUCE's standalone wrapper) so the
+// engine can address up to 128 output channels and 128 input channels of any device (BlackHole 128ch is the way into
+// Ableton), with midi inputs, a midi clock output, the audio settings page and the project menu.
 #include "StudioEditor.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
@@ -23,8 +23,9 @@ public:
         processor.reset (dynamic_cast<StudioProcessor*> (createPluginFilter()));
         processor->isStandaloneApp = true;
         processor->midiClockOut = [this] (const juce::MidiMessage& m) { if (clockOut) clockOut->sendMessageNow (m); };
+        processor->openAudioSettings = [this] { menuItemSelected (10, 1); };
         std::unique_ptr<juce::XmlElement> saved (settings->getXmlValue ("audio"));
-        deviceManager.initialise (0, 2 * kOutPairs, saved.get(), true);
+        deviceManager.initialise (kOutChannels, kOutChannels, saved.get(), true);
         for (auto& d : juce::MidiInput::getAvailableDevices()) deviceManager.setMidiInputDeviceEnabled (d.identifier, true);
         deviceManager.addMidiInputDeviceCallback ({}, &collector);
         setClockOut (settings->getValue ("clockOut"));
@@ -61,18 +62,31 @@ public:
     void audioDeviceAboutToStart (juce::AudioIODevice* d) override
     {
         collector.reset (d->getCurrentSampleRate());
+        numIn = d->getActiveInputChannels().countNumberOfSetBits();
+        processor->standaloneInputs.store (numIn);
+        processor->standaloneInputLatency.store (d->getInputLatencyInSamples());
+        const int bs = d->getCurrentBufferSizeSamples();
+        io.setSize (numIn + kOutChannels, bs, false, false, true);
         const juce::ScopedLock sl (processor->getCallbackLock());
-        processor->setRateAndBufferSizeDetails (d->getCurrentSampleRate(), d->getCurrentBufferSizeSamples());
-        processor->prepareToPlay (d->getCurrentSampleRate(), d->getCurrentBufferSizeSamples());
+        processor->setRateAndBufferSizeDetails (d->getCurrentSampleRate(), bs);
+        processor->prepareToPlay (d->getCurrentSampleRate(), bs);
     }
     void audioDeviceStopped() override { const juce::ScopedLock sl (processor->getCallbackLock()); processor->releaseResources(); }
-    void audioDeviceIOCallbackWithContext (const float* const*, int, float* const* out, int numOut, int n, const juce::AudioIODeviceCallbackContext&) override
+    void audioDeviceIOCallbackWithContext (const float* const* in, int nIn, float* const* out, int nOut, int n, const juce::AudioIODeviceCallbackContext&) override
     {
         midi.clear();
         collector.removeNextBlockOfMessages (midi, n);
-        juce::AudioBuffer<float> b (out, numOut, n);
-        const juce::ScopedLock sl (processor->getCallbackLock());
-        processor->processBlock (b, midi);
+        if (io.getNumSamples() < n || io.getNumChannels() < nIn + nOut) io.setSize (std::max (io.getNumChannels(), nIn + nOut), std::max (n, io.getNumSamples()), false, false, true);
+        // inputs first, then the outputs, all in one buffer for the processor
+        for (int c = 0; c < nIn; ++c) io.copyFrom (c, 0, in[c], n);
+        for (int c = 0; c < nOut; ++c) io.clear (nIn + c, 0, n);
+        juce::AudioBuffer<float> b (io.getArrayOfWritePointers(), nIn + nOut, n);
+        processor->standaloneInputs.store (nIn);
+        {
+            const juce::ScopedLock sl (processor->getCallbackLock());
+            processor->processBlock (b, midi);
+        }
+        for (int c = 0; c < nOut; ++c) juce::FloatVectorOperations::copy (out[c], io.getReadPointer (nIn + c), n);
     }
 
     // ---- menu -------------------------------------------------------------------------------------
@@ -86,7 +100,7 @@ public:
             for (int k = 0; k < names.size(); ++k) t.addItem (100 + k, names[k]);
             m.addSubMenu ("new from template", t);
             m.addItem (1, "open..."); m.addItem (2, "save"); m.addItem (3, "save as..."); m.addSeparator();
-            m.addItem (4, "export stems..."); m.addItem (5, "export midi..."); m.addSeparator();
+            m.addItem (4, "export stems..."); m.addItem (7, "export master..."); m.addItem (5, "export midi..."); m.addSeparator();
             m.addItem (6, "open the autosave");
         }
         else
@@ -118,30 +132,34 @@ public:
                     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& c)
                     {
                         if (c.getResult() == juce::File()) return;
-                        auto& ss = processor->session;
-                        const double bars = ss.mode.load() == (int) PlayMode::Song ? ss.songBars() : ss.mode.load() == (int) PlayMode::Arrange ? ss.arrangementBars() : ss.loopEnd.load();
-                        juce::String err;
-                        ss.renderStems (c.getResult().getChildFile (ss.projectName + " stems"), 0.0, std::max (1.0, bars), nullptr, err);
+                        auto& ss = processor->session; juce::String err;
+                        ss.renderStems (c.getResult().getChildFile (ss.projectName + " stems"), 0.0, ss.projectBars(), nullptr, err);
                         report (err);
+                    });
+                    break;
+            case 7: chooser = std::make_unique<juce::FileChooser> ("export master", StudioProcessor::projectsDir().getChildFile (s.projectName + ".wav"), "*.wav");
+                    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& c)
+                    {
+                        if (c.getResult() == juce::File()) return;
+                        auto& ss = processor->session; juce::String err; ExportOptions o; o.limit = true;
+                        ss.renderMaster (c.getResult().withFileExtension ("wav"), 0.0, ss.projectBars(), nullptr, err, o); report (err);
                     });
                     break;
             case 5: chooser = std::make_unique<juce::FileChooser> ("export midi", StudioProcessor::projectsDir().getChildFile (s.projectName + ".mid"), "*.mid");
                     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& c)
                     {
                         if (c.getResult() == juce::File()) return;
-                        auto& ss = processor->session;
-                        const double bars = ss.mode.load() == (int) PlayMode::Song ? ss.songBars() : ss.mode.load() == (int) PlayMode::Arrange ? ss.arrangementBars() : ss.loopEnd.load();
-                        juce::String err; ss.exportMidi (c.getResult().withFileExtension ("mid"), 0.0, std::max (1.0, bars), err); report (err);
+                        auto& ss = processor->session; juce::String err; ss.exportMidi (c.getResult().withFileExtension ("mid"), 0.0, ss.projectBars(), err); report (err);
                     });
                     break;
             case 6: { juce::String err; if (processor->autosaveFile().existsAsFile()) processor->loadProject (processor->autosaveFile(), err); report (err); break; }
             case 10:
             {
-                auto* sel = new juce::AudioDeviceSelectorComponent (deviceManager, 0, 0, 2, 2 * kOutPairs, true, false, false, false);
-                sel->setSize (520, 560);
+                auto* sel = new juce::AudioDeviceSelectorComponent (deviceManager, 0, kOutChannels, 2, kOutChannels, true, false, false, false);
+                sel->setSize (560, 640);
                 juce::DialogWindow::LaunchOptions lo;
                 lo.content.setOwned (sel); lo.dialogTitle = "audio and midi settings"; lo.componentToCentreAround = window.get();
-                lo.dialogBackgroundColour = juce::Colour (studioInfo().ground); lo.useNativeTitleBar = true; lo.resizable = false;
+                lo.dialogBackgroundColour = juce::Colour (studioInfo().ground); lo.useNativeTitleBar = true; lo.resizable = true;
                 lo.launchAsync();
                 break;
             }
@@ -183,6 +201,8 @@ private:
     juce::AudioDeviceManager deviceManager;
     juce::MidiMessageCollector collector;
     juce::MidiBuffer midi;
+    juce::AudioBuffer<float> io;
+    int numIn = 0;
 };
 } // namespace fal::daw
 

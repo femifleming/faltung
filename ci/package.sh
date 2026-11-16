@@ -44,14 +44,14 @@ product() {   # product <folder name> <target> <file name>
 }
 
 if [ "$SUITE" = "deep" ]; then
-    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 sb1; do
+    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 sb1 sndstudio; do
         product "faltung deep $p" "faltung_deep_$p" "faltung deep $p"
     done
     product "ballonwinkel deep" ballonwinkel_deep "ballonwinkel deep"
     product "ballonpaleis deep" ballonpaleis_deep "ballonpaleis deep"
-    cp "$ROOT/docs/manual-deep/faltung deep Manual.pdf" "$OUT/"
+    cp "$ROOT/docs/manual-deep/faltung deep Manual.pdf" "$ROOT/docs/manual/sndstudio Manual.pdf" "$OUT/"
 else
-    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do
+    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0 sndstudio; do
         product "faltung $p" "faltung_$p" "faltung $p"
     done
     product Partials Partials Partials
@@ -65,7 +65,7 @@ else
         product ObliqSonic ObliqSonic ObliqSonic
         cp "$ROOT/obliqsound/docs/manual/obliqsound Manual.pdf" "$OUT/"
     fi
-    cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$OUT/"
+    cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$ROOT/docs/manual/sndstudio Manual.pdf" "$OUT/"
     cp "$ROOT/partials/docs/manual/manual.pdf" "$OUT/Partials Manual.pdf"
     cp "$ROOT/cloudfin/docs/manual/Cloudfin Manual.pdf" "$OUT/"
     cp "$ROOT/convosolution/docs/manual/convosolution Manual.pdf" "$OUT/"

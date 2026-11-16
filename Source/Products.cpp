@@ -120,10 +120,10 @@ juce::String kitPrefix (int v) { return "v" + juce::String (v + 1) + "_"; }
 const StudioInfo& studioInfo()
 {
    #if FALTUNG_DEEP
-    static const StudioInfo d { "st0", "studio", "the deep house studio: tracks, scenes, song, sends, 128 outputs", 0xff151c2a, 0xffdfe6f0, 1440, 900 };
+    static const StudioInfo d { "sndstudio", "", "the deep house studio: tracks, scenes, song, sends, 128 outputs", 0xff151c2a, 0xffdfe6f0, 1440, 900 };
     return d;
    #else
-    static const StudioInfo s { "st0", "studio", "the microhouse studio: tracks, scenes, song, sends, 128 outputs", 0xff2b3a40, 0xff8ec3e6, 1440, 900 };
+    static const StudioInfo s { "sndstudio", "", "the microhouse studio: tracks, scenes, song, sends, 128 outputs", 0xff2b3a40, 0xff8ec3e6, 1440, 900 };
     return s;
    #endif
 }

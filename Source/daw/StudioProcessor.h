@@ -1,6 +1,6 @@
 #pragma once
-// faltung st0 studio — the AudioProcessor around the session: 64 stereo output buses (128 channels), the
-// host-visible parameters (macros, master, every strip's level / pan / mute / sends), the project as plug-in state.
+// faltung sndstudio — the AudioProcessor around the session: 64 stereo output buses (128 channels), the
+// host-visible parameters (macros, master, the first 32 strips' level / pan / mute / sends), the project as plug-in state.
 #include "Session.h"
 
 namespace fal::daw
@@ -19,7 +19,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
-    const juce::String getName() const override { return juce::String (studioInfo().code) + " " + studioInfo().name; }
+    const juce::String getName() const override { return studioInfo().code; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -41,6 +41,10 @@ public:
     /** the standalone's midi clock output (set by the app) */
     std::function<void (const juce::MidiMessage&)> midiClockOut;
     std::atomic<bool> isStandaloneApp { false };
+    /** the standalone's callback hands the device inputs first in the buffer: how many, and their latency */
+    std::atomic<int> standaloneInputs { 0 }, standaloneInputLatency { 0 };
+    /** the standalone's audio settings page (set by the app; the editor shows it) */
+    std::function<void()> openAudioSettings;
     /** the editor can close plug-in windows before a device is deleted */
     std::function<void (Device*)> onDeviceRemoving;
 
@@ -55,8 +59,7 @@ private:
     void timerCallback() override;
     int lastLatency = -1;
     juce::int64 lastAutosave = 0;
-    std::vector<float> standaloneScratch;
-    juce::MidiBuffer clockOut;
+    std::array<const float*, kMaxWidth * 2> inPtrs {};
     double clockPpq = -1;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StudioProcessor)
 };

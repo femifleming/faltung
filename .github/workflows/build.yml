@@ -25,12 +25,12 @@ jobs:
           - os: Linux
             runner: ubuntu-22.04
           - suite: faltung
-            targets: faltung_all faltungTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest ObliqSoundTest ObliqSonicTest ballonwinkelTest ballonpaleisTest
-            tests: faltungTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest ObliqSoundTest ObliqSonicTest ballonwinkelTest ballonpaleisTest
+            targets: faltung_all faltungTest sndstudioTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest ObliqSoundTest ObliqSonicTest ballonwinkelTest ballonpaleisTest
+            tests: faltungTest sndstudioTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest ObliqSoundTest ObliqSonicTest ballonwinkelTest ballonpaleisTest
             name: faltung
           - suite: deep
-            targets: faltung_deep_all faltungDeepTest
-            tests: faltungDeepTest
+            targets: faltung_deep_all faltungDeepTest sndstudioDeepTest
+            tests: faltungDeepTest sndstudioDeepTest
             name: faltung-deep
     name: ${{ matrix.suite }} · ${{ matrix.os }}
     runs-on: ${{ matrix.runner }}
