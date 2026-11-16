@@ -48,6 +48,9 @@ StudioProcessor::StudioProcessor()
 {
     buildBridges();
     session.onBlock = [this] { syncFromHost(); };
+    // a new instance opens on the starter project so there is sound at once; a host restoring its state replaces it
+    session.newFromTemplate (1);
+    session.launchScene (4);
     startTimerHz (10);
 }
 StudioProcessor::~StudioProcessor() { stopTimer(); session.onBlock = nullptr; }
