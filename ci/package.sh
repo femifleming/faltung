@@ -10,9 +10,9 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 
 art() {   # artefact folder of a target (single- or multi-config generators)
     local tgt="$1"
-    for d in "$B/${tgt}_artefacts/Release" "$B/${tgt}_artefacts" "$B/partials/${tgt}_artefacts/Release" "$B/partials/${tgt}_artefacts" "$B/cloudfin/${tgt}_artefacts/Release" "$B/cloudfin/${tgt}_artefacts"; do
+    for sub in "" partials/ cloudfin/ convosolution/ obliqsound/; do for d in "$B/${sub}${tgt}_artefacts/Release" "$B/${sub}${tgt}_artefacts"; do
         [ -d "$d/VST3" ] && { echo "$d"; return; }
-    done
+    done; done
     echo "missing artefacts for $tgt" >&2; exit 1
 }
 
@@ -30,12 +30,15 @@ product() {   # product <folder name> <target> <file name>
             done ;;
         Windows)
             cp "$A/Standalone/$file.exe" "$P/"
-            [ -f "$A/VST/$file.dll" ] && cp "$A/VST/$file.dll" "$P/" || true ;;
+            [ -f "$A/VST/$file.dll" ] && cp "$A/VST/$file.dll" "$P/" || true
+            # ObliqSound / ObliqSonic: the program and the VST2 read a Resources folder beside them
+            [ -d "$A/Standalone/Resources" ] && cp -R "$A/Standalone/Resources" "$P/" || true ;;
         Linux)
             cp "$A/Standalone/$file" "$P/"
             [ -d "$A/LV2/$file.lv2" ] && cp -R "$A/LV2/$file.lv2" "$P/" || true
             [ -f "$A/VST/lib$file.so" ] && cp "$A/VST/lib$file.so" "$P/$file.so" || true
-            [ -f "$A/VST/$file.so" ] && cp "$A/VST/$file.so" "$P/" || true ;;
+            [ -f "$A/VST/$file.so" ] && cp "$A/VST/$file.so" "$P/" || true
+            [ -d "$A/Standalone/Resources" ] && cp -R "$A/Standalone/Resources" "$P/" || true ;;
     esac
     return 0   # optional formats above may be missing; that is not a failure
 }
@@ -51,9 +54,17 @@ else
     done
     product Partials Partials Partials
     product Cloudfin Cloudfin Cloudfin
+    product ConvoSolution ConvoSolution ConvoSolution
+    cp "$ROOT/convosolution/Resources/IR-CREDITS.txt" "$OUT/ConvoSolution/"
+    if [ -d "$B/obliqsound/ObliqSound_artefacts" ]; then   # (needs SuperCollider's server: skipped when it was not built)
+        product ObliqSound ObliqSound ObliqSound
+        product ObliqSonic ObliqSonic ObliqSonic
+        cp "$ROOT/obliqsound/docs/manual/obliqsound Manual.pdf" "$OUT/"
+    fi
     cp "$ROOT/docs/manual/faltung Manual.pdf" "$ROOT/docs/manual/ms0 master Manual.pdf" "$OUT/"
     cp "$ROOT/partials/docs/manual/manual.pdf" "$OUT/Partials Manual.pdf"
     cp "$ROOT/cloudfin/docs/manual/Cloudfin Manual.pdf" "$OUT/"
+    cp "$ROOT/convosolution/docs/manual/convosolution Manual.pdf" "$OUT/"
 fi
 cp "$ROOT/README.md" "$ROOT/LICENSE" "$OUT/"
 

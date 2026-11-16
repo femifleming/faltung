@@ -1,55 +1,71 @@
 #include "PluginEditor.h"
 #include "Help.h"
+#include "../../../Source/Ui.h"
 #if JucePlugin_Build_Standalone
  #include <juce_audio_utils/juce_audio_utils.h>
  #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
-using juce::String; using juce::Colour; using juce::Rectangle;
+using juce::String; using juce::Colour; using juce::Rectangle; using juce::Point;
+using fal::ui::skewRect; using fal::ui::sans; using fal::ui::mono;
 
 namespace
 {
-    enum Dyn { dNone, dWave, dSampLabel, dLcd, dL1, dL2, dFol, dOut, dVLed, dSubLed, dBoid, dLz, dSpd, dLesA, dLesB, dSpMode, dLesAn, dLesBn, dSpec };
+    enum Dyn { dNone, dWave, dSampLabel, dLcd, dL1, dL2, dFol, dOut, dVLed, dSubLed, dBoid, dLz, dSpd, dLesA, dLesB, dSpMode, dLesAn, dLesBn, dSpec, dRadar };
     const char* kKeys = "awsedftgyhujkolp;'";
+    // the Fold palette (Source/Art.cpp): the pastels of the folded paper strips
+    const juce::uint32 kPalette[8] = { 0xff5e8f6a, 0xff8dbb7a, 0xff8ec3e6, 0xff6e80c8, 0xffee8e6e, 0xfff6c590, 0xff97adc4, 0xffcfe6f0 };
+    const int kTabColour[7] = { 2, 5, 1, 3, 7, 4, 6 };            // polygon odessa lester lfo matrix swarm space
+    const Colour kStripInk (0xff1e2a20), kNegative (0xffee8e6e), kField (0xffee8e6e), kAmber (0xfff6c590);
+
+    String lower (const String& s) { return s.toLowerCase(); }
     String modeName (float m)
     {
         const float k = std::round (m * 2.0f) / 2.0f;
-        if (k < 0.25f) return "LP"; if (k < 0.75f) return "LP>BP"; if (k < 1.25f) return "BP"; if (k < 1.75f) return "BP>HP";
-        if (k < 2.25f) return "HP"; if (k < 2.75f) return "HP>NOTCH"; if (k < 3.25f) return "NOTCH"; if (k < 3.75f) return "NOTCH>COMB";
-        return "COMB";
+        if (k < 0.25f) return "lp"; if (k < 0.75f) return "lp>bp"; if (k < 1.25f) return "bp"; if (k < 1.75f) return "bp>hp";
+        if (k < 2.25f) return "hp"; if (k < 2.75f) return "hp>notch"; if (k < 3.25f) return "notch"; if (k < 3.75f) return "notch>comb";
+        return "comb";
+    }
+    // Ge'ez (Ethiopic) numerals, as on the sampler squares
+    String geez (int n)
+    {
+        String s;
+        if (n >= 10) s += String::charToString ((juce::juce_wchar) (0x1371 + n / 10));
+        if (n % 10) s += String::charToString ((juce::juce_wchar) (0x1368 + n % 10));
+        return s;
+    }
+    String pageTitle (const String& container)
+    {
+        static const std::pair<const char*, const char*> names[] = { { "polypanel", "polygon" }, { "odepanel", "odessa" }, { "lestpanel", "lester" },
+            { "motpanel", "lfo" }, { "matpanel", "matrix" }, { "swarmpanel", "swarm" }, { "spacepanel", "space" } };
+        for (auto& n : names) if (container == n.first) return n.second;
+        return lower (container.upToFirstOccurrenceOf ("panel", false, false));
+    }
+    String valueText (const ParamDef& d, float v) { return d.inc >= 1.0f ? String ((int) std::lrint (v)) : String (v, 3); }
+    void chevron (juce::Graphics& g, float x, float y)   // a small "v"
+    {
+        juce::Path p; p.startNewSubPath (x, y); p.lineTo (x + 2.5f, y + 2.5f); p.lineTo (x + 5.0f, y);
+        g.strokePath (p, juce::PathStrokeType (1.0f));
     }
 }
 
 // =================================================================================================== build
 ObliqPanel::ObliqPanel (ObliqProcessor& p) : proc (p), params (p.params)
 {
-    artDir = ObliqProcessor::resourceDir().getChildFile ("art");
-    juce::MemoryBlock mb;
-    if (artDir.getChildFile ("Tahoma Bold.ttf").loadFileAsData (mb)) face = juce::Typeface::createSystemTypefaceFor (mb.getData(), mb.getSize());
-    juce::ImageCache::setCacheTimeout (3000);
+   #if OBLIQ_SONIC
+    ground = Colour (0xff1f3a2c); accent = Colour (0xffc8d6a0);
+   #else
+    ground = Colour (0xffc8d6a0); accent = Colour (0xff1f3a2c);
+   #endif
+    ink = fal::ui::inkFor (ground); edge = fal::ui::edgeFor (ground);
     build();
     setOpaque (true);
     setWantsKeyboardFocus (true);
     lfoH[0].assign (256, 0.0f); lfoH[1].assign (256, 0.0f);
-    bg = art (bgName (0, 0, 0));
-    if (auto h = juce::SystemStats::getEnvironmentVariable ("OBLIQ_HELP", {}); h.isNotEmpty()) { helpOpen = true; helpTopic = h.getIntValue(); }   // for screenshots
     startTimerHz (30);
 }
 
 ObliqPanel::~ObliqPanel() { stopTimer(); for (auto& k : heldKeys) proc.keyboard.noteOff (1, k.second, 0.0f); }
-
-juce::Image ObliqPanel::art (const String& file)
-{
-    if (file.isEmpty()) return {};
-    return juce::ImageCache::getFromFile (artDir.getChildFile (file));
-}
-
-String ObliqPanel::bgName (int pg, int morph, int idleFrame) const
-{
-    if (morph > 0) return prefix + "bg_" + String (pg + 1) + "_" + String (morph) + ".png";
-    if (idleFrame > 0) return prefix + "bg_" + String (pg + 1) + "_i" + String (idleFrame) + ".png";
-    return prefix + "bg_" + String (pg + 1) + "_0.png";
-}
 
 void ObliqPanel::build()
 {
@@ -62,27 +78,29 @@ void ObliqPanel::build()
         const String type = w["type"].toString(), ch = w["channel"].toString();
         auto* b = w["bounds"].getArray(); if (b == nullptr) continue;
         Rectangle<int> r ((int) (*b)[0], (int) (*b)[1], (int) (*b)[2], (int) (*b)[3]);
-        if (ch == "image6") { prefix = w["file"].toString().upToFirstOccurrenceOf ("bg_", false, false); continue; }
+        if (ch == "image6") continue;                                              // the old bitmap background
         if ((bool) w["container"])
         {
-            pageNames.add (ch); pageBounds.push_back (r); pageImage.push_back (art (w["file"].toString())); pageStart.push_back ((int) items.size());
+            pageNames.add (ch); pageBounds.push_back (r); pageStart.push_back ((int) items.size());
+            pageBoard.push_back (w["file"].toString().isNotEmpty());              // a board covers the main panel (the matrix)
             continue;
         }
-        Item it; it.channel = ch; it.file = w["file"].toString(); it.popup = w["popup"].toString(); it.group = w["group"].toString();
+        Item it; it.channel = ch; it.popup = w["popup"].toString(); it.group = w["group"].toString();
         it.page = pageNames.indexOf (w["page"].toString());
         if (it.page >= 0) r = r.translated (pageBounds[(size_t) it.page].getX(), pageBounds[(size_t) it.page].getY());
         it.r = r;
         it.param = params.find (ch);
         if (w.hasProperty ("alpha")) it.alpha = (float) (double) w["alpha"];
         if (w.hasProperty ("visible")) it.visible = (int) w["visible"] != 0;
-        if (auto* ink = w["ink"].getArray()) it.ink = Colour ((juce::uint8) (int) (*ink)[0], (juce::uint8) (int) (*ink)[1], (juce::uint8) (int) (*ink)[2], (juce::uint8) (ink->size() > 3 ? (int) (*ink)[3] : 255));
+        if (auto* ink_ = w["ink"].getArray()) it.section = (int) (*ink_)[0] == 30 && (int) (*ink_)[1] == 60;   // the section headings
+        if (w["align"].toString() == "left") it.align = 1;
         if (auto* t = w["text"].getArray()) for (auto& s : *t) it.text.add (s.toString());
         if (auto* sg = w["signals"].getArray()) for (auto& s : *sg) it.signals.add (s.toString());
-        if (type == "image") { it.type = Image; it.img = art (it.file); }
-        else if (type == "rslider") { it.type = Knob; it.img = art (w["strip"].toString()); it.frames = (int) w["frames"]; }
-        else if (type == "vslider") { it.type = VSlider; it.img = art (w["cap"].toString()); }
+        if (type == "image") it.type = Image;
+        else if (type == "rslider") { it.type = Knob; it.pin = it.popup.isNotEmpty() && ch.startsWithChar ('p') && ch.containsChar ('_'); }
+        else if (type == "vslider") it.type = VSlider;
         else if (type == "nslider") it.type = NSlider;
-        else if (type == "checkbox") { it.type = Check; it.img = art (w["on"].toString()); it.img2 = art (w["off"].toString()); }
+        else if (type == "checkbox") { it.type = Check; it.sampler = it.group == "100"; it.tab = it.group == "200"; }
         else if (type == "combobox")
         {
             if ((bool) w["presets"]) it.type = PresetBox;
@@ -107,53 +125,77 @@ void ObliqPanel::build()
         else if (num ("lz")) { it.dyn = dLz; it.dynIndex = idx ("lz"); }
         else if (num ("spd")) { it.dyn = dSpd; it.dynIndex = idx ("spd"); }
         else if (num ("sp") && it.type == Image) it.dyn = dSpec;
+        else if (ch == "radar") it.dyn = dRadar;
         else if (ch == "lesA") it.dyn = dLesA; else if (ch == "lesB") it.dyn = dLesB;
         else if (ch == "lesAn") it.dyn = dLesAn; else if (ch == "lesBn") it.dyn = dLesBn;
         else if (ch == "spModeTxt") it.dyn = dSpMode;
-        if (it.group == "200") tabParams.push_back (it.param);
+        if (it.tab) { tabParams.push_back (it.param); tabItems.push_back ((int) items.size()); }
         items.push_back (it);
     }
     // the Help button takes the right end of the preset list, so the header stays mirrored
     for (size_t i = 0; i < items.size(); ++i)
         if (items[i].type == PresetBox)
         {
-            Item h; h.type = Help; h.channel = "help"; h.text = { "Help" };
+            Item h; h.type = Help; h.channel = "help"; h.text = { "help" };
             h.r = items[i].r.removeFromRight (56).withTrimmedLeft (4);
             items.push_back (h);
             break;
         }
+    // the page tabs become folded strips: a strip takes the place of the light and its name under it
+    const int nTabs = (int) tabItems.size();
+    const float len = nTabs > 6 ? 62.0f : 76.0f, depth = nTabs > 6 ? 20.0f : 22.0f;
+    for (int i = 0; i < nTabs; ++i)
+    {
+        auto& t = items[(size_t) tabItems[(size_t) i]];
+        const float lean = depth * 0.62f, h = depth * 0.78f, cx = (float) t.r.getCentreX(), bottom = (float) t.r.getY() + 20.0f;
+        t.r = Rectangle<float> (cx - (len + lean) * 0.5f, bottom - h, len + lean, h).getSmallestIntegerContainer();
+        t.dynIndex = (int) depth;
+        for (auto& l : items)
+            if (l.type == Label && l.page < 0 && std::abs (l.r.getCentreX() - t.r.getCentreX()) < 40 && l.r.getY() > t.r.getY() && l.r.getY() < t.r.getBottom() + 14)
+                l.visible = false;
+    }
+    // every control's name, from the label under it (for the read-out while dragging)
+    for (auto& it : items)
+        if ((it.type == Knob || it.type == VSlider) && ! it.pin)
+            for (auto& l : items)
+                if (l.type == Label && l.page == it.page && l.dyn == dNone && ! l.text.isEmpty()
+                    && std::abs (l.r.getCentreX() - it.r.getCentreX()) <= 14 && l.r.getY() >= it.r.getBottom() - 4 && l.r.getY() <= it.r.getBottom() + 12)
+                { it.name = lower (l.text[0]); break; }
 }
 
-// =================================================================================================== timer: pages, background, meters
+String ObliqPanel::pageName (int i) const { return i >= 0 && i < pageNames.size() ? pageTitle (pageNames[i]) : String(); }
+
+void ObliqPanel::showPage (int p)
+{
+    if (p < 0 || p >= pageNames.size()) return;
+    page = p; pending = -1; fade = 0; hoverItem = -1; dragItem = -1;
+    for (size_t i = 0; i < tabParams.size(); ++i) params.set (tabParams[i], (int) i == p ? 1.0f : 0.0f);
+    repaint();
+}
+
+void ObliqPanel::showHelp (bool on) { helpOpen = on; hoverItem = -1; repaint(); }
+
+Rectangle<float> ObliqPanel::tabFace (int i) const { return items[(size_t) tabItems[(size_t) i]].r.toFloat(); }
+
+bool ObliqPanel::covered (int i) const
+{
+    const auto& it = items[(size_t) i];
+    return it.page < 0 && pageBoard[(size_t) page] && i < pageStart[(size_t) page] && pageBounds[(size_t) page].intersects (it.r);
+}
+
+// =================================================================================================== timer: pages, meters
 void ObliqPanel::changePage (int to) { pending = to; }
 
 void ObliqPanel::timerCallback()
 {
     ++tickCount;
-    // which tab is on
+    // which tab is on (a tab can also be switched from the host or a preset)
     int want = pending >= 0 ? pending : page;
     for (size_t i = 0; i < tabParams.size(); ++i) if ((int) i != want && params.get (tabParams[i]) > 0.5f) { want = (int) i; break; }
     for (size_t i = 0; i < tabParams.size(); ++i) { const float on = (int) i == want ? 1.0f : 0.0f; if (params.get (tabParams[i]) != on) params.set (tabParams[i], on); }
-    if (want != page && anim == 0) pending = want;
-
-    String name;
-    if (anim > 0)
-    {   // the land flows from the old page's shape through the shared middle shape into the new one
-        name = anim <= kNfr ? bgName (fromPage, anim, 0) : bgName (page, 2 * kNfr - anim, 0);
-        if (++anim > 2 * kNfr) { anim = 0; idle = 0; }
-    }
-    else if (pending >= 0 && pending != page)
-    {   // run the land quickly back to its resting shape, then morph
-        if (idle != 0) { idle = idle < kNidle / 2 ? juce::jmax (idle - 6, 0) : (idle + 6 >= kNidle ? 0 : idle + 6); name = bgName (page, 0, idle); }
-        else { fromPage = page; page = pending; pending = -1; anim = 1; name = bgName (fromPage, 1, 0); }
-    }
-    else if (tickCount % 3 == 0 && pageNames[page] != "matpanel")
-    {   // idle: wander back and forth through the loop of shapes so the motion never repeats
-        if (random.nextFloat() < 0.012f) idleDir = -idleDir;
-        idle = (idle + idleDir * 2 + kNidle) % kNidle;
-        name = bgName (page, 0, idle);
-    }
-    if (name.isNotEmpty()) { auto im = art (name); if (im.isValid()) bg = im; }
+    if (want != page) { page = want; fade = kFade; hoverItem = -1; dragItem = -1; }
+    pending = -1;
+    if (fade > 0) --fade;
 
     // histories for the scopes and the Lorenz trail
     auto& v = proc.engine->view;
@@ -170,166 +212,338 @@ void ObliqPanel::timerCallback()
     repaint();
 }
 
-// =================================================================================================== drawing
+// =================================================================================================== the controls
+void ObliqPanel::drawSlider (juce::Graphics& g, Rectangle<float> r, int param, bool hot)
+{
+    if (param < 0) return;
+    const auto& d = params.def (param);
+    const float n = juce::jlimit (0.0f, 1.0f, params.toNorm (param, params.get (param)));
+    const bool bipolar = d.lo < 0.0f && d.hi > 0.0f;
+    const float zero = bipolar ? juce::jlimit (0.0f, 1.0f, params.toNorm (param, 0.0f)) : 0.0f;
+    const float tw = r.getWidth() >= 56.0f ? r.getWidth() * 0.7f : r.getWidth() - 6.0f;
+    const float tx = r.getCentreX() - tw * 0.5f, cy = r.getCentreY();
+    g.setColour (ink.withAlpha (0.35f));
+    g.fillRect (tx, cy, tw, 1.0f);
+    const float a = tx + tw * std::min (zero, n), e = tx + tw * std::max (zero, n);
+    if (e - a > 0.5f) { g.setColour (accent.withAlpha (hot ? 1.0f : 0.92f)); g.fillPath (skewRect ({ a, cy - 4.5f, e - a, 9.0f })); }
+    g.setColour (edge);
+    g.fillRect (tx + tw * n - 1.0f, cy - 5.5f, 2.0f, 11.0f);
+}
+
+void ObliqPanel::drawVSlider (juce::Graphics& g, Rectangle<float> r, int param, bool hot)
+{
+    if (param < 0) return;
+    const auto& d = params.def (param);
+    const float n = juce::jlimit (0.0f, 1.0f, params.toNorm (param, params.get (param)));
+    const bool bipolar = d.lo < 0.0f && d.hi > 0.0f;
+    const float zero = bipolar ? juce::jlimit (0.0f, 1.0f, params.toNorm (param, 0.0f)) : 0.0f;
+    const float cx = r.getCentreX(), top = r.getY() + 5.0f, bot = r.getBottom() - 5.0f, th = bot - top;
+    g.setColour (ink.withAlpha (0.35f));
+    g.fillRect (cx - 0.5f, top, 1.0f, th);
+    const float y0 = bot - th * std::min (zero, n), y1 = bot - th * std::max (zero, n);
+    if (y0 - y1 > 0.5f)
+    {
+        const float w = 9.0f, lean = 5.0f;         // a parallelogram leaning right, the house shape stood up
+        juce::Path p;
+        p.startNewSubPath (cx - w * 0.5f - lean * 0.5f, y0); p.lineTo (cx + w * 0.5f - lean * 0.5f, y0);
+        p.lineTo (cx + w * 0.5f + lean * 0.5f, y1); p.lineTo (cx - w * 0.5f + lean * 0.5f, y1); p.closeSubPath();
+        g.setColour (accent.withAlpha (hot ? 1.0f : 0.92f)); g.fillPath (p);
+    }
+    g.setColour (edge);
+    g.fillRect (cx - 5.5f, bot - th * n - 1.0f, 11.0f, 2.0f);
+}
+
+void ObliqPanel::drawPin (juce::Graphics& g, Rectangle<float> r, float amount)
+{
+    const Rectangle<float> c (r.getX() + 1.5f, r.getY() + 1.0f, r.getWidth() - 3.0f, r.getHeight() - 2.0f);
+    const float skew = 0.25f, d = c.getHeight() * skew;
+    if (std::abs (amount) >= 0.005f)
+    {   // the filled part of the chip: up from the centre for a positive pin, down for an inverted one
+        const float cy = c.getCentreY(), half = c.getHeight() * 0.5f;
+        const float ya = amount > 0 ? cy - half * amount : cy, yb = amount > 0 ? cy : cy + half * -amount;
+        auto off = [&] (float y) { return (c.getBottom() - y) / c.getHeight() * d; };
+        juce::Path p;
+        p.startNewSubPath (c.getX() + off (yb), yb); p.lineTo (c.getRight() + off (yb), yb);
+        p.lineTo (c.getRight() + off (ya), ya); p.lineTo (c.getX() + off (ya), ya); p.closeSubPath();
+        g.setColour (amount > 0 ? accent : kNegative); g.fillPath (p);
+    }
+    g.setColour (ink.withAlpha (std::abs (amount) >= 0.005f ? 0.5f : 0.3f));
+    g.strokePath (skewRect (c, skew), juce::PathStrokeType (1.0f));
+}
+
 void ObliqPanel::drawItem (juce::Graphics& g, const Item& it)
 {
     const auto r = it.r.toFloat();
-    auto font = [&] (float h) { return face != nullptr ? juce::Font (juce::FontOptions (face).withHeight (h)) : juce::Font (juce::FontOptions (h, juce::Font::bold)); };
+    auto& v = proc.engine->view;
     switch (it.type)
     {
         case Image:
         {
-            if (! it.img.isValid()) break;
-            float a = it.alpha; bool vis = it.visible; juce::Image im = it.img;
-            if (it.dyn == dWave) { const int wv = (int) std::lrint (params.get ("waveform")); vis = (it.dynIndex == 1 && wv == 4) || (it.dynIndex == 2 && wv == 3) || (it.dynIndex == 3 && wv == 2) || (it.dynIndex == 4 && wv == 1); }
-            else if (it.dyn == dSampLabel) a = proc.engine->view.sampler.load() == it.dynIndex ? 1.0f : 0.5f;
-            else if (it.dyn == dLcd) { im = art (prefix + "lcd_" + String (juce::jlimit (1, 26, proc.engine->view.sampler.load())) + ".png"); }
-            if (! vis || ! im.isValid()) break;
-            g.setOpacity (a); g.drawImage (im, r); g.setOpacity (1.0f);
+            if (it.dyn == dWave)
+            {   // the waveform picture beside the WAVE knob: a thin line drawing of the chosen wave
+                const int wv = (int) std::lrint (params.get ("waveform"));
+                const bool vis = (it.dynIndex == 1 && wv == 4) || (it.dynIndex == 2 && wv == 3) || (it.dynIndex == 3 && wv == 2) || (it.dynIndex == 4 && wv == 1);
+                if (! vis) break;
+                const float x = r.getX() + 1.0f, w = r.getWidth() - 2.0f, top = r.getY() + 1.0f, bot = r.getBottom() - 1.0f, cy = r.getCentreY();
+                juce::Path p;
+                if (it.dynIndex == 1) { for (int i = 0; i <= 24; ++i) { const float t = (float) i / 24.0f; const float px = x + w * t, py = cy - std::sin (t * juce::MathConstants<float>::twoPi) * (bot - top) * 0.5f; if (i == 0) p.startNewSubPath (px, py); else p.lineTo (px, py); } }
+                else if (it.dynIndex == 2) { p.startNewSubPath (x, cy); p.lineTo (x + w * 0.5f, top); p.lineTo (x + w * 0.5f, bot); p.lineTo (x + w, cy); }
+                else if (it.dynIndex == 3) { p.startNewSubPath (x, bot); p.lineTo (x, top); p.lineTo (x + w * 0.5f, top); p.lineTo (x + w * 0.5f, bot); p.lineTo (x + w, bot); p.lineTo (x + w, top); }
+                else { p.startNewSubPath (x, bot); p.lineTo (x + w * 0.5f, top); p.lineTo (x + w, bot); }
+                g.setColour (ink); g.strokePath (p, juce::PathStrokeType (1.0f));
+            }
+            else if (it.dyn == dSampLabel)
+            {   // the Ge'ez number of a sampler square (from a system font with Ethiopic glyphs; a plain number without one)
+                static const bool haveGeez = mono (11.0f).findSuitableFontForText (geez (10)).getTypefaceName() != mono (11.0f).getTypefaceName();
+                g.setColour (ink.withAlpha (v.sampler.load() == it.dynIndex ? 1.0f : 0.55f));
+                g.setFont (mono (haveGeez ? 11.0f : 9.0f));
+                g.drawText (haveGeez ? geez (it.dynIndex) : String (it.dynIndex), r.expanded (4.0f, 2.0f), juce::Justification::centred, false);
+            }
+            else if (it.dyn == dLcd)
+            {   // the sampler display: a chip with the chosen square
+                const int n = juce::jlimit (1, 26, v.sampler.load());
+                static const bool haveGeez = mono (10.0f, true).findSuitableFontForText (geez (10)).getTypefaceName() != mono (10.0f, true).getTypefaceName();
+                const String t = haveGeez ? "sampler " + geez (n) + fal::ui::U ("  \xc2\xb7  ") + String (n) : "sampler " + String (n);
+                const auto font = mono (10.0f, true);
+                const float w = juce::GlyphArrangement::getStringWidth (font, t) + 18.0f;
+                const Rectangle<float> box (r.getCentreX() - w * 0.5f, r.getCentreY() - 7.0f, w, 14.0f);
+                g.setColour (accent); g.fillPath (skewRect (box, 0.35f));
+                g.setColour (ground); g.setFont (font); g.drawText (t, box, juce::Justification::centred, false);
+            }
+            else if (it.dyn == dSpec)
+            {   // the spectrum strip over PARTIALS: a quiet arc of small frames
+                g.setColour (ink.withAlpha (0.18f));
+                g.strokePath (skewRect ({ r.getCentreX() - 4.0f, r.getCentreY() - 2.5f, 8.0f, 5.0f }), juce::PathStrokeType (1.0f));
+            }
             break;
         }
         case Knob:
-        {
-            if (! it.img.isValid() || it.param < 0) break;
-            const int fh = it.img.getHeight() / juce::jmax (1, it.frames);
-            const auto& d = params.def (it.param);
-            // the strips are linear in value (the skew only shapes the drag), as the original panel drew them
-            float lin = d.hi != d.lo ? (params.get (it.param) - d.lo) / (d.hi - d.lo) : 0.0f;
-            lin = d.skew == 1.0f ? lin : params.toNorm (it.param, params.get (it.param));
-            const int f = juce::jlimit (0, it.frames - 1, (int) std::lrint (lin * (float) (it.frames - 1)));
-            g.drawImage (it.img, it.r.getX(), it.r.getY(), it.r.getWidth(), it.r.getHeight(), 0, f * fh, it.img.getWidth(), fh);
+            if (it.pin) drawPin (g, r, it.param >= 0 ? params.get (it.param) : 0.0f);
+            else drawSlider (g, r, it.param, false);
             break;
-        }
-        case VSlider:
-        {
-            if (it.param < 0) break;
-            const float n = params.toNorm (it.param, params.get (it.param));
-            const float ch = 12.0f, y = r.getY() + 2.0f + (1.0f - n) * (r.getHeight() - ch - 4.0f);
-            if (it.img.isValid()) g.drawImage (it.img, Rectangle<float> (r.getX(), y, r.getWidth(), ch));
-            break;
-        }
+        case VSlider: drawVSlider (g, r, it.param, false); break;
         case NSlider:
         {
-            g.setColour (juce::Colours::white); g.fillRect (r); g.setColour (juce::Colours::black); g.drawRect (r, 1.0f);
-            g.setFont (font (11.0f)); g.drawText (String ((int) std::lrint (params.get (it.param))), it.r, juce::Justification::centred);
+            g.setColour (ink); g.setFont (mono (10.0f, true));
+            g.drawText (String ((int) std::lrint (params.get (it.param))), r, juce::Justification::centred);
+            g.setColour (ink.withAlpha (0.35f)); g.fillRect (r.getX(), r.getBottom() - 1.0f, r.getWidth(), 1.0f);
             break;
         }
         case Check:
         {
             const bool on = it.param >= 0 && params.get (it.param) > 0.5f;
-            const auto& im = on ? it.img : it.img2;
-            if (im.isValid()) g.drawImage (im, r);
+            if (it.sampler)
+            {   // a sampler square: a larger chip, filled when chosen
+                auto p = skewRect ({ r.getCentreX() - 8.0f, r.getCentreY() - 5.5f, 16.0f, 11.0f });
+                if (on) { g.setColour (accent); g.fillPath (p); }
+                g.setColour (on ? ink : ink.withAlpha (0.45f)); g.strokePath (p, juce::PathStrokeType (1.0f));
+            }
+            else
+            {   // the toggle: a small parallelogram, filled when on
+                auto p = skewRect ({ r.getCentreX() - 9.0f, r.getCentreY() - 5.0f, 18.0f, 10.0f });
+                if (on) { g.setColour (accent); g.fillPath (p); }
+                g.setColour (ink); g.strokePath (p, juce::PathStrokeType (1.0f));
+            }
             break;
         }
         case Combo: case PresetBox: case SizeBox:
         {
-            g.setColour (juce::Colours::white); g.fillRect (r); g.setColour (juce::Colours::black); g.drawRect (r, 1.0f);
             String t;
-            if (it.type == PresetBox) t = proc.currentPreset;
+            if (it.type == PresetBox) t = lower (proc.currentPreset);
             else if (it.type == SizeBox) t = String ((int) std::lrint (scale * 100.0f)) + "%";
-            else if (it.param >= 0) t = it.text[juce::jlimit (0, it.text.size() - 1, (int) std::lrint (params.get (it.param)) - 1)];
-            g.setFont (font (juce::jmin (12.0f, r.getHeight() - 5.0f)));
-            g.drawFittedText (t, it.r.reduced (3, 0).withTrimmedRight (10), juce::Justification::centredLeft, 1, 0.6f);
-            juce::Path p; const float ax = r.getRight() - 11.0f, ay = r.getCentreY() - 2.0f;
-            p.addTriangle (ax, ay, ax + 7.0f, ay, ax + 3.5f, ay + 4.5f); g.fillPath (p);
+            else if (it.param >= 0) t = lower (it.text[juce::jlimit (0, it.text.size() - 1, (int) std::lrint (params.get (it.param)) - 1)]);
+            const bool small = r.getHeight() <= 15.0f;
+            g.setColour (ink);
+            g.setFont (mono (small ? 9.5f : 10.5f, it.type == PresetBox));
+            if (it.type == PresetBox)
+            {
+                g.drawText ("<", r.withWidth (16.0f), juce::Justification::centred);
+                g.drawText (">", r.withLeft (r.getRight() - 16.0f), juce::Justification::centred);
+                g.drawFittedText (t, it.r.reduced (18, 0), juce::Justification::centred, 1, 0.7f);
+            }
+            else
+            {
+                g.drawFittedText (t, it.r.withTrimmedLeft (2).withTrimmedRight (9), juce::Justification::centredLeft, 1, 0.65f);
+                chevron (g, r.getRight() - 7.0f, r.getCentreY() - 1.5f);
+            }
+            g.setColour (ink.withAlpha (0.35f)); g.fillRect (r.getX(), r.getBottom() - 1.0f, r.getWidth(), 1.0f);
             break;
         }
         case Button: case PresetSave: case PresetRemove: case Help:
         {
-            g.setColour (Colour (200, 204, 200)); g.fillRect (r); g.setColour (juce::Colours::white); g.drawLine (r.getX(), r.getY(), r.getRight(), r.getY()); g.drawLine (r.getX(), r.getY(), r.getX(), r.getBottom());
-            g.setColour (Colour (70, 74, 70)); g.drawLine (r.getX(), r.getBottom(), r.getRight(), r.getBottom()); g.drawLine (r.getRight(), r.getY(), r.getRight(), r.getBottom());
-            g.setColour (juce::Colours::black); g.setFont (font (12.0f)); g.drawText (it.text.isEmpty() ? String() : it.text[0], it.r, juce::Justification::centred);
+            g.setColour (ink); g.setFont (mono (11.0f));
+            g.drawText (it.text.isEmpty() ? String() : lower (it.text[0]), r, juce::Justification::centred);
             break;
         }
         case Label:
         {
-            String t = it.text.isEmpty() ? String() : it.text[0];
-            auto& v = proc.engine->view;
-            if (it.dyn == dLesA) t = String ((int) v.cutA.load()) + " Hz   res " + String ((int) std::lrint (v.resA.load() * 100.0f)) + "   " + modeName (v.modeA);
-            else if (it.dyn == dLesB) t = String ((int) v.cutB.load()) + " Hz   res " + String ((int) std::lrint (v.resB.load() * 100.0f)) + "   " + modeName (v.modeB);
-            else if (it.dyn == dSpMode) { const int m = (int) std::lrint (v.spMode.load() * 2.0f); t = m <= 0 ? "FLOCK" : (m == 1 ? "FLOCK  +  LORENZ" : (m == 2 ? "LORENZ" : (m == 3 ? "LORENZ  +  GRAVITY" : "GRAVITY"))); }
-            if (it.dyn == dLesA || it.dyn == dLesB) g.setColour (Colour (150, 255, 175));
-            else if (it.dyn == dLesAn || it.dyn == dLesBn) { g.setColour (Colour (20, 24, 22)); g.fillRect (r); g.setColour (Colour (220, 230, 222)); }
-            else g.setColour (it.ink);
-            g.setFont (font ((float) it.r.getHeight() + 0.5f));
-            g.drawText (t, it.r.expanded (20, 2), juce::Justification::centred, false);
+            String t = it.text.isEmpty() ? String() : lower (it.text[0]);
+            if (it.dyn == dLesA) t = String ((int) v.cutA.load()) + " hz   res " + String ((int) std::lrint (v.resA.load() * 100.0f)) + "   " + modeName (v.modeA);
+            else if (it.dyn == dLesB) t = String ((int) v.cutB.load()) + " hz   res " + String ((int) std::lrint (v.resB.load() * 100.0f)) + "   " + modeName (v.modeB);
+            else if (it.dyn == dSpMode) { const int m = (int) std::lrint (v.spMode.load() * 2.0f); t = m <= 0 ? "flock" : (m == 1 ? "flock  +  lorenz" : (m == 2 ? "lorenz" : (m == 3 ? "lorenz  +  gravity" : "gravity"))); }
+            if (t.isEmpty()) break;
+            if (it.dyn == dLesAn || it.dyn == dLesBn)
+            {   // the filter's letter on a chip
+                g.setColour (accent); g.fillPath (skewRect (r.reduced (0.0f, 1.0f), 0.35f));
+                g.setColour (ground); g.setFont (mono (11.0f, true)); g.drawText (t, r, juce::Justification::centred);
+                break;
+            }
+            const float h = (float) it.r.getHeight();
+            if (it.dyn == dLesA || it.dyn == dLesB) { g.setColour (accent); g.setFont (mono (10.0f, true)); }
+            else if (it.section) { g.setColour (ink); g.setFont (mono (h >= 10 ? 10.0f : 9.0f, true)); }
+            else { g.setColour (ink.withAlpha (0.9f)); g.setFont (mono (h >= 10 ? 10.0f : 9.0f)); }
+            if (it.align == 1) g.drawText (t, r.expanded (0.0f, 2.0f), juce::Justification::centredLeft, false);
+            else g.drawText (t, r.expanded (20.0f, 2.0f), juce::Justification::centred, false);
             break;
         }
         default: break;
     }
 }
 
-void ObliqPanel::drawControls (juce::Graphics& g)
+void ObliqPanel::drawTabs (juce::Graphics& g)
 {
-    const bool hidden = anim > 0;
+    // the pages as a row of folded paper strips: a flat face, a darker sliver where the paper turns, the name along it
+    for (size_t i = 0; i < tabItems.size(); ++i)
+    {
+        const auto& it = items[(size_t) tabItems[i]];
+        const float depth = (float) it.dynIndex, lean = depth * 0.62f, h = depth * 0.78f;
+        const auto r = it.r.toFloat();
+        const Point<float> s (r.getX(), r.getBottom()), D (r.getWidth() - lean, 0.0f), W (lean, -h), F (0.0f, depth * 0.42f);
+        juce::Path face;
+        face.startNewSubPath (s); face.lineTo (s + D); face.lineTo (s + D + W); face.lineTo (s + W); face.closeSubPath();
+        Colour c (kPalette[kTabColour[i % 7]]);
+        if (std::abs (c.getPerceivedBrightness() - ground.getPerceivedBrightness()) < 0.06f && std::abs (c.getHue() - ground.getHue()) < 0.08f) c = Colour (kPalette[(kTabColour[i % 7] + 3) % 8]);
+        g.setColour (c); g.fillPath (face);
+        juce::Path fold;
+        fold.startNewSubPath (s + D); fold.lineTo (s + D + F); fold.lineTo (s + D + W); fold.closeSubPath();
+        g.setColour (c.darker (0.28f)); g.fillPath (fold);
+        if ((int) i == page) { g.setColour (juce::Colours::white); g.strokePath (face, juce::PathStrokeType (2.0f)); }
+        g.setColour (kStripInk); g.setFont (sans (12.0f, (int) i == page));
+        const auto mid = s + D * 0.5f + W * 0.5f;
+        g.drawText (pageTitle (pageNames[(int) i]), Rectangle<float> (mid.x - D.x * 0.5f, mid.y - 8.0f, D.x, 16.0f), juce::Justification::centred, false);
+    }
+}
+
+void ObliqPanel::drawStatic (juce::Graphics& g, bool pageItems)
+{
     for (size_t n = 0; n < items.size(); ++n)
     {
         const auto& it = items[n];
-        // a page's board (the matrix) is drawn where it sits in the layout: above the main panel, below the page buttons
-        if (! hidden && (int) n == pageStart[(size_t) page] && pageImage[(size_t) page].isValid()) g.drawImage (pageImage[(size_t) page], pageBounds[(size_t) page].toFloat());
-        if (it.page >= 0 && (it.page != page || hidden)) continue;
-        if (it.type == Scope) continue;
-        if (it.dyn == dL1 || it.dyn == dL2 || it.dyn == dFol || it.dyn == dOut || it.dyn == dBoid || it.dyn == dLz || it.dyn == dSpd
-            || it.dyn == dLesA || it.dyn == dLesB || it.dyn == dSpMode) continue;      // drawn every frame
+        if (pageItems != (it.page >= 0)) continue;
+        if (it.page >= 0 && it.page != page) continue;
+        if (! pageItems && covered ((int) n)) continue;
+        if (it.type == Scope || it.tab || ! it.visible) continue;
+        if (it.dyn == dL1 || it.dyn == dL2 || it.dyn == dFol || it.dyn == dOut || it.dyn == dVLed || it.dyn == dSubLed || it.dyn == dBoid || it.dyn == dLz
+            || it.dyn == dSpd || it.dyn == dRadar || it.dyn == dLesA || it.dyn == dLesB || it.dyn == dSpMode) continue;      // drawn every frame
         drawItem (g, it);
     }
-    // the page buttons sit above everything (they are in the matrix board's gutter)
+    if (! pageItems) drawTabs (g);
+}
+
+void ObliqPanel::drawReadout (juce::Graphics& g, const Item& it)
+{
+    const String name = it.popup.isNotEmpty() ? lower (it.popup) : (it.name.isNotEmpty() ? it.name : lower (it.channel));
+    const String t = name + ":  " + valueText (params.def (it.param), params.get (it.param));
+    const auto font = mono (10.0f, true);
+    const float w = juce::GlyphArrangement::getStringWidth (font, t) + 18.0f;
+    const float y = (float) it.r.getY() - 22.0f < 2.0f ? (float) it.r.getBottom() + 4.0f : (float) it.r.getY() - 22.0f;
+    const Rectangle<float> box (juce::jlimit (2.0f, (float) baseW - w - 2.0f, (float) it.r.getCentreX() - w * 0.5f), y, w, 16.0f);
+    g.setColour (accent); g.fillPath (skewRect (box, 0.35f));
+    g.setColour (ground); g.setFont (font); g.drawText (t, box, juce::Justification::centred, false);
 }
 
 void ObliqPanel::drawDynamic (juce::Graphics& g)
 {
     auto& v = proc.engine->view;
-    const bool hidden = anim > 0;
-    const Colour scopeCol (150, 255, 175);
-    for (const auto& it : items)
+    const float pageA = fade > 0 ? 1.0f - (float) fade / (float) kFade : 1.0f;
+    auto led = [&] (Rectangle<float> r, float a)
     {
-        if (it.page >= 0 && (it.page != page || hidden)) continue;
+        g.setColour (accent.withAlpha (juce::jlimit (0.0f, 1.0f, a)));
+        g.fillPath (skewRect ({ r.getCentreX() - 6.0f, r.getCentreY() - 3.5f, 12.0f, 7.0f }));
+    };
+    auto frame = [&] (Rectangle<float> r) { g.setColour (ink.withAlpha (0.15f)); g.drawRect (r, 1.0f); };
+    const bool swarmPage = pageNames[page] == "swarmpanel";
+    if (swarmPage)
+    {   // the two screens of the swarm page
+        const auto po = pageBounds[(size_t) page].getPosition().toFloat();
+        frame ({ po.x + 252.0f, po.y + 21.0f, 176.0f, 144.0f });
+        frame ({ po.x + 474.0f, po.y + 14.0f, 172.0f, 144.0f });
+    }
+    for (size_t n = 0; n < items.size(); ++n)
+    {
+        const auto& it = items[n];
+        if (it.page >= 0 && it.page != page) continue;
+        if (covered ((int) n)) continue;
         const auto r = it.r.toFloat();
-        const auto po = it.page >= 0 ? pageBounds[(size_t) it.page].getPosition().toFloat() : juce::Point<float>();
+        const auto po = it.page >= 0 ? pageBounds[(size_t) it.page].getPosition().toFloat() : Point<float>();
+        if (it.page >= 0) g.setOpacity (pageA);
         switch (it.dyn)
         {
-            case dL1: g.setOpacity (0.15f + 0.85f * (v.lfo1 * 0.5f + 0.5f)); g.drawImage (it.img, r); break;
-            case dL2: g.setOpacity (0.15f + 0.85f * (v.lfo2 * 0.5f + 0.5f)); g.drawImage (it.img, r); break;
-            case dFol: g.setOpacity (0.1f + 0.9f * v.follow); g.drawImage (it.img, r); break;
-            case dOut: g.setOpacity (0.1f + 0.9f * v.outEnv); g.drawImage (it.img, r); break;
-            case dBoid: g.setOpacity (1.0f); g.drawImage (it.img, Rectangle<float> (po.x + 254.0f + (v.boidX[(size_t) it.dynIndex] + 1.0f) * 82.0f, po.y + 23.0f + (v.boidY[(size_t) it.dynIndex] + 1.0f) * 67.0f, 8.0f, 8.0f)); break;
-            case dLz: g.setOpacity (it.alpha); g.drawImage (it.img, Rectangle<float> (po.x + 557.0f + juce::jlimit (-1.0f, 1.0f, lzx[(size_t) it.dynIndex]) * 80.0f, po.y + 82.0f + juce::jlimit (-1.0f, 1.0f, lzy[(size_t) it.dynIndex]) * 64.0f, 6.0f, 6.0f)); break;
+            case dL1: led (r, 0.15f + 0.85f * (v.lfo1 * 0.5f + 0.5f)); break;
+            case dL2: led (r, 0.15f + 0.85f * (v.lfo2 * 0.5f + 0.5f)); break;
+            case dFol: led (r, 0.1f + 0.9f * v.follow); break;
+            case dOut: led (r, 0.1f + 0.9f * v.outEnv); break;
+            case dVLed: led (r, 0.15f + 0.85f * params.get ("uniLock")); break;
+            case dSubLed: led (r, 0.15f + 0.85f * params.get ("sub2")); break;
+            case dBoid:
+                g.setColour (edge);
+                g.fillRect (po.x + 255.0f + (v.boidX[(size_t) it.dynIndex] + 1.0f) * 82.0f, po.y + 24.0f + (v.boidY[(size_t) it.dynIndex] + 1.0f) * 67.0f, 6.0f, 6.0f);
+                break;
+            case dLz:
+                g.setColour (accent.withAlpha (it.alpha));
+                g.fillRect (po.x + 557.0f + juce::jlimit (-1.0f, 1.0f, lzx[(size_t) it.dynIndex]) * 80.0f, po.y + 82.0f + juce::jlimit (-1.0f, 1.0f, lzy[(size_t) it.dynIndex]) * 64.0f, 5.0f, 5.0f);
+                break;
+            case dRadar:
+            {   // the radar as a thin wireframe sphere: the outline, the equator and two tilted meridians
+                const float cx = po.x + 450.0f, cy = po.y + 104.0f, R = 92.0f;
+                juce::Path outer, eq, mer;
+                outer.addEllipse (cx - R, cy - R, 2.0f * R, 2.0f * R);
+                eq.addEllipse (cx - R, cy - R * 0.32f, 2.0f * R, 2.0f * R * 0.32f);
+                mer.addEllipse (cx - R * 0.32f, cy - R, 2.0f * R * 0.32f, 2.0f * R);
+                g.setColour (accent); g.strokePath (outer, juce::PathStrokeType (1.0f));
+                g.setColour (accent.withAlpha (0.6f));
+                g.strokePath (eq, juce::PathStrokeType (1.0f));
+                g.strokePath (mer, juce::PathStrokeType (1.0f), juce::AffineTransform::rotation (0.6f, cx, cy));
+                g.strokePath (mer, juce::PathStrokeType (1.0f), juce::AffineTransform::rotation (-0.6f, cx, cy));
+                g.setColour (accent); g.fillRect (cx - 1.0f, cy - R - 5.0f, 2.0f, 6.0f);       // front
+                break;
+            }
             case dSpd:
-            {
+            {   // a point in the scene: a chip whose size follows its height
                 const float rm = juce::jmax (1.0f, params.get ("spDist")) * 1.2f;
                 float qx = v.px[(size_t) it.dynIndex] / rm, qy = v.py[(size_t) it.dynIndex] / rm; const float ql = std::sqrt (qx * qx + qy * qy);
                 if (ql > 1.0f) { qx /= ql; qy /= ql; }
                 const float sz = juce::jlimit (4.0f, 12.0f, 7.0f + v.pz[(size_t) it.dynIndex] / rm * 6.0f);
-                g.setOpacity (1.0f); g.drawImage (it.img, Rectangle<float> (po.x + 450.0f - qy * 92.0f - sz / 2, po.y + 104.0f - qx * 92.0f - sz / 2, sz, sz));
+                const float x = po.x + 450.0f - qy * 92.0f, y = po.y + 104.0f - qx * 92.0f;
+                g.setColour (it.dynIndex < 12 ? edge : (it.dynIndex < 18 ? kField : kAmber));
+                g.fillPath (skewRect ({ x - sz * 0.5f, y - sz * 0.35f, sz, sz * 0.7f }, 0.5f));
                 break;
             }
-            case dLesA: case dLesB: case dSpMode: g.setOpacity (1.0f); drawItem (g, it); break;
+            case dLesA: case dLesB: case dSpMode: drawItem (g, it); break;
             default: break;
         }
-        g.setOpacity (1.0f);
         if (it.type == Scope)
-        {
-            g.setColour (scopeCol);
+        {   // the screens: a faint frame, an axis, a thin accent trace
+            frame (r);
+            g.setColour (ink.withAlpha (0.2f)); g.fillRect (r.getX(), r.getCentreY(), r.getWidth(), 1.0f);
+            if (it.signals.size() == 2) g.fillRect (r.getCentreX(), r.getY(), 1.0f, r.getHeight());
             juce::Path p;
-            if (it.signals.size() == 2)
-            {   // the polygon (or the Lorenz butterfly) as an XY figure
-                if (it.signals[0] == "adispX")
+            if (it.signals.size() == 2 && it.signals[0] == "adispX")
+            {   // the polygon as an XY figure
+                const float order = juce::jlimit (2.05f, 32.0f, params.get ("pRegular") > 0.5f ? std::round (params.get ("pOrder")) : params.get ("pOrder"));
+                const float teeth = params.get ("pTeeth"), amt = params.get ("pAmt"), skew = params.get ("pPhase");
+                float ratio = params.get ("pRatio"); if (params.get ("pSnap") > 0.5f) ratio = ratio < 0.75f ? 0.5f : std::round (ratio);
+                const float roll = params.get ("pRoll") + (float) tickCount / 30.0f * params.get ("pSpin");
+                const double pin = juce::MathConstants<double>::pi / order; double tmax = juce::MathConstants<double>::halfPi - pin - 0.07; if (tmax < 0) tmax = 0;
+                const double T = teeth * tmax; const int n = 400;
+                for (int i = 0; i <= n; ++i)
                 {
-                    const float order = juce::jlimit (2.05f, 32.0f, params.get ("pRegular") > 0.5f ? std::round (params.get ("pOrder")) : params.get ("pOrder"));
-                    const float teeth = params.get ("pTeeth"), amt = params.get ("pAmt"), skew = params.get ("pPhase");
-                    float ratio = params.get ("pRatio"); if (params.get ("pSnap") > 0.5f) ratio = ratio < 0.75f ? 0.5f : std::round (ratio);
-                    const float roll = params.get ("pRoll") + (float) tickCount / 30.0f * params.get ("pSpin");
-                    const double pin = juce::MathConstants<double>::pi / order; double tmax = juce::MathConstants<double>::halfPi - pin - 0.07; if (tmax < 0) tmax = 0;
-                    const double T = teeth * tmax; const int n = 400; const int turns = (int) std::ceil (order) <= 16 ? 1 : 1;
-                    for (int i = 0; i <= n * turns; ++i)
-                    {
-                        const double ph = (double) i / n, th = ph + amt * std::sin (juce::MathConstants<double>::twoPi * ph * ratio) * 0.3;
-                        double fr = th * order; fr -= std::floor (fr);
-                        double den = juce::jlimit (0.04, 1.0, std::cos (2 * pin * fr - pin + T));
-                        const double P = std::cos (pin + T) / den, ang = juce::MathConstants<double>::twoPi * (th + roll);
-                        const float x = r.getCentreX() + (float) (P * std::cos (ang)) * r.getWidth() * 0.46f, y = r.getCentreY() - (float) (P * std::sin (ang + skew * juce::MathConstants<double>::halfPi)) * r.getHeight() * 0.46f;
-                        if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
-                    }
+                    const double ph = (double) i / n, th = ph + amt * std::sin (juce::MathConstants<double>::twoPi * ph * ratio) * 0.3;
+                    double fr = th * order; fr -= std::floor (fr);
+                    double den = juce::jlimit (0.04, 1.0, std::cos (2 * pin * fr - pin + T));
+                    const double P = std::cos (pin + T) / den, ang = juce::MathConstants<double>::twoPi * (th + roll);
+                    const float x = r.getCentreX() + (float) (P * std::cos (ang)) * r.getWidth() * 0.46f, y = r.getCentreY() - (float) (P * std::sin (ang + skew * juce::MathConstants<double>::halfPi)) * r.getHeight() * 0.46f;
+                    if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
                 }
             }
             else if (it.signals.size() == 1)
@@ -341,48 +555,62 @@ void ObliqPanel::drawDynamic (juce::Graphics& g)
                     if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
                 }
             }
-            g.saveState(); g.reduceClipRegion (it.r); g.strokePath (p, juce::PathStrokeType (1.2f)); g.restoreState();
+            g.setColour (accent);
+            g.saveState(); g.reduceClipRegion (it.r); g.strokePath (p, juce::PathStrokeType (1.0f)); g.restoreState();
         }
+        g.setOpacity (1.0f);
     }
-    // value read-out while hovering or dragging
+    // a lit button under the pointer, and the value of the control being hovered or dragged
     const int ti = dragItem >= 0 ? dragItem : hoverItem;
-    if (ti >= 0 && items[(size_t) ti].param >= 0 && (items[(size_t) ti].type == Knob || items[(size_t) ti].type == VSlider))
+    if (ti >= 0 && ! helpOpen)
     {
         const auto& it = items[(size_t) ti];
-        const String t = (it.popup.isNotEmpty() ? it.popup : it.channel) + ":  " + String (params.get (it.param), 3);
-        auto font = face != nullptr ? juce::Font (juce::FontOptions (face).withHeight (11.0f)) : juce::Font (juce::FontOptions (11.0f));
-        const float w = juce::GlyphArrangement::getStringWidth (font, t) + 12.0f;
-        Rectangle<float> box (juce::jlimit (2.0f, (float) baseW - w - 2.0f, (float) it.r.getCentreX() - w / 2), (float) it.r.getY() - 20.0f < 2.0f ? (float) it.r.getBottom() + 4.0f : (float) it.r.getY() - 20.0f, w, 16.0f);
-        g.setColour (juce::Colours::white); g.fillRect (box); g.setColour (juce::Colours::black); g.drawRect (box, 1.0f);
-        g.setFont (font); g.drawText (t, box, juce::Justification::centred);
+        if (it.type == Button || it.type == PresetSave || it.type == PresetRemove || it.type == Help)
+        {
+            const auto r = it.r.toFloat();
+            g.setColour (accent); g.fillPath (skewRect (r.reduced (2.0f, 3.0f), 0.35f));
+            g.setColour (ground); g.setFont (mono (11.0f));
+            g.drawText (it.text.isEmpty() ? String() : lower (it.text[0]), r, juce::Justification::centred);
+        }
+        else if (it.param >= 0 && (it.type == Knob || it.type == VSlider || it.type == NSlider)) drawReadout (g, it);
     }
 }
 
 void ObliqPanel::paint (juce::Graphics& g)
 {
-    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);       // crisp pixels, and fast
     g.addTransform (juce::AffineTransform::scale (scale));
-    if (bg.isValid()) g.drawImage (bg, Rectangle<float> (0, 0, (float) baseW, (float) baseH)); else g.fillAll (Colour (60, 64, 62));
+    g.setColour (ground); g.fillRect (0, 0, baseW, baseH);
+
+    // the title where the logo was, and the rule between the instrument and the page
+    g.setColour (ink); g.setFont (sans (22.0f, true));
+    g.drawText (lower (JucePlugin_Name), Rectangle<float> (300.0f, 4.0f, 360.0f, 26.0f), juce::Justification::centred, false);
+    g.setColour (ink.withAlpha (0.8f)); g.setFont (mono (10.0f));
+    g.drawText (OBLIQ_SONIC ? "third-order ambisonics" : fal::ui::U ("polyphonic synth \xc2\xb7 field recordings"), Rectangle<float> (300.0f, 30.0f, 360.0f, 12.0f), juce::Justification::centred, false);
+    g.setFont (mono (9.0f)); g.drawText ("faltung", Rectangle<float> (858.0f, 36.0f, 62.0f, 10.0f), juce::Justification::centredRight, false);
+    if (! pageBoard[(size_t) page]) { g.setColour (ink.withAlpha (0.25f)); g.fillRect (30.0f, 394.0f, 900.0f, 1.0f); }
 
     // the controls are cached at device resolution and only redrawn when something changes
-    const float ds = scale * (float) g.getInternalContext().getPhysicalPixelScaleFactor() / scale;
-    const float ps = juce::jmax (1.0f, (float) g.getInternalContext().getPhysicalPixelScaleFactor());
-    juce::ignoreUnused (ds);
-    const bool hidden = anim > 0;
+    const float ps = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
     const int change = params.changeCount.load() * 4 + proc.engine->view.sampler.load();
-    if (! layer.isValid() || layerChange != change || layerPage != page || layerScale != ps || layerHidden != hidden)
+    if (! layerMain.isValid() || layerChange != change || layerPageNo != page || layerScale != ps)
     {
-        layerChange = change; layerPage = page; layerScale = ps; layerHidden = hidden;
+        layerChange = change; layerPageNo = page; layerScale = ps;
         const int w = (int) std::ceil (baseW * ps), h = (int) std::ceil (baseH * ps);
-        if (! layer.isValid() || layer.getWidth() != w || layer.getHeight() != h) layer = juce::Image (juce::Image::ARGB, w, h, true);
-        else layer.clear (layer.getBounds());
-        juce::Graphics lg (layer);
-        lg.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
-        lg.addTransform (juce::AffineTransform::scale (ps / scale));
-        lg.addTransform (juce::AffineTransform::scale (scale));
-        drawControls (lg);
+        for (auto* layer : { &layerMain, &layerPage })
+        {
+            if (! layer->isValid() || layer->getWidth() != w || layer->getHeight() != h) *layer = juce::Image (juce::Image::ARGB, w, h, true);
+            else layer->clear (layer->getBounds());
+            juce::Graphics lg (*layer);
+            lg.addTransform (juce::AffineTransform::scale (ps));
+            drawStatic (lg, layer == &layerPage);
+        }
     }
-    g.drawImage (layer, Rectangle<float> (0, 0, (float) baseW, (float) baseH));
+    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+    g.setOpacity (1.0f);                                   // (an image is drawn with the current colour's alpha)
+    g.drawImage (layerMain, Rectangle<float> (0, 0, (float) baseW, (float) baseH));
+    if (fade > 0) g.setOpacity (1.0f - (float) fade / (float) kFade);
+    g.drawImage (layerPage, Rectangle<float> (0, 0, (float) baseW, (float) baseH));
+    g.setOpacity (1.0f);
     drawDynamic (g);
     if (helpOpen) drawHelp (g);
 }
@@ -390,14 +618,12 @@ void ObliqPanel::paint (juce::Graphics& g)
 // =================================================================================================== interaction
 int ObliqPanel::hit (juce::Point<float> p) const
 {
-    if (anim > 0) return -1;
     for (int i = (int) items.size() - 1; i >= 0; --i)
     {
         const auto& it = items[(size_t) i];
         if (it.type == Image || it.type == Label || it.type == Scope) continue;
         if (it.page >= 0 && it.page != page) continue;
-        // controls under a page's board can't be reached
-        if (it.page < 0 && i < pageStart[(size_t) page] && pageImage[(size_t) page].isValid() && pageBounds[(size_t) page].toFloat().contains (p)) continue;
+        if (covered (i)) continue;                 // controls under a page's board can't be reached
         if (it.r.toFloat().contains (p)) return i;
     }
     return -1;
@@ -428,8 +654,8 @@ void ObliqPanel::showMenu (int item)
         if (OBLIQ_SONIC)
         {
             m.addSeparator();
-            m.addItem (100, "Output: stereo (decoded from the Ambisonics)", true, proc.stereoMonitor.load());
-            m.addItem (101, "Output: 16-channel Ambisonics (ACN / SN3D)", true, ! proc.stereoMonitor.load());
+            m.addItem (100, "output: stereo (decoded from the ambisonics)", true, proc.stereoMonitor.load());
+            m.addItem (101, "output: 16-channel ambisonics (acn / sn3d)", true, ! proc.stereoMonitor.load());
         }
         m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (area), [safe] (int r)
         {
@@ -442,7 +668,7 @@ void ObliqPanel::showMenu (int item)
     else
     {
         const int cur = (int) std::lrint (params.get (it.param));
-        for (int i = 0; i < it.text.size(); ++i) m.addItem (i + 1, it.text[i], true, cur == i + 1);
+        for (int i = 0; i < it.text.size(); ++i) m.addItem (i + 1, lower (it.text[i]), true, cur == i + 1);
         const int pi = it.param;
         m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (area), [safe, pi] (int r) { if (safe != nullptr && r > 0) safe->params.set (pi, (float) r); });
     }
@@ -474,13 +700,22 @@ void ObliqPanel::mouseDown (const juce::MouseEvent& e)
             }
             else params.set (it.param, params.get (it.param) > 0.5f ? 0.0f : 1.0f);
             break;
-        case Combo: case PresetBox: case SizeBox: showMenu (i); break;
+        case PresetBox:
+        {   // < and > step through the presets, the name opens the list
+            const auto names = proc.presetNames();
+            const int cur = names.indexOf (proc.currentPreset), n = names.size();
+            if (n > 0 && p.x < (float) it.r.getX() + 16.0f) proc.loadPreset (names[(cur - 1 + n) % n]);
+            else if (n > 0 && p.x > (float) it.r.getRight() - 16.0f) proc.loadPreset (names[(cur + 1) % n]);
+            else showMenu (i);
+            break;
+        }
+        case Combo: case SizeBox: showMenu (i); break;
         case Button: params.set (it.param, params.get (it.param) + 1.0f); break;
         case PresetSave:
         {
-            auto* aw = new juce::AlertWindow ("Save preset", "Name:", juce::MessageBoxIconType::NoIcon);
-            aw->addTextEditor ("name", proc.currentPreset == "Default" ? String ("My sound") : proc.currentPreset);
-            aw->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey)); aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            auto* aw = new juce::AlertWindow ("save preset", "name:", juce::MessageBoxIconType::NoIcon);
+            aw->addTextEditor ("name", proc.currentPreset == "Default" ? String ("my sound") : proc.currentPreset);
+            aw->addButton ("save", 1, juce::KeyPress (juce::KeyPress::returnKey)); aw->addButton ("cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
             juce::Component::SafePointer<ObliqPanel> safe (this);
             aw->enterModalState (true, juce::ModalCallbackFunction::create ([safe, aw] (int r) { if (safe != nullptr && r == 1) { auto n = aw->getTextEditorContents ("name").trim(); if (n.isNotEmpty()) safe->proc.savePreset (n); } }), true);
             break;
@@ -496,7 +731,9 @@ void ObliqPanel::mouseDrag (const juce::MouseEvent& e)
     if (dragItem < 0) return;
     const auto p = toPanel (e.position);
     const float range = e.mods.isShiftDown() ? 800.0f : 180.0f;
-    setParam (dragItem, juce::jlimit (0.0f, 1.0f, dragStart + (dragPos.y - p.y) / range));
+    // up or right raises; the bars read horizontally, the old vertical drag still works
+    const float d = items[(size_t) dragItem].type == Knob ? (dragPos.y - p.y) + (p.x - dragPos.x) : (dragPos.y - p.y);
+    setParam (dragItem, juce::jlimit (0.0f, 1.0f, dragStart + d / range));
 }
 
 void ObliqPanel::mouseUp (const juce::MouseEvent&) { dragItem = -1; }
@@ -560,61 +797,56 @@ std::vector<int> ObliqPanel::helpTopics() const
 
 namespace
 {
-    void bevel (juce::Graphics& g, Rectangle<float> r, bool raised)
-    {
-        g.setColour (raised ? juce::Colours::white : Colour (70, 74, 70)); g.fillRect (r.getX(), r.getY(), r.getWidth(), 1.0f); g.fillRect (r.getX(), r.getY(), 1.0f, r.getHeight());
-        g.setColour (raised ? Colour (70, 74, 70) : juce::Colours::white); g.fillRect (r.getX(), r.getBottom() - 1.0f, r.getWidth(), 1.0f); g.fillRect (r.getRight() - 1.0f, r.getY(), 1.0f, r.getHeight());
-    }
-    Rectangle<float> helpTopicRect (Rectangle<float> w, int i) { return { w.getX() + 10.0f, w.getY() + 34.0f + (float) i * 26.0f, 118.0f, 22.0f }; }
-    Rectangle<float> helpCloseRect (Rectangle<float> w) { return { w.getRight() - 21.0f, w.getY() + 5.0f, 16.0f, 14.0f }; }
-    Rectangle<float> helpManualRect (Rectangle<float> w) { return { w.getX() + 10.0f, w.getBottom() - 34.0f, 118.0f, 22.0f }; }
+    Rectangle<float> helpTopicRect (Rectangle<float> w, int i) { return { w.getX() + 12.0f, w.getY() + 46.0f + (float) i * 26.0f, 118.0f, 22.0f }; }
+    Rectangle<float> helpCloseRect (Rectangle<float> w) { return { w.getRight() - 32.0f, w.getY() + 8.0f, 22.0f, 22.0f }; }
+    Rectangle<float> helpManualRect (Rectangle<float> w) { return { w.getX() + 12.0f, w.getBottom() - 36.0f, 118.0f, 22.0f }; }
 }
 
 void ObliqPanel::drawHelp (juce::Graphics& g)
 {
-    auto bold = [&] (float h) { return face != nullptr ? juce::Font (juce::FontOptions (face).withHeight (h)) : juce::Font (juce::FontOptions (h, juce::Font::bold)); };
-    const juce::Font plain (juce::FontOptions ("Tahoma", 12.5f, juce::Font::plain));
     const auto w = helpWindow();
     const auto topics = helpTopics();
     helpTopic = juce::jlimit (0, (int) topics.size() - 1, helpTopic);
 
-    g.setColour (Colour (0x70081610)); g.fillRect (0, 0, baseW, baseH);
-    g.setColour (Colour (0x50000000)); g.fillRect (w.translated (4.0f, 4.0f));
-    g.setColour (Colour (200, 204, 200)); g.fillRect (w); g.setColour (juce::Colours::black); g.drawRect (w.expanded (1.0f), 1.0f); bevel (g, w, true);
+    // a flat panel in the field colour over a dimmed panel
+    g.setColour (ink.withAlpha (0.28f)); g.fillRect (0, 0, baseW, baseH);
+    const Colour bg = ground.getPerceivedBrightness() > 0.5f ? ground.brighter (0.22f) : ground.brighter (0.35f);
+    g.setColour (bg); g.fillRect (w);
+    g.setColour (ink); g.drawRect (w, 1.0f);
 
-    // title bar
-    const Rectangle<float> bar (w.getX() + 3.0f, w.getY() + 3.0f, w.getWidth() - 6.0f, 18.0f);
-    g.setGradientFill (juce::ColourGradient (Colour (34, 78, 52), bar.getX(), 0.0f, Colour (115, 174, 138), bar.getRight(), 0.0f, false)); g.fillRect (bar);
-    g.setColour (juce::Colours::white); g.setFont (bold (12.0f));
-    g.drawText (String (JucePlugin_Name) + " Help", bar.reduced (6.0f, 0.0f), juce::Justification::centredLeft);
-    const auto cl = helpCloseRect (w);
-    g.setColour (Colour (200, 204, 200)); g.fillRect (cl); bevel (g, cl, true);
-    g.setColour (juce::Colours::black); g.drawLine (cl.getX() + 4.5f, cl.getY() + 3.5f, cl.getRight() - 4.5f, cl.getBottom() - 3.5f, 1.6f); g.drawLine (cl.getRight() - 4.5f, cl.getY() + 3.5f, cl.getX() + 4.5f, cl.getBottom() - 3.5f, 1.6f);
+    g.setFont (sans (16.0f, true));
+    g.drawText (lower (JucePlugin_Name) + " help", Rectangle<float> (w.getX() + 14.0f, w.getY() + 9.0f, 300.0f, 22.0f), juce::Justification::centredLeft, false);
+    g.setFont (mono (10.0f)); g.setColour (ink.withAlpha (0.7f));
+    g.drawText (fal::ui::U ("f1 \xc2\xb7 esc"), Rectangle<float> (w.getRight() - 140.0f, w.getY() + 12.0f, 100.0f, 16.0f), juce::Justification::centredRight, false);
+    g.setColour (ink); g.setFont (sans (16.0f));
+    g.drawText (fal::ui::U ("\xc3\x97"), helpCloseRect (w), juce::Justification::centred, false);
+    g.setColour (ink.withAlpha (0.25f)); g.fillRect (w.getX() + 12.0f, w.getY() + 38.0f, w.getWidth() - 24.0f, 1.0f);
 
-    // topics
+    // topics as text links; the open one on a chip
     for (int i = 0; i < (int) topics.size(); ++i)
     {
         const auto r = helpTopicRect (w, i); const bool on = i == helpTopic;
-        g.setColour (on ? Colour (115, 174, 138) : Colour (200, 204, 200)); g.fillRect (r); bevel (g, r, ! on);
-        g.setColour (juce::Colours::black); g.setFont (bold (11.0f)); g.drawText (kHelp[topics[(size_t) i]].title, r.translated (on ? 1.0f : 0.0f, on ? 1.0f : 0.0f), juce::Justification::centred);
+        if (on) { g.setColour (accent); g.fillPath (skewRect (r.reduced (2.0f, 3.0f), 0.35f)); }
+        g.setColour (on ? ground : ink); g.setFont (mono (11.0f, on));
+        g.drawText (lower (kHelp[topics[(size_t) i]].title), r, juce::Justification::centred, false);
     }
     const auto mr = helpManualRect (w);
-    g.setColour (Colour (200, 204, 200)); g.fillRect (mr); bevel (g, mr, true);
-    g.setColour (juce::Colours::black); g.setFont (bold (11.0f)); g.drawText ("Manual (PDF)", mr, juce::Justification::centred);
+    g.setColour (ink); g.setFont (mono (11.0f));
+    g.drawText ("manual (pdf)", mr, juce::Justification::centred, false);
+    g.setColour (ink.withAlpha (0.35f)); g.fillRect (mr.getX() + 14.0f, mr.getBottom() - 3.0f, mr.getWidth() - 28.0f, 1.0f);
 
-    // text
-    const Rectangle<float> box (w.getX() + 138.0f, w.getY() + 34.0f, w.getWidth() - 148.0f, w.getHeight() - 46.0f);
-    g.setColour (juce::Colours::white); g.fillRect (box); bevel (g, box, false);
-    juce::AttributedString as; as.setWordWrap (juce::AttributedString::byWord); as.setLineSpacing (1.5f);
+    // the text
+    const Rectangle<float> box (w.getX() + 146.0f, w.getY() + 48.0f, w.getWidth() - 162.0f, w.getHeight() - 60.0f);
+    juce::AttributedString as; as.setWordWrap (juce::AttributedString::byWord); as.setLineSpacing (2.0f);
     juce::StringArray lines; lines.addLines (kHelp[topics[(size_t) helpTopic]].body);
     bool first = true;
     for (auto& l : lines)
     {
-        if (l.startsWith ("# ")) { if (! first) as.append ("\n", juce::Font (juce::FontOptions (5.0f)), juce::Colours::black); as.append (l.substring (2).toUpperCase() + "\n", bold (12.0f), Colour (34, 96, 58)); }
-        else as.append (l + "\n", plain, Colour (8, 22, 14));
+        if (l.startsWith ("# ")) { if (! first) as.append ("\n", sans (6.0f), ink); as.append (lower (l.substring (2)) + "\n", sans (12.5f, true), accent); }
+        else as.append (l + "\n", sans (12.0f), ink);
         first = false;
     }
-    as.draw (g, box.reduced (12.0f, 9.0f));
+    as.draw (g, box);
 }
 
 bool ObliqPanel::helpClick (juce::Point<float> p)
@@ -625,8 +857,8 @@ bool ObliqPanel::helpClick (juce::Point<float> p)
     for (int i = 0; i < n; ++i) if (helpTopicRect (w, i).contains (p)) helpTopic = i;
     if (helpManualRect (w).contains (p))
     {
-        auto pdf = ObliqProcessor::resourceDir().getChildFile ("ObliqSound_ObliqSonic_Manual.pdf");
-        if (pdf.existsAsFile()) pdf.startAsProcess(); else juce::URL ("https://github.com/femifleming/obliqsound").launchInDefaultBrowser();
+        auto pdf = ObliqProcessor::resourceDir().getChildFile ("obliqsound Manual.pdf");
+        if (pdf.existsAsFile()) pdf.startAsProcess(); else juce::URL ("https://github.com/femifleming/faltung").launchInDefaultBrowser();
     }
     return true;
 }

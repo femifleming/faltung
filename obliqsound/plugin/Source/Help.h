@@ -14,31 +14,31 @@ static const HelpTopic kHelp[] = {
   "# The panel\n"
   "The upper half is always there: the oscillator in the middle, FILTER A and its envelope on the left wing, FILTER B and the AMP ENV on the right wing, "
   "the MIXER on the left shoulder and the OUTPUT section on the right, and the sampler's fan of squares in the centre.\n"
-  "The lower half is a page. Choose it with the row of lights under the display: POLYGON, ODESSA, LESTER, LFO, MATRIX, SWARM (and SPACE on ObliqSonic).\n"
+  "The lower half is a page. Choose it with the row of folded strips under the sampler: POLYGON, ODESSA, LESTER, LFO, MATRIX, SWARM (and SPACE on ObliqSonic).\n"
   "# First steps\n"
-  "Pick a preset from the white list at the top left, or press Randomize.\n"
+  "Pick a preset from the list at the top left (< and > step through it), or press Randomize.\n"
   "Turn CUTOFF A and RES for the tone, the A D S R knobs for the shape of the note.\n"
   "Click a square in the fan and raise SAMPLER to bring in a nature scene or a field recording.\n"
   "# This window\n"
   "Help or F1 opens it, Esc or a click outside closes it. The notes keep playing while it is open.", false },
 
 { "CONTROLS",
-  "# Knobs, sliders and number boxes\n"
-  "Drag up or down to turn.\n"
+  "# Bars, sliders and number boxes\n"
+  "Every knob is a short bar: drag right or up to raise it, left or down to lower it. The white tick is the value; a filled bar grows from the left, or from the centre for a control that swings both ways.\n"
   "Hold Shift while dragging for fine steps.\n"
   "Double-click to return to the default value.\n"
   "The mouse wheel also turns the control under the pointer.\n"
   "# Switches and lights\n"
-  "Click to switch. Lights that belong together (the waveform, the octave, the sampler squares, the pages) work as one selector.\n"
+  "Click to switch: a filled parallelogram is on. Switches that belong together (the octave, the sampler squares, the pages) work as one selector.\n"
   "# Lists\n"
-  "Click a white box with a small arrow to open its list.\n"
+  "Click an underlined name with a small arrow to open its list.\n"
   "# Header\n"
   "Preset list: recalls a preset (the factory sounds and your own).\n"
   "Save: stores the current sound under a name you type.  Remove: deletes the chosen preset if it is one of yours.\n"
   "Randomize: rolls a new sound, including a random sampler square.\n"
-  "Size (50 - 200 %): scales the window. 100 % and 200 % are the sharpest.\n"
-  "# The background\n"
-  "The green landscape drifts all the time and flows into a new shape when you change page. It is only a picture: it does not change the sound.", false },
+  "Size (50 - 200 %): scales the window; the panel is drawn as vectors, so every size is sharp.\n"
+  "# The look\n"
+  "ObliqSound and ObliqSonic are part of the faltung bundle and share its look: a flat colour field, skewed bars, a row of folded paper strips for the pages, a chip grid for the matrix. Nothing on the panel is a picture; it is all drawn.", false },
 
 { "VOICE",
   "# Oscillator (centre)\n"
@@ -108,15 +108,15 @@ static const HelpTopic kHelp[] = {
 { "MATRIX",
   "# The pin board\n"
   "Rows are sources, columns are destinations. Where a row and a column cross there is a pin.\n"
-  "Drag a pin up: it turns green, a positive connection, stronger the further you drag.\n"
-  "Drag it down: it turns red, an inverted connection.\n"
+  "Drag a pin up: the chip fills upward from its centre, a positive connection, stronger the further you drag.\n"
+  "Drag it down: it fills downward in salmon, an inverted connection.\n"
   "Double-click a pin to pull it out. Hover over one to read \"source > destination\".\n"
   "Any number of pins can be in at once.\n"
   "# Sources\n"
   "LFO 1, LFO 2, MOD ENV, AMP ENV, VELOCITY, KEY, MOD WHEEL, AFTERTOUCH, RANDOM (new for each note), CHAOS, NATURE, FOLLOWER, OUTPUT, "
   "BOID X / Y, LORENZ X / Y / Z and CC A - D.\n"
   "# MIDI controllers\n"
-  "The four CC rows listen to incoming MIDI controllers. The white number box beside each row is the CC number (0 - 127; drag it). "
+  "The four CC rows listen to incoming MIDI controllers. The number beside each row is the CC number (0 - 127; drag it). "
   "Any MIDI channel is accepted.\n"
   "# Destinations\n"
   "Pitch, cutoff, resonance, pulse width, fold, FM, sub, noise, resonator, detune, amplitude, pan, LFO rates, delay and reverb sends, "
@@ -156,7 +156,7 @@ static const HelpTopic kHelp[] = {
 
 { "PRESETS",
   "# Presets\n"
-  "The white list at the top left holds the factory presets and your own.\n"
+  "The list at the top left holds the factory presets and your own; < and > step through it.\n"
   "Save asks for a name and stores the sound: every control, the matrix pins and the CC numbers.\n"
   "Remove deletes the chosen preset if it is one of yours.\n"
   "Your presets are kept in presets.json in your application-data folder, under the instrument's name (macOS: ~/Library/Application Support, Windows: AppData/Roaming, Linux: ~/.config).\n"
@@ -181,8 +181,8 @@ static const HelpTopic kHelp[] = {
   "A CC does nothing: the number box of its matrix row must match the controller, and a pin in that row must be pulled up or down.\n"
   "ObliqSonic sounds flat: the track needs 16 channels and a decoder at order 3, SN3D.\n"
   "# About\n"
-  "Version 2.2. The sound is made by SuperCollider's synthesis server (scsynth), built into the plug-in, with custom filter, polygon, additive "
+  "Version 2.3, part of the faltung bundle. The sound is made by SuperCollider's synthesis server (scsynth), built into the plug-in, with custom filter, polygon, additive "
   "and Ambisonics units. Nothing else needs to be installed. 16 voices, 16-bit output stage.\n"
   "# More\n"
-  "The Manual button below opens the full owner's manual (PDF). Source and downloads: github.com/femifleming/obliqsound", false },
+  "The manual link below opens the full manual (PDF). Source and downloads, with the rest of faltung: github.com/femifleming/faltung", false },
 };

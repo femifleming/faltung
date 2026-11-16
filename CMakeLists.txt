@@ -163,6 +163,15 @@ add_dependencies(faltung_all Partials_All)
 # Cloudfin (the floating multi-effect) lives in cloudfin/ and builds with the bundle
 add_subdirectory(cloudfin)
 add_dependencies(faltung_all Cloudfin_All)
+# ConvoSolution (the dual convolution reverb) lives in convosolution/ and builds with the bundle
+add_subdirectory(convosolution)
+add_dependencies(faltung_all ConvoSolution_All)
+# ObliqSound and ObliqSonic (the synth and its Ambisonics twin) live in obliqsound/; they need SuperCollider's
+# server (obliqsound/sc/fetch_sc.sh) and are skipped with a warning without it
+add_subdirectory(obliqsound)
+if(TARGET ObliqSound)
+    add_dependencies(faltung_all ObliqSound_All ObliqSonic_All)
+endif()
 
 if(FALTUNG_BUILD_TESTS)
     juce_add_console_app(faltungTest PRODUCT_NAME "faltungTest")

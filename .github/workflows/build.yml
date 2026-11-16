@@ -25,8 +25,8 @@ jobs:
           - os: Linux
             runner: ubuntu-22.04
           - suite: faltung
-            targets: faltung_all faltungTest PartialsTest CloudfinTest CloudfinHostTest
-            tests: faltungTest PartialsTest CloudfinTest CloudfinHostTest
+            targets: faltung_all faltungTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest ObliqSoundTest ObliqSonicTest
+            tests: faltungTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest ObliqSoundTest ObliqSonicTest
             name: faltung
           - suite: deep
             targets: faltung_deep_all faltungDeepTest
@@ -49,6 +49,27 @@ jobs:
             libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxi-dev libegl-dev \
             libgl1-mesa-dev libglu1-mesa-dev mesa-common-dev ninja-build xvfb fonts-dejavu-core
 
+      # ObliqSound / ObliqSonic embed SuperCollider's server: fetched and built once per OS, then cached
+      - name: MSVC for the SuperCollider build
+        if: matrix.suite == 'faltung' && runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Ninja (Windows)
+        if: matrix.suite == 'faltung' && runner.os == 'Windows'
+        run: choco install ninja -y --no-progress
+      - name: SuperCollider cache
+        if: matrix.suite == 'faltung'
+        uses: actions/cache@v4
+        with:
+          path: obliqsound/third_party
+          key: sc-3.13.0-${{ runner.os }}-${{ hashFiles('obliqsound/sc/fetch_sc.sh') }}
+      - name: SuperCollider server
+        if: matrix.suite == 'faltung'
+        shell: bash
+        run: |
+          [ -n "$(find obliqsound/third_party/sc-build/server/scsynth -name '*scsynth*.a' -o -name '*scsynth*.lib' 2>/dev/null)" ] || obliqsound/sc/fetch_sc.sh
+
       - name: Configure
         shell: bash
         run: |
@@ -64,7 +85,7 @@ jobs:
       - name: Test
         shell: bash
         run: |
-          find_exe() { find build -type f \( -name "$1" -o -name "$1.exe" \) -path "*_artefacts*" | head -n 1; }
+          find_exe() { f="$(find build -type f \( -name "$1" -o -name "$1.exe" \) -path "*_artefacts*" | head -n 1)"; [ -n "$f" ] || f="$(find build -type f \( -name "$1" -o -name "$1.exe" \) -not -path "*CMakeFiles*" | head -n 1)"; echo "$f"; }
           RUN=""
           if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
           for t in ${{ matrix.tests }}; do

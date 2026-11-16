@@ -1,7 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Ui.h"
-#include "BinaryData.h"
+#include "EcrData.h"
 
 namespace ecr
 {
@@ -263,11 +263,11 @@ std::shared_ptr<IrSource> EcrProcessor::loadById (const juce::String& id, const 
     if (id.startsWith ("Internal/"))
     {
         const auto wanted = id.fromFirstOccurrenceOf ("/", false, false) + ".flac";
-        for (int i = 0; i < BinaryData::namedResourceListSize && src == nullptr; ++i)
-            if (wanted == BinaryData::originalFilenames[i])
+        for (int i = 0; i < EcrData::namedResourceListSize && src == nullptr; ++i)
+            if (wanted == EcrData::originalFilenames[i])
             {
                 int size = 0;
-                const char* data = BinaryData::getNamedResource (BinaryData::namedResourceList[i], size);
+                const char* data = EcrData::getNamedResource (EcrData::namedResourceList[i], size);
                 src = loadIrFromStream (std::make_unique<juce::MemoryInputStream> (data, (size_t) size, false),
                                         id.fromFirstOccurrenceOf ("/", false, false) + ".wav");
             }

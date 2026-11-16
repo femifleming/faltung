@@ -33,3 +33,176 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 24. "for the faultung deep sampler i want to be able to have pitch per step, and change the pattern length, and have the curve feature aera has, in addition to the rathcet feature." (kt2 loop in both suites, 1.1.0: pitch per step as parameters `step 1 pitch` … `step 16 pitch` (cmd-drag or scroll on a step); the pattern length is set by clicking a step number (the `length` parameter); AERIA's two curves: the ratchet's curve per step (alt-drag / alt-scroll, out 7 … even … in 7) and the clock curve over the loop (`clock curve` accel / decel / arch / bulge / wave / rand, `curve amount`); ratchets unchanged (right-click 1–4). Preset "pitched roll". Manuals, tests.)
 25. "in ms0, the compare/bypass doesnt work" (1.1.0: the compare switch read the dry delay line at one fixed index for every sample of a block, so it put out a held sample instead of the input; it now reads the input delayed by the reported latency. The level match is measured on the processed signal itself, so it holds while compare is on. Test in faltungTest.)
 26. "also in the microsound effect, have it aslo hava a freerunning knob as a switch from the tempo divisions list." (mc3: "free" is the last entry of *rate*; the new *free rate* knob, 0.5–200 Hz, runs the grid on its own clock while it is chosen and is dimmed otherwise. Both suites; test.)
+
+27. "make convosolution and all obliqsound apps in the same aesthetic as faltung and add them to the faltung bundle and remove them elsewhere." (ConvoSolution moved in with its history at convosolution/, ObliqSound and ObliqSonic at obliqsound/; new windows in the faltung look (slate-blue field with the response as a thin wireframe and a chip matrix; sage / deep-green fields with skewed sliders, folded-strip pages, a chip matrix and a wireframe sphere); CMake, CI, packaging, manuals and the faltung cask carry them; the obliqsound casks are gone and the old repositories are archived. Their own logs follow.)
+
+## convosolution (from femifleming/convosolution)
+
+
+### 2026-11-08
+
+> ~/Documents/Analysis\ and\ recreation\ of\ key\ features\ in\ selected\ Autechre\ tracks\ from\ 1998-2005.pdf read this pdf and add anything you think might be cool to this vst.
+
+
+### 2026-11-09
+
+> looks like toy took the filter effecr deom the octatrack, i dont need that one
+
+> recreate the animation, this is just a fan project, its open source fun, https://github.com/marsboy02/bad-apple https://github.com/dt-7148/Bad-Apple many people have done it
+
+> or play it off the card, make the video player, convery the video and download it
+
+
+### 2026-11-10
+
+> i want boid and lorenz curve modulation for every parameter, make the ui way more compact like a eurorack module would be. give me real looking knobs and switches. its also not too symettrical looking i want it mirror symetrrical, you can place thigns wherever you need them to go for it to perfecr mirror, aksi maekt the background an aluminum panel
+
+> dont make it aluminum, change it back to the dark grey that it was
+
+> install it
+
+> i want the mirror to be more of an organic layout, not so grid and metal panel/old synth looking.
+
+> https://www.tastychips.nl/product/ecrplus/ https://www.tastychips.nl/ecr-support/ make this eurorack module into a high quality vst vst3 and au effect, make sure it works on windows mac and linux. download the inpulse respinses from open source online databases.
+
+
+### 2026-11-12
+
+> Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete.
+
+> make it look just like the ui/aesthetic of the eurorack module, but if youre gonna make a panel dont put mounting holes on it, priorize the screen too, i need it maybe bigger in the vst version to see what im doing
+
+> vst and vst3
+
+> this only needs to work on mac.
+
+> ~/Music/Ableton/Factory\ Packs/Convolution\ Reverb/IRs add these
+
+> jsut make the plugin really small and in the style of the screen resolution, and remove the eith inch jakcs because i cant patch them so they shouldnt be there.
+
+> make it look windows 2000 grpahics and pixel quality style.
+
+> add lfo params with various shapes like random lorenz and boid etc to the vst with a matrix of where i can map them to
+
+> actually make it look like an old 90s html page instead
+
+> chanhe the pixel display to also be html style
+
+> call it ConvoSolution add visualizers for the boids and lorenz somewhere in the vst. then make it work on windoews and linux, bundle it and push it to my github.
+
+> ~/Documents/Analysis\ and\ recreation\ of\ key\ features\ in\ selected\ Autechre\ tracks\ from\ 1998-2005.pdf i also like autechre and mark fell, gabor lazar, kindohm and second woman music, are there any effects, midi instumeunts, or sequencing things you migth add to make that kind of music? read the dis i have attached.
+
+> ~/Documents/Analysis\ and\ recreation\ of\ key\ features\ in\ selected\ Autechre\ tracks\ from\ 1998-2005.pdf i also like autechre and mark fell, gabor lazar, kindohm and second woman music, are there any effects, midi instumeunts, or sequencing things you migth add to make that kind of music? read the dis i have attached. also in the midi sequencer/sampler mode make it so that i can multitrack the 8 tracks over usb audio so i can grab stems. it would be 8 stero tracks, this is heavy on cpu, i know from modwerk but see if we can make it work. for the sequencer mode and sequencer mode only, have the 16 step lignts be bright and steppy instead of smooth, they can be smooth in the other mode, but here i need to see where thigns are in the seqeuence, so not smooth lights as it steps thru.
+
+
+1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)
+
+## obliqsound / obliqsonic (from femifleming/obliqsound)
+
+
+### 2026-11-10
+
+> [Image #2] call it obliqesound, use this logo and color[Image #3] make it this aesthetic but with the color i just gave you instead of orange.
+
+> check the gainstagin for stuff too, the curve on the feilrd recorgs kbob makes it able to turn up the volume way too much too fast.
+
+> make vst and vst3
+
+> go back to it looking organic layout and mirrored, use that logo and color, and use [Image #5] this and [Image #6] this aesthetic of old 90s render plugins, use old style renderings and that pixel quality of windows 2000. but make it mirror synetrical and have an organic layout.
+
+> it looks beautiful. this is perfect, but add more and more layers of green around the main organic shape, almost like its topagraphical. make the outer layers darker and darker. when i switch modes, have the shape morph into the next shape liee the topogrpahy is moving. this resolution and pixel qualty is perfect.
+
+> i want the background to also to always be kind of morphing slowly randomly. also make it a desktop app. the motion and lfo mapping tab i want to be a a huge big pin matrix like the ems synthi.
+
+> randomize also needs to choose a random feild recording
+
+> for the field recordings, the start and end point are contiinuously always slowly slew-ly changing. slowly at the same speed of the background. from what you opened, it seems the frame rate is super low too. make it high 30fps
+
+> make a multichannel iem/sparta encoder instruemnt deviated flocking boid lorenz gravity moved version of this vst called obliqsonic, look at what youve done for mellyloon plugin and the other spatial plugin, the only difference is this is a sound source that receives midi. in the midi pin matrix, also let me map incoming midi cc to things.
+
+> but only do that when youre done with this
+
+> i liked where the different page buttons were before, move them from the bottom.
+
+> in the spatial audio version, when youre ready for it, the feild reocrdings are copied and moving around, each one with its own random modulators for start and end point.
+
+> replace all the names of the field recordings with etheopian numerals.
+
+> make a comprehensive manual pdf for both vsts when you are done
+
+> the morphoing of the background seems to just crossfade between images, it was really dynamically moving and morphoing before, go back to it looking like that.
+
+> i need to close my mac and migrate, can i do that? i will
+>   be back
+
+> mak obliqesound and obliqsonic both desktop apps as well and push that. are they?
+
+> open the pdf for me also
+
+> install the latest version on my computer and delete the old verson, on my verion on my computer the displays seem broken, cna you check that?
+
+> when youte done push the new version
+
+> delete all that are not the latest ones and move the latest one to my applications folder
+
+> Its called Obliqsound and Obliqsonic not kia instrument
+
+> rename it all to ObliqSound and
+>   ObliqSonic
+
+> i jsut wanted to change the name of the vst so i can find it under ObliqSound and
+>   ObliqSonic it doesnt need to be complex
+
+> vst and the app*
+
+> make vst and vst 3 for both
+
+> update the github and remove all old versions from the github and from my computer
+
+> the audio seems to be seriously distorting and low quality, and some of the feield recordings are distorted, i think the original oners from the kia app. the program is super laggy and the gainstaging weird, its clipping on the output and doesnt sound polyphonic up to 16 voices.
+
+> all '!' command you have permission to go
+>   ahead and run terminal commands youself
+
+> samples should be 16 bit wav instead of 24 bit
+
+> install it on my mac and remove all old versions, when youre finished, open it
+
+> check obliqesonic as well. make both synth engines for both apps 16 bit. the app is still lagging and glitching hevily on my end when i send it a lot of midi notes.
+
+
+### 2026-11-12
+
+> continue
+
+> dont use csound use a higher quality sound engine, something that makes sense.
+>   try using supercollider for the base.
+
+> i dont think its receiving midi
+
+> midi works. i dont see delay time and feedback anywhere, and wheres the adsr for the synth?
+
+> remove the sampler part entirely from both plugins but keep the aesthetic and design as similar as possible.
+
+> make sure both plugins are supercollider based on the synthesis side
+
+> nevermind, dont remove the sampler part.
+
+> keep the sampler part, push both of these to github. also update github woth a log of everything ive asked for breaked down in a pdf as a log. make sure you update the manual as well. also add a help page to the vst's and standalone desktop apps before you push to github.
+
+> push it all to github when youre done
+
+> make sure latest build of vsts and standalones work on mac windows and linux
+
+> hows the windows testing going
+
+> doesnrt need to be exactly like that but take insperation from other 90s early 2000s vsts and give me a few more options.
+
+> give me other variations inspired by the obliqsound one but different
+
+> what if it was in the style of these gifs, look thru all these pages: https://gifcities.org/search?q=music&offset=0&page_size=200 https://gifcities.org/search?q=computer&offset=0&page_size=200
+
+> i also really like the look of dithered images
+
+
+1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)

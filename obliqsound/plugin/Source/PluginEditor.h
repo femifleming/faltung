@@ -2,8 +2,9 @@
 #include "PluginProcessor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
-// The whole panel is one component that draws itself from layout.json (written by gen.py + export_layout.py):
-// the same art, positions and pages as before, but a single paint instead of 1500 widgets.
+// The whole panel is one component drawn from layout.json (written by gen.py + export_layout.py): the same
+// positions, pages and controls as the original panel, drawn as vectors in the faltung look — a flat colour
+// field, skewed slider bars, a row of folded paper strips for the pages, a chip grid for the pin matrix.
 class ObliqPanel : public juce::Component, private juce::Timer
 {
 public:
@@ -23,23 +24,36 @@ public:
     std::function<void (float)> onScale;
     float scale = 1.0f;
 
+    // the pages, for the host and the test tool
+    int numPages() const { return pageNames.size(); }
+    void showPage (int);
+    juce::String pageName (int) const;
+    void showHelp (bool);
+    void tickForTest() { timerCallback(); }           // one timer tick without a message loop
+    juce::Colour groundColour() const { return ground; }
+
 private:
     enum Type { Image, Knob, VSlider, NSlider, Check, Combo, Button, Label, Scope, PresetBox, PresetSave, PresetRemove, SizeBox, Help };
     struct Item
     {
         Type type = Image; juce::Rectangle<int> r; int page = -1; int param = -1;
-        juce::String channel, file, popup; juce::StringArray text; juce::Image img, img2;
-        int frames = 1; float alpha = 1.0f; bool visible = true; juce::Colour ink { 8, 22, 14 }; juce::String group; int align = 0;
+        juce::String channel, popup, group, name; juce::StringArray text;
+        float alpha = 1.0f; bool visible = true, section = false, pin = false, tab = false, sampler = false; int align = 0;
         int dyn = 0, dynIndex = 0;        // engine-driven behaviour
         juce::StringArray signals;
     };
     void timerCallback() override;
     void build();
-    juce::Image art (const juce::String& file);
     int hit (juce::Point<float>) const;
+    bool covered (int item) const;
     void drawItem (juce::Graphics&, const Item&);
-    void drawControls (juce::Graphics&);
+    void drawStatic (juce::Graphics&, bool pageItems);
     void drawDynamic (juce::Graphics&);
+    void drawTabs (juce::Graphics&);
+    void drawSlider (juce::Graphics&, juce::Rectangle<float>, int param, bool hot);
+    void drawVSlider (juce::Graphics&, juce::Rectangle<float>, int param, bool hot);
+    void drawPin (juce::Graphics&, juce::Rectangle<float>, float amount);
+    void drawReadout (juce::Graphics&, const Item&);
     void setParam (int item, float norm);
     void showMenu (int item);
     void changePage (int to);
@@ -47,24 +61,21 @@ private:
     bool helpClick (juce::Point<float>);
     std::vector<int> helpTopics() const;
     juce::Rectangle<float> helpWindow() const { return { (float) baseW * 0.5f - 370.0f, 52.0f, 740.0f, 540.0f }; }
-    juce::String bgName (int page, int morph, int idle) const;
+    juce::Rectangle<float> tabFace (int tab) const;
     juce::Point<float> toPanel (juce::Point<float> p) const { return p / scale; }
 
     ObliqProcessor& proc;
     ParamStore& params;
     std::vector<Item> items;
     juce::StringArray pageNames;                      // container channels, in tab order
-    std::vector<juce::Rectangle<int>> pageBounds; std::vector<juce::Image> pageImage; std::vector<int> pageStart;
-    std::vector<int> tabParams;
-    juce::Typeface::Ptr face;
-    juce::File artDir;
-    juce::String prefix;
+    std::vector<juce::Rectangle<int>> pageBounds; std::vector<int> pageStart; std::vector<bool> pageBoard;
+    std::vector<int> tabParams, tabItems;
+    juce::Colour ground, ink, accent, edge;
 
-    // pages / background
-    int page = 0, fromPage = 0, anim = 0, idle = 0, idleDir = 1, pending = -1, tickCount = 0;
-    enum { kNfr = 6, kNidle = 120 };
-    juce::Image bg;
-    juce::Image layer; int layerChange = -1, layerPage = -1; float layerScale = 0; bool layerHidden = false;
+    // pages
+    int page = 0, pending = -1, tickCount = 0, fade = 0;
+    enum { kFade = 5 };
+    juce::Image layerMain, layerPage; int layerChange = -1, layerPageNo = -1; float layerScale = 0;
 
     // interaction
     int dragItem = -1, hoverItem = -1; float dragStart = 0; juce::Point<float> dragPos, mousePos;
@@ -82,7 +93,12 @@ class ObliqEditor : public juce::AudioProcessorEditor
 public:
     explicit ObliqEditor (ObliqProcessor&);
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (60, 64, 62)); }
+    void paint (juce::Graphics& g) override { g.fillAll (panel.groundColour()); }
+    int numPages() const { return panel.numPages(); }
+    void showPage (int p) { panel.showPage (p); }
+    juce::String pageName (int p) const { return panel.pageName (p); }
+    void showHelp (bool on) { panel.showHelp (on); }
+    void tickForTest() { panel.tickForTest(); }
 private:
     ObliqPanel panel;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ObliqEditor)

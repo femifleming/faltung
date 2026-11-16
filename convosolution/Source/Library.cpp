@@ -1,6 +1,6 @@
 #include "Library.h"
 #include <juce_data_structures/juce_data_structures.h>
-#include "BinaryData.h"
+#include "EcrData.h"
 
 namespace ecr
 {
@@ -81,9 +81,9 @@ void IrLibrary::scan()
     list.clear();
 
     juce::StringArray internal;
-    for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
+    for (int i = 0; i < EcrData::namedResourceListSize; ++i)
     {
-        const juce::String original (BinaryData::originalFilenames[i]);
+        const juce::String original (EcrData::originalFilenames[i]);
         if (original.endsWithIgnoreCase (".flac")) internal.add (original);
     }
     internal.sort (true);

@@ -1,12 +1,16 @@
 #pragma once
 #include "PluginProcessor.h"
 #include "Ui.h"
+#include "../../Source/Ui.h"
 
 namespace ecr
 {
-// The window is laid out like a mid-90s web page: grey background, Times,
-// blue underlined links for the buttons, bordered tables for the knobs, the
-// LFOs and the modulation matrix, and the module's screen as the page's image.
+// The window in the faltung look: one flat slate-blue field, lowercase mono text,
+// the response drawn as a thin wireframe shell with the attack-release window as
+// a white highlight face, the buttons as text links that get a skewed chip when
+// lit, and the knobs as the suite's slider rows (label · rule · slanted fill ·
+// white edge · value). Nothing is a child component: everything is painted here
+// and hit-tested through `hits`, so the page scales as one picture.
 class EcrEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -36,9 +40,12 @@ private:
     juce::RangedAudioParameter* paramOf (Target, bool shift) const;
     void announce (Target, bool shift);
     void drawPage (juce::Graphics&);
-    void drawScreen (juce::Graphics&, juce::Rectangle<float>);   // the module display, as page content
+    void drawScreen (juce::Graphics&, juce::Rectangle<float>);     // the module display, as the picture
+    void drawResponse (juce::Graphics&, juce::Rectangle<float>, int slot);   // the wireframe of a response
+    void drawPopup (juce::Graphics&, juce::Rectangle<float>);
     void drawLfoFigure (juce::Graphics&, juce::Rectangle<float>, int lfo);
-    float link (juce::Graphics&, const juce::String& text, float x, float y, Target, bool activeLink);
+    float link (juce::Graphics&, const juce::String& text, float x, float y, Target, bool lit);
+    float separator (juce::Graphics&, float x, float y);
     void showFolderMenu();
 
     EcrProcessor& proc;

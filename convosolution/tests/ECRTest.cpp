@@ -242,7 +242,9 @@ static void screenshots (const juce::File& dir)
         {
             buf.clear();
             p.processBlock (buf, midi);
-            juce::MessageManager::getInstance()->runDispatchLoopUntil (35);
+            // no modal loops in this build: run the editor's timer by hand
+            juce::Thread::sleep (35);
+            juce::Timer::callPendingTimersSynchronously();
         }
     }
     shot ("mod");

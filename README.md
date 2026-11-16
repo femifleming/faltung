@@ -5,22 +5,25 @@
 **Install:** `brew tap femifleming/tap && brew install --cask femifleming/tap/faltung` (macOS) — or download
 `faltung-macOS.zip`, `faltung-Windows.zip` or `faltung-Linux.tar.gz` from the
 [releases](https://github.com/femifleming/faltung/releases). Partials alone: `brew install --cask femifleming/tap/partials`; Cloudfin alone: `brew install --cask femifleming/tap/cloudfin`.
+ConvoSolution, ObliqSound and ObliqSonic come with the faltung cask and zips (their old casks and repositories are retired); ConvoSolution's full response library, `ConvoSolution-IRs.zip` (140 spaces, CC BY / CC BY-SA), is a separate download on the releases page: unpack it into `Music/ConvoSolution`.
 
-**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) · [Cloudfin Manual.pdf](cloudfin/docs/manual/Cloudfin%20Manual.pdf) · [faltung deep Manual.pdf](docs/manual-deep/faltung%20deep%20Manual.pdf) (also in every download).
+**Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) · [Cloudfin Manual.pdf](cloudfin/docs/manual/Cloudfin%20Manual.pdf) · [convosolution Manual.pdf](convosolution/docs/manual/convosolution%20Manual.pdf) · [obliqsound Manual.pdf](obliqsound/docs/manual/obliqsound%20Manual.pdf) (ObliqSound and ObliqSonic) · [faltung deep Manual.pdf](docs/manual-deep/faltung%20deep%20Manual.pdf) (also in every download).
 
 **Two suites, one repository:** *faltung* (minimal / microhouse, below) and *faltung deep* (deep house, [further down](#faltung-deep)).
 `brew install --cask femifleming/tap/faltung-deep`, or `faltung-deep-macOS.zip`, `faltung-deep-Windows.zip`, `faltung-deep-Linux.tar.gz` from the releases. They install side by side.
 
 Drums and processes for minimal / microhouse, after the 2000–2015 sound of Perlon, [a:rpia:r],
-Villalobos and the Romanian scene. Twenty plug-ins: two drum machines, eight single drum modules,
-six effects, a bass synth, a linear-phase mastering bus, Partials, an additive synthesizer with image resynthesis, and Cloudfin, a floating multi-effect. Every module uses the same synthesis code as the kit, so a sound moves between them unchanged.
+Villalobos and the Romanian scene. Twenty-three plug-ins: two drum machines, eight single drum modules,
+six effects, a bass synth, a linear-phase mastering bus, Partials, an additive synthesizer with image resynthesis, Cloudfin, a floating multi-effect,
+convosolution, a dual convolution reverb, and obliqsound with its Ambisonics twin obliqsonic, a polyphonic synth and field-recording instrument.
+Every drum module uses the same synthesis code as the kit, so a sound moves between them unchanged.
 
 The look follows the sleeves of that era: Mark Fell's flat colour fields with wireframe solids, snd's
 folded pastel strips, Oval's coloured lines, stdio's pale chevrons and tracklists. The pictures are
 drawn from the parameters and move as you change them.
 
 Formats: VST3, AU, VST2 and standalone on macOS; VST3, VST2 and standalone on Windows; VST3, LV2, VST2
-and standalone on Linux.
+and standalone on Linux. (ObliqSound and ObliqSonic on Windows and Linux keep a `Resources` folder beside the program and the VST2: move them together.)
 
 ## The plug-ins
 
@@ -45,6 +48,9 @@ and standalone on Linux.
 | **ms0** | master | mastering bus for microhouse and dense experimental / electroacoustic work: linear-phase eq (8 bands + hp / lp, each stereo, mid or side), 2 linear-phase dynamic eq bands, linear-phase 4-band split with gentle compression and per-band width (sub mono), air, 2× oversampled saturation with focus, parallel ambience, glue, true-peak limiter, dither; BS.1770 loudness, true peak, correlation, mid / side analyser with draggable eq points, an imager (polar sample / polar level / lissajous) and level-matched compare. ~190 ms latency (reported). 9 presets. Own manual. |
 | **Partials** | partials | additive / subtractive synthesizer: 516 partials per voice, harmonizer, prism, blur, unison, two filters, phaser, image and sound resynthesis, articulation envelopes, effects. Its own manual and history live in [partials/](partials). |
 | **Cloudfin** | cloudfin | floating multi-effect: spectral smear, scale-locked pitch, formant, grains, just-intonation delay, reverb and compander in any order (drag the folded strips), a feedback loop, a random drift on every control, a hydrophone recording, gravity (the clouds fall into the sea, the sea sloshes in the sound), day / dusk / night. Oval line clouds, mirrored. Its own manual and history live in [cloudfin/](cloudfin). |
+| **ConvoSolution** | convosolution | dual true-stereo convolution reverb after the Tasty Chips ECR+: two convolvers (a / b) with crossfade, each with its own response, position, attack / release, pitch (±2 octaves), predelay, high-pass and width; eight built-in responses and a library folder (the 140-space pack `ConvoSolution-IRs.zip` is on the releases page); recording of your own responses; three lfos (sine, triangle, saw, square, random, drift, lorenz, rössler, boid flock) into an 11-destination matrix; zero latency. A slate-blue field with the response as a thin wireframe and the matrix as skewed chips. Its own manual and history live in [convosolution/](convosolution). |
+| **ObliqSound** | obliqsound | polyphonic synthesizer and field-recording instrument (grown out of the Kia instrument): 16 voices, virtual-analogue stack, polygonal oscillator, 128-partial additive oscillator, dual morphing filter (lp > bp > hp > notch > comb), a sampler of nature scenes and 18 field recordings with drifting loop points, a Synthi-style pin matrix (22 sources × 36 destinations), boid and Lorenz swarm modulation. SuperCollider's server, embedded. A sage field with skewed sliders, folded-strip pages and a chip matrix. Its own manual and history live in [obliqsound/](obliqsound). |
+| **ObliqSonic** | obliqsonic | ObliqSound as a sound source for third-order Ambisonics (16 channels, ACN / SN3D, for the IEM and SPARTA decoders): every voice, six copies of the field recording, the effects and the nature bed are points that fly on a flock, Lorenz attractors or gravity wells, with Doppler, distance and air; a space page with a thin wireframe sphere. Same manual as ObliqSound. |
 | **wb1** | wub | dubstep / neuro bass synth, after DMZ, Hench, Skream, Rusko, Noisa, Current Value, Billain. Two oscillators (sine to saw to square to "hard", up to 7-voice unison, b phase-modulates a), clean sub, noise; lp24/lp12/bp/hp/notch filter with drive; formant filter (a e i o u, the "yoy"); comb tuned to the note; 6 distortions (pre or post filter); host-synced wobble with sine, wow, yoy, ramps, square, random, routable to cutoff, vowel, fm, drive, pitch, volume, comb; mod envelope; mono / legato / glide; mod wheel to wobble depth or rate; 3-band "ott" compression; mono below 140 Hz. Runs at 2× oversampling. 10 presets (sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl, talk box, neuro stab). |
 
 ## faltung deep
@@ -94,17 +100,20 @@ speed the steps up or slow them down over each loop; the loop keeps its length, 
 ```
 git submodule update --init
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+obliqsound/sc/fetch_sc.sh                                     # once: SuperCollider's server for ObliqSound / ObliqSonic (skipped with a warning without it)
 cmake --build build --target faltung_all faltungTest PartialsTest
 ./build/faltungTest_artefacts/Release/faltungTest              # renders and checks all seventeen faltung plug-ins
 ./build/partials/PartialsTest_artefacts/Release/PartialsTest   # Partials' own tests
 ./build/cloudfin/CloudfinTest_artefacts/Release/CloudfinTest   # Cloudfin's (and CloudfinHostTest for its window)
+./build/convosolution/ECRTest_artefacts/Release/ECRTest        # ConvoSolution's (and ECREngineTest for the convolution engine)
+./build/obliqsound/ObliqSoundTest_artefacts/Release/ObliqSoundTest   # ObliqSound's (ObliqSonicTest for the twin)
 ```
 
 GitHub Actions builds and tests everything on macOS (universal), Windows and Linux; a `v*` tag publishes a release.
 On Linux the plug-ins are VST3, LV2 and VST2; copy them to `~/.vst3`, `~/.lv2` and `~/.vst`.
 On Windows copy the `.vst3` folders to `C:\Program Files\Common Files\VST3`.
 
-`faltungTest --wav dir --screenshots dir` writes audio and UI pictures.
+`faltungTest --wav dir --screenshots dir` writes audio and UI pictures. The app icons of every product of the house come from `scripts/mkicon.py`.
 
 ## Requests
 
@@ -112,4 +121,6 @@ Everything here was made from typed requests; they are logged in [REQUESTS.md](R
 
 ## Licence
 
-AGPL-3.0. Fonts: Inter, IBM Plex Mono and Barlow, SIL Open Font License (Resources/fonts).
+AGPL-3.0 (obliqsound/ is GPL-3.0, as SuperCollider requires). Fonts: Inter, IBM Plex Mono and Barlow, SIL Open Font License (Resources/fonts).
+ConvoSolution's impulse responses are CC BY 4.0 (OpenAIR, University of York) and CC BY-SA 4.0 (the HybridReverb2 database): sources in [convosolution/Resources/IR-CREDITS.txt](convosolution/Resources/IR-CREDITS.txt).
+ObliqSound's field recordings are the author's own.
