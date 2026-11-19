@@ -72,6 +72,9 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 52. "limit your work on it to an hour, dont add any more features after an hours worth of work, im sure the daw already has a lot of feautures."
 53. "dont add most crazy effects, i have plugins for lot of effects already." and, for export: "both stem, selection, time selection and multichannel audio export options" (the final list, picked by the user: undo / redo, autosave and crash recovery, midi recording into steps with count-in and metronome, hosting of their own VST3 / AU plug-ins, a scale pitch lane with .scl / Colundi tunings, additive / subtractive cells and parts drifting out of phase, chance with euclidean and ratio rhythms and mutate, patterns typed as text or drawn as a contour, micro-loops in the sampler, stochastic sieves and clouds, and export of the mix, stems, the selected tracks, a time selection and multichannel files.)
 
+## 2026-11-19 — ballonpaleis
+54. "if the same problem is in ballonpaleis and deep fix those too" (the heatwave to snow handover lagged and glitched: every channel pair's heat and snow frames ran in one audio block. They now each take their own turn in the hop, in ballonpaleis and ballonpaleis deep, as in the Balloon Palace.)
+
 ## convosolution (from femifleming/convosolution)
 
 

@@ -8,7 +8,8 @@
 //   --render <out.wav>     ten seconds of the default patch on the test signal (a quick listen)
 //
 // "The original" here is the original's own processor: tests/original/<product>/PluginProcessor.cpp and
-// Presets.cpp are the files of github.com/femifleming/pinkiepiesballoonshop (commit f8b16b3) byte for byte,
+// Presets.cpp are the files of github.com/femifleming/pinkiepiesballoonshop (commit f8b16b3) byte for byte
+// (the palace's processor with the 2026-11-19 heat/snow frame stagger, which both carry),
 // compiled into this program inside a namespace, beside the twin's processor. Both use the same dsp/ headers,
 // which the twins carry unchanged (tests/dsp.sha256 lists them; tests/check_dsp.sh compares). The same
 // parameter script and the same input go through both, and the two outputs must be the same samples.
