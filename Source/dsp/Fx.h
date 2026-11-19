@@ -313,6 +313,8 @@ struct FilterParams
     float res = 0.3f;
     float drive = 0.1f;
     int lfoDiv = 11; float lfoDepth = 0.0f; int lfoShape = 0;  // sine, tri, square, s&h
+    static constexpr int kFree = 19;                             // lfoDiv == kFree: the lfo runs at lfoFreeHz, whatever the tempo
+    float lfoFreeHz = 0.25f;
     float mix = 1.0f;
 };
 
@@ -355,10 +357,11 @@ public:
             }
 
         // lfo phase from the host when playing, free-running otherwise
+        const bool lfoFree = p.lfoDiv >= FilterParams::kFree;
         const double beats = divisions()[(size_t) std::clamp (p.lfoDiv, 0, 18)].beats;
         const double bps = std::max (20.0, tr.bpm) / 60.0;
-        if (tr.playing && tr.hasPpq) lfoPh = std::fmod (tr.ppq / beats, 1.0);
-        const double inc = bps / beats / sr;
+        if (! lfoFree && tr.playing && tr.hasPpq) lfoPh = std::fmod (tr.ppq / beats, 1.0);
+        const double inc = lfoFree ? std::clamp ((double) p.lfoFreeHz, 0.001, 200.0) / sr : bps / beats / sr;
         const float q = 0.55f + p.res * p.res * 11.0f;
 
         for (int i = 0; i < n; ++i)

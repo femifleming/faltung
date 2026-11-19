@@ -324,7 +324,7 @@ void bassParams (L& l)
     l.f ("dtone", "dist tone", NR (0.0f, 1.0f), 0.8f, [] (float v) { return hz (expMap (v, 1200.0f, 20000.0f)); });
     l.f ("dmix", "dist mix", NR (0.0f, 1.0f), 1.0f, pct);
     l.c ("order", "order", { "filter > dist", "dist > filter" }, 0);
-    l.c ("wdiv", "wobble rate", divNames(), 8);
+    { juce::StringArray divs = divNames(); divs.add ("free"); l.c ("wdiv", "wobble rate", divs, 8); }   // "free": the wobble free rate, off the grid
     l.c ("wshape", "wobble shape", { "sine", "triangle", "ramp down", "ramp up", "square", "wow", "yoy", "random" }, 0);
     l.b ("wretrig", "wobble retrigger", true);
     l.f ("wphase", "wobble phase", NR (0.0f, 1.0f), 0.0f, pct);
@@ -377,7 +377,7 @@ void bassParams (L& l)
     const float st[16] = { 1, 0.2f, 0.6f, 0.1f, 0.9f, 0.3f, 0.5f, 0, 1, 0.4f, 0.7f, 0.2f, 0.8f, 0.1f, 0.5f, 0.3f };
     for (int k = 1; k <= 16; ++k) l.f ("stp" + juce::String (k), "step " + juce::String (k), NR (0.0f, 1.0f), st[k - 1], pct);
     l.f ("steplen", "steps length", NR (1.0f, 16.0f, 1.0f), 16.0f, [] (float v) { return juce::String (juce::roundToInt (v)); });
-    l.c ("stepdiv", "steps rate", divNames(), 4);
+    { juce::StringArray divs = divNames(); divs.add ("free"); l.c ("stepdiv", "steps rate", divs, 4); }
     l.f ("stepglide", "steps glide", NR (0.0f, 1.0f), 0.15f, pct);
     l.b ("stepretrig", "steps retrigger", true);
     juce::StringArray srcs, dsts;
@@ -390,6 +390,9 @@ void bassParams (L& l)
         l.c (x + "dst", n + "destination", dsts, 0);
         l.f (x + "amt", n + "amount", NR (-1.0f, 1.0f), 0.0f, [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v * 100)) + "%"; });
     }
+    // the free rates (the wobble and the steps off the grid: "free" in their rate lists)
+    l.f ("wfree", "wobble free rate", NR (0.02f, 40.0f, 0.0f, 0.3f), 2.0f, [] (float v) { return juce::String (v, v < 1 ? 3 : 2) + " hz"; });
+    l.f ("stepfree", "steps free time", NR (5.0f, 4000.0f, 0.0f, 0.3f), 125.0f, [] (float v) { return v >= 1000.0f ? juce::String (v / 1000.0f, 2) + " s" : juce::String (v, v < 100 ? 1 : 0) + " ms"; });
 }
 
 void masterParams (L& l)
@@ -631,11 +634,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (Pid p)
                          { return std::abs (v) < 0.015f ? juce::String ("off") : (v < 0 ? "lp " + hz (expMap (1.0f + v, 45.0f, 20000.0f)) : "hp " + hz (expMap (v, 18.0f, 12000.0f))); });
                     l.f ("res", "resonance", NR (0.0f, 1.0f), 0.3f, plain2);
                     l.f ("drive", "drive", NR (0.0f, 1.0f), 0.1f, plain2);
-                    l.c ("lfodiv", "lfo rate", divNames(), 13);
+                {
+                    // the last entry of the rate, "free", runs the lfo from the free rate knob instead of the tempo
+                    juce::StringArray divs = divNames(); divs.add ("free");
+                    l.c ("lfodiv", "lfo rate", divs, 13);
                     l.f ("lfodepth", "lfo depth", NR (0.0f, 1.0f), 0.0f, pct);
                     l.c ("lfoshape", "lfo shape", { "sine", "triangle", "square", "s&h" }, 0);
                     l.f ("mix", "mix", NR (0.0f, 1.0f), 1.0f, pct);
+                    l.f ("lfofree", "lfo free rate", NR (0.01f, 40.0f, 0.0f, 0.3f), 0.25f, [] (float v) { return juce::String (v, v < 1 ? 3 : 2) + " hz"; });
                     break;
+                }
                 case Pid::gl8:
                     l.f ("threshold", "threshold", NR (-40.0f, 0.0f), -14.0f, [] (float v) { return juce::String (v, 1) + " db"; });
                     l.c ("ratio", "ratio", { "1.5", "2", "4", "10" }, 1);

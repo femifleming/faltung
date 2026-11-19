@@ -691,7 +691,7 @@ void Processor::processEffect (juce::AudioBuffer<float>& buffer, const Transport
             FilterParams f;
             f.low = p ("low"); f.mid = p ("mid"); f.high = p ("high"); f.xlow = p ("xlow"); f.xhigh = p ("xhigh");
             f.sweep = p ("sweep"); f.res = p ("res"); f.drive = p ("drive");
-            f.lfoDiv = (int) p ("lfodiv"); f.lfoDepth = p ("lfodepth"); f.lfoShape = (int) p ("lfoshape"); f.mix = p ("mix");
+            f.lfoDiv = (int) p ("lfodiv"); f.lfoFreeHz = p ("lfofree"); f.lfoDepth = p ("lfodepth"); f.lfoShape = (int) p ("lfoshape"); f.mix = p ("mix");
             filterFx->process (L, R, n, f, tr);
             break;
         }
@@ -875,7 +875,7 @@ BassParams Processor::readBass() const
     b.vowel = param ("vowel"); b.fmtQ = param ("fmtq"); b.fmtShift = param ("fmtshift"); b.fmtMix = param ("fmtmix");
     b.combTune = param ("combtune"); b.combFb = param ("combfb"); b.combMix = param ("combmix");
     b.dMode = (int) param ("dmode"); b.dDrive = param ("ddrive"); b.dTone = param ("dtone"); b.dMix = param ("dmix"); b.order = (int) param ("order");
-    b.wDiv = (int) param ("wdiv"); b.wShape = (int) param ("wshape"); b.wRetrig = param ("wretrig") > 0.5f; b.wPhase = param ("wphase");
+    b.wDiv = (int) param ("wdiv"); b.wFreeHz = param ("wfree"); b.wShape = (int) param ("wshape"); b.wRetrig = param ("wretrig") > 0.5f; b.wPhase = param ("wphase");
     b.wCut = param ("wcut"); b.wVowel = param ("wvowel"); b.wFm = param ("wfm"); b.wDrive = param ("wdrive");
     b.wPitch = param ("wpitch"); b.wAmp = param ("wamp"); b.wComb = param ("wcomb");
     b.mA = param ("ma"); b.mD = param ("md"); b.mS = param ("ms"); b.mR = param ("mr");
@@ -892,7 +892,7 @@ BassParams Processor::readBass() const
     lfo ("l2", b.l2); lfo ("l3", b.l3);
     b.chord = (int) param ("chord"); b.voicing = (int) param ("voicing");
     for (int k = 0; k < 16; ++k) b.steps[(size_t) k] = param ("stp" + juce::String (k + 1));
-    b.stepLen = (int) std::round (param ("steplen")); b.stepDiv = (int) param ("stepdiv"); b.stepGlide = param ("stepglide"); b.stepRetrig = param ("stepretrig") > 0.5f;
+    b.stepLen = (int) std::round (param ("steplen")); b.stepDiv = (int) param ("stepdiv"); b.stepFreeMs = param ("stepfree"); b.stepGlide = param ("stepglide"); b.stepRetrig = param ("stepretrig") > 0.5f;
     for (int k = 0; k < 8; ++k)
     {
         const juce::String x = "m" + juce::String (k + 1);

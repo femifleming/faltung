@@ -101,7 +101,7 @@ public:
             {
                 auto* s = sliders.add (new ui::ParamSlider (*r, theme));
                 s->setLabelWidth (68);
-                if (id == "freerate") freeRate = s;
+                if (id == "freerate" || id == "lfofree") freeRate = s;
                 const int mySlot = pi.kind == Kind::Module && slot < kSlots ? slot : -1;
                 s->onTouch = [this, mySlot] { art.focus = mySlot; };
                 ++slot;
@@ -169,7 +169,8 @@ public:
         art.tick(); if (offsets) offsets->repaint();
         if (freeRate)   // mc3: the free rate knob only counts while the rate is "free"
         {
-            const float a = (int) p.param ("division") >= MicroParams::kFree ? 1.0f : 0.35f;
+            const bool free = pi.id == Pid::fl7 ? (int) p.param ("lfodiv") >= FilterParams::kFree : (int) p.param ("division") >= MicroParams::kFree;
+            const float a = free ? 1.0f : 0.35f;
             if (std::abs (freeRate->getAlpha() - a) > 0.01f) freeRate->setAlpha (a);
         }
     }
@@ -1024,7 +1025,7 @@ public:
         ss = std::make_unique<Stage> ("steps", theme);
         ss->add (&trS, 30, false);
         ss->add (&bars, 96, false);
-        add (*ss, "steplen", "length"); add (*ss, "stepdiv", "rate"); add (*ss, "stepglide", "glide"); add (*ss, "stepretrig", "retrigger");
+        add (*ss, "steplen", "length"); add (*ss, "stepdiv", "rate"); add (*ss, "stepfree", "free time"); add (*ss, "stepglide", "glide"); add (*ss, "stepretrig", "retrigger");
         addAndMakeVisible (*ss);
         sm = std::make_unique<Stage> ("matrix  (source > destination)", theme);
         sm->add (&trW, 30, false);
@@ -1092,7 +1093,7 @@ public:
               { "comb", { "combtune", "combfb", "combmix" } } },
             { { "distortion", { "dmode", "ddrive", "dtone", "dmix", "order" } },
               { "ott", { "ott", "otttime" } },
-              { "wobble", { "wdiv", "wshape", "wretrig", "wphase", "wcut", "wvowel", "wfm", "wdrive", "wpitch", "wamp", "wcomb" } } },
+              { "wobble", { "wdiv", "wfree", "wshape", "wretrig", "wphase", "wcut", "wvowel", "wfm", "wdrive", "wpitch", "wamp", "wcomb" } } },
             { { "mod env", { "ma", "md", "ms", "mr", "mcut", "mpitch", "mfm", "mvowel" } },
               { "amp env", { "aa", "ad", "as", "ar" } },
               { "play", { "voices", "legato", "glide", "bend", "wheel", "vel", "width", "level" } } } };
@@ -1106,7 +1107,7 @@ public:
                     juce::String label = prm.getName (40);
                     for (auto pre : { "a ", "b ", "wob > ", "env > ", "amp ", "env ", "wobble ", "formant ", "comb ", "dist ", "sub " })
                         if (label.startsWith (pre) && label.length() > juce::String (pre).length() + 1) { label = label.substring (juce::String (pre).length()); break; }
-                    if (title == "wobble" && id.startsWith ("w") && id != "wdiv" && id != "wshape" && id != "wretrig" && id != "wphase") label = "> " + label;
+                    if (title == "wobble" && id.startsWith ("w") && id != "wdiv" && id != "wfree" && id != "wshape" && id != "wretrig" && id != "wphase") label = "> " + label;
                     if (title == "mod env" && (id == "mcut" || id == "mpitch" || id == "mfm" || id == "mvowel")) label = "> " + label;
                     juce::Component* comp;
                     if (dynamic_cast<juce::AudioParameterChoice*> (&prm)) comp = new ui::ChoiceBox (prm, theme, label);

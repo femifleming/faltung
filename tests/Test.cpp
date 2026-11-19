@@ -631,6 +631,68 @@ int main (int argc, char** argv)
             check (std::abs (s124 - 33) <= 2 && std::abs (s90 - 24) <= 2, "mc3 division follows the tempo");
             check (std::abs (f124 - 80) <= 2 && f90 == f124, "mc3 free rate ignores the tempo");
         }
+        if (pi.id == Pid::fl7)
+        {
+            // the lfo: a division follows the tempo; "free" (the last entry of the rate) runs at the free rate knob
+            auto flips = [&] (float division, float freeHz, double bpm)
+            {
+                Processor q (Pid::fl7);
+                q.setParam ("sweep", -0.55f); q.setParam ("lfodepth", 0.4f); q.setParam ("lfoshape", 2.0f); q.setParam ("res", 0.0f); q.setParam ("lfodiv", division); q.setParam ("lfofree", freeHz);
+                const double sr = 48000.0; const int bs = 256, total = (int) (sr * 4.0);
+                FakeHead head; head.bpm = bpm; q.setPlayHead (&head); q.setRateAndBufferSizeDetails (sr, bs); q.prepareToPlay (sr, bs);
+                juce::AudioBuffer<float> blk (2, bs); Rng nz; nz.seed (11); std::vector<float> level;
+                for (int pos = 0; pos < total; pos += bs)
+                {
+                    for (int c = 0; c < 2; ++c) for (int i = 0; i < bs; ++i) blk.setSample (c, i, 0.3f * nz.bi());
+                    juce::MidiBuffer mb; q.processBlock (blk, mb);
+                    level.push_back (blk.getRMSLevel (0, 0, bs));
+                    head.ppq += bs / sr * head.bpm / 60.0;
+                }
+                q.setPlayHead (nullptr);
+                float lo = 1e9f, hi = 0; for (size_t i = 40; i < level.size(); ++i) { lo = std::min (lo, level[i]); hi = std::max (hi, level[i]); }
+                const float mid = std::sqrt (lo * hi); int n = 0;
+                for (size_t i = 41; i < level.size(); ++i) if ((level[i] > mid) != (level[i - 1] > mid)) ++n;
+                return n;
+            };
+            const int s124 = flips (11.0f, 5.0f, 124.0), s90 = flips (11.0f, 5.0f, 90.0);   // 1/4
+            const int f124 = flips ((float) FilterParams::kFree, 5.0f, 124.0), f90 = flips ((float) FilterParams::kFree, 5.0f, 90.0);
+            std::cout << "  lfo flips in 4 s: 1/4 at 124 bpm " << s124 << ", at 90 bpm " << s90 << " · free 5 hz at 124 bpm " << f124 << ", at 90 bpm " << f90 << "\n";
+            check (std::abs (s124 - 16) <= 2 && std::abs (s90 - 12) <= 2, "fl7 lfo division follows the tempo");
+            check (std::abs (f124 - 38) <= 3 && std::abs (f90 - f124) <= 1, "fl7 free lfo rate ignores the tempo");
+        }
+        if (pi.id == Pid::wb1)
+        {
+            // the wobble and the steps: "free" in their rate lists takes them off the grid
+            auto count = [&] (float wdiv, float wfree, float stepdiv, float stepMs, double bpm, int& stepWraps)
+            {
+                Processor q (Pid::wb1);
+                q.setParam ("wshape", 4.0f); q.setParam ("wretrig", 0.0f); q.setParam ("wdiv", wdiv); q.setParam ("wfree", wfree);
+                q.setParam ("stepdiv", stepdiv); q.setParam ("stepfree", stepMs); q.setParam ("steplen", 4.0f); q.setParam ("stepretrig", 0.0f); q.setParam ("as", 1.0f);
+                const double sr = 48000.0; const int bs = 128, total = (int) (sr * 4.0);
+                FakeHead head; head.bpm = bpm; q.setPlayHead (&head); q.setRateAndBufferSizeDetails (sr, bs); q.prepareToPlay (sr, bs);
+                juce::AudioBuffer<float> blk (2, bs); int n = 0; float lastW = -1, lastPh = -1; stepWraps = 0;
+                for (int pos = 0; pos < total; pos += bs)
+                {
+                    blk.clear(); juce::MidiBuffer mb; if (pos == 0) mb.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 100), 0);
+                    q.processBlock (blk, mb);
+                    const float w = q.bass()->showWob.load(), ph = q.bass()->showStepPh.load();
+                    if (lastW >= 0 && ((w > 0.5f) != (lastW > 0.5f))) ++n;
+                    if (lastPh >= 0 && ph < lastPh - 0.5f) ++stepWraps;
+                    lastW = w; lastPh = ph;
+                    head.ppq += bs / sr * head.bpm / 60.0;
+                }
+                q.setPlayHead (nullptr);
+                return n;
+            };
+            int w1, w2, w3, w4;
+            const int s124 = count (8.0f, 4.0f, 4.0f, 100.0f, 124.0, w1), s90 = count (8.0f, 4.0f, 4.0f, 100.0f, 90.0, w2);   // wobble 1/8, steps 1/16
+            const int f124 = count ((float) BassParams::kFree, 4.0f, (float) BassParams::kFree, 100.0f, 124.0, w3), f90 = count ((float) BassParams::kFree, 4.0f, (float) BassParams::kFree, 100.0f, 90.0, w4);
+            std::cout << "  wobble flips in 4 s: 1/8 at 124 bpm " << s124 << ", at 90 bpm " << s90 << " · free 4 hz " << f124 << " / " << f90 << "; step loops (4 steps): 1/16 " << w1 << " / " << w2 << " · free 100 ms " << w3 << " / " << w4 << "\n";
+            check (std::abs (s124 - 33) <= 2 && std::abs (s90 - 24) <= 2, "wobble division follows the tempo");
+            check (std::abs (f124 - 32) <= 2 && std::abs (f90 - f124) <= 1, "wobble free rate ignores the tempo");
+            check (std::abs (w1 - 8) <= 1 && std::abs (w2 - 6) <= 1, "steps division follows the tempo");
+            check (std::abs (w3 - 10) <= 1 && w3 == w4, "steps free time ignores the tempo");
+        }
 
         if (pi.id == Pid::ms0)
         {

@@ -22,6 +22,8 @@ struct BassParams
     float combTune = 0, combFb = 0.6f, combMix = 0;
     int dMode = 0; float dDrive = 0.3f, dTone = 0.7f, dMix = 1; int order = 0; // 0 filter→dist, 1 dist→filter
     int wDiv = 8, wShape = 0; bool wRetrig = true; float wPhase = 0;
+    static constexpr int kFree = 19;      // wDiv / stepDiv == kFree: off the grid, at wFreeHz / stepFreeMs per step
+    float wFreeHz = 2.0f, stepFreeMs = 125.0f;
     float wCut = 3.5f, wVowel = 0, wFm = 0, wDrive = 0, wPitch = 0, wAmp = 0, wComb = 0;
     float mA = 1, mD = 250, mS = 0, mR = 200, mCut = 0, mPitch = 0, mFm = 0, mVowel = 0;
     float aA = 1, aD = 300, aS = 1, aR = 80;
@@ -391,8 +393,10 @@ inline void BassVoice::tick (const BassParams& p, const BassShared& s, float& ou
     float stv;
     {
         const int len = std::clamp (p.stepLen, 1, 16);
+        const bool stepFree = p.stepDiv >= BassParams::kFree;
         const double beatsPerStep = divisions()[(size_t) std::clamp (p.stepDiv, 0, 18)].beats;
-        if (! p.stepRetrig && s.playing) { const double v = s.ppq / (beatsPerStep * len); stepPh = (float) (v - std::floor (v)); }
+        if (stepFree) { stepPh += (float) (1000.0 / std::max (1.0, (double) p.stepFreeMs) / len / sr) * rateMul (MD_STEPRATE); stepPh -= std::floor (stepPh); }
+        else if (! p.stepRetrig && s.playing) { const double v = s.ppq / (beatsPerStep * len); stepPh = (float) (v - std::floor (v)); }
         else { stepPh += (float) (s.bpm / 60.0 / (beatsPerStep * len) / sr) * rateMul (MD_STEPRATE); stepPh -= std::floor (stepPh); }
         const float pos = stepPh * (float) len;
         const int i0 = std::min (len - 1, (int) pos), i1 = (i0 + 1) % len;
@@ -564,11 +568,13 @@ public:
         if (first) { for (auto* sm : { &cutSm, &vowSm, &fmSm, &drvSm, &fmtSm, &combSm, &resSm, &aSm, &bSm, &subSm, &nzSm }) sm->snap (sm->target); first = false; }
 
         const float bpm = (float) std::max (20.0, tr.bpm);
+        const bool wFree = p.wDiv >= BassParams::kFree;
         int div = p.wDiv;
         if (p.wheel == 2) div = std::clamp (div - (int) std::round (wheel * 4.0f), 0, 18);  // wheel = faster wobble
         const double beats = divisions()[(size_t) std::clamp (div, 0, 18)].beats;
-        const float lfoInc = (float) (bpm / 60.0 / beats / osr);
-        const bool sync = tr.playing && tr.hasPpq;
+        const float lfoInc = wFree ? (float) (std::clamp ((double) p.wFreeHz, 0.001, 200.0) * (p.wheel == 2 ? std::exp2 (wheel * 2.0) : 1.0) / osr)
+                                   : (float) (bpm / 60.0 / beats / osr);
+        const bool sync = tr.playing && tr.hasPpq && ! wFree;
         const double ppqPerOs = bpm / 60.0 / osr;
 
         for (int c = 0; c < 2; ++c) for (int k = 0; k < 2; ++k) { ottX[c][k].set (k == 0 ? 150.0f : 2500.0f, 0.70710678f, sr); }
