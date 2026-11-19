@@ -54,7 +54,7 @@ public:
         for (auto* pg : pages) addChildComponent (pg);
         const char* names[6] = { "session", "arrange", "seq", "mix", "mod", "browse" };
         for (int i = 0; i < 6; ++i) { auto* t = tabs.add (new ui::TextLink (names[i], theme)); t->onClick = [this, i] { setPage (i); }; addAndMakeVisible (t); }
-        addAndMakeVisible (cpuMeter);
+        addAndMakeVisible (cpuMeter); addAndMakeVisible (click); addAndMakeVisible (countIn);
         for (auto* l : std::initializer_list<juce::Component*> { &play, &stop, &rec, &loop, &mode, &outMode, &save, &panic, &autoWrite, &audio, &file, &punch, &capture, &fill, &bpm, &swing, &master }) addAndMakeVisible (l);
         capture.onClick = [this] { captureJam(); };
         capture.setTooltip ("capture: a new audio track records everything you play (the master) from now until you click again; cut the take up afterwards");
@@ -67,7 +67,12 @@ public:
         if (auto* mp = dynamic_cast<MixPage*> (pages[3])) mp->onAutoMaster = [this] { autoMaster(); };
         play.onClick = [this] { s.play(); };
         stop.onClick = [this] { if (s.isRecording()) s.stopRecording(); s.stop(); };
-        rec.onClick = [this] { if (s.isRecording()) s.stopRecording(); else { s.startRecording(); if (! s.running.load()) s.play(); } };
+        rec.onClick = [this] { if (s.isRecording()) s.stopRecording(); else s.recordWithCountIn(); };
+        rec.setTooltip ("record: audio into armed audio tracks, notes from your midi keyboard into the steps of armed instrument tracks (from a stop, after the count-in)");
+        click.onClick = [this] { s.metronome.store (! s.metronome.load()); s.dirty = true; };
+        click.setTooltip ("the metronome: a click on every beat while playing");
+        countIn.onClick = [this] { s.countInBars.store ((s.countInBars.load() + 1) % 3); s.dirty = true; };
+        countIn.setTooltip ("bars of clicks before recording starts from a stop (none, 1 or 2)");
         loop.onClick = [this] { s.loopOn.store (! s.loopOn.load()); };
         mode.onClick = [this] { s.mode.store ((s.mode.load() + 1) % 3); };
         outMode.onClick = [this] { s.multiOut.store (! s.multiOut.load()); };
@@ -346,6 +351,7 @@ public:
         panic.setBounds (std::max (x, w - 240), 12, 50, 20); audio.setBounds (w - 188, 12, 50, 20); file.setBounds (w - 136, 12, 50, 20); save.setBounds (w - 82, 12, 50, 20);
         int tx = 12;
         for (auto* t : tabs) { t->setBounds (tx, 46, 70, 20); tx += 72; }
+        click.setBounds (tx + 16, 46, 44, 20); countIn.setBounds (tx + 64, 46, 92, 20);
         for (auto* p : pages) p->setBounds (0, 70, w, getHeight() - 70 - 20);
         cpuMeter.setBounds (w - 222, getHeight() - 19, 214, 18);
     }
@@ -374,6 +380,7 @@ public:
         g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (0, 68, getWidth(), 1);
         g.setColour (theme.ink.withAlpha (0.8f)); g.setFont (uiFont (9.5f));
         g.drawText (status.isEmpty() ? ui::U ("space: play / stop · cmd+z / cmd+shift+z: undo / redo · 1-8: scenes · shift+1-8: patterns of the selected track · m / s: mute / solo · f: fill · r: record · ↑↓: track · tab: next page") : status, 12, getHeight() - 18, getWidth() - 24 - 230, 14, juce::Justification::centredLeft, true);
+        click.setLit (s.metronome.load()); countIn.setText (s.countInBars.load() == 0 ? "no count-in" : "count-in " + juce::String (s.countInBars.load())); countIn.setLit (s.countInLeft.load() > 0);
         play.setLit (s.playPpq.load() >= 0); rec.setLit (s.isRecording()); loop.setLit (s.loopOn.load()); autoWrite.setLit (s.autoWrite.load()); punch.setLit (s.punch.load()); capture.setLit (capturing && s.isRecording());
         mode.setText (playModeName ((PlayMode) s.mode.load())); outMode.setText (s.multiOut.load() ? "multi-out" : "produce"); outMode.setLit (s.multiOut.load());
     }
@@ -430,6 +437,7 @@ public:
     juce::OwnedArray<Page> pages; juce::OwnedArray<ui::TextLink> tabs; int page = 0;
     ui::TextLink play, stop, rec, loop, mode, outMode, save, panic, autoWrite, audio, file, punch, capture; HoldLink fill;
     CpuMeter cpuMeter { s, theme };
+    ui::TextLink click { "click", theme }, countIn { "count-in 1", theme };
     DevSlider bpm, swing, master;
     std::vector<int> held; int autoDevice = 0; bool capturing = false; int captureUid = 0;
     std::vector<std::unique_ptr<DeviceWindow>> windows;

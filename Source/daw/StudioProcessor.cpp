@@ -29,6 +29,7 @@ void StudioProcessor::timerCallback()
     session.midiLearnPoll();
     const auto now = juce::Time::currentTimeMillis();
     if (session.dirty.load() && now - lastAutosave > 60000) { autosave(); lastAutosave = now; }
+    if (session.isRecording()) session.collectRecordedNotes();
     history.poll();
 }
 
@@ -62,7 +63,19 @@ void StudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     // output channels follow the inputs in the callback buffer: pair p = channels 2p-1, 2p of the device
     for (int c = 0; c < std::min (buffer.getNumChannels() - ins, kOutChannels); ++c) outs.ch[(size_t) c] = buffer.getWritePointer (ins + c);
     for (int c = ins; c < buffer.getNumChannels(); ++c) buffer.clear (c, 0, n);
-    session.process (midi, h, outs, n);
+    // a count-in that ends inside this block: the clicks up to its end, the transport from there (to the sample)
+    if (const auto ci = session.countInLeft.load(); ci > 0 && ci < n)
+    {
+        const int a = (int) ci;
+        juce::MidiBuffer m1, m2;
+        for (const auto ev : midi) (ev.samplePosition < a ? m1 : m2).addEvent (ev.getMessage(), ev.samplePosition < a ? ev.samplePosition : ev.samplePosition - a);
+        session.process (m1, h, outs, a);
+        Outs o2; for (size_t c = 0; c < o2.ch.size(); ++c) o2.ch[c] = outs.ch[c] ? outs.ch[c] + a : nullptr;
+        HostInfo h2 = h; std::array<const float*, kMaxWidth * 2> in2 {};
+        if (h.in) { for (int c = 0; c < h.numIn; ++c) in2[(size_t) c] = h.in[c] + a; h2.in = in2.data(); }
+        session.process (m2, h2, o2, n - a);
+    }
+    else session.process (midi, h, outs, n);
     midi.clear();
     // midi clock out: 24 ticks per beat
     if (midiClockOut)

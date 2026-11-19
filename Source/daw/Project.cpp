@@ -188,7 +188,7 @@ std::unique_ptr<juce::XmlElement> Session::save() const
     e->setAttribute ("name", projectName);
     e->setAttribute ("mode", mode.load()); e->setAttribute ("loop", loopOn.load() ? 1 : 0); e->setAttribute ("loopStart", loopStart.load()); e->setAttribute ("loopEnd", loopEnd.load());
     e->setAttribute ("micro", microMs.load()); e->setAttribute ("masterOut", masterOut.load()); e->setAttribute ("quant", launchQuant.load()); e->setAttribute ("selected", selectedTrack.load());
-    e->setAttribute ("multiOut", multiOut.load() ? 1 : 0); e->setAttribute ("masterBypass", masterBypass.load() ? 1 : 0); e->setAttribute ("snap", snap.load() ? 1 : 0); e->setAttribute ("punch", punch.load() ? 1 : 0);
+    e->setAttribute ("multiOut", multiOut.load() ? 1 : 0); e->setAttribute ("masterBypass", masterBypass.load() ? 1 : 0); e->setAttribute ("snap", snap.load() ? 1 : 0); e->setAttribute ("punch", punch.load() ? 1 : 0); e->setAttribute ("click", metronome.load() ? 1 : 0); e->setAttribute ("countIn", countInBars.load());
     e->setAttribute ("nextUid", nextUid); e->setAttribute ("nextClip", nextClipId); e->setAttribute ("nextMod", nextModId);
     global->save (*e->createNewChildElement ("global"));
     for (int i = 0; i < kMacros; ++i) { auto* m = e->createNewChildElement ("macro"); m->setAttribute ("i", i); m->setAttribute ("name", macroNames[(size_t) i]); }
@@ -240,7 +240,7 @@ void Session::clear()
     stopPreview(); keyLearning.store (0); learning.store (false);
     { const juce::SpinLock::ScopedLockType sl (lock); lanes = std::make_shared<const std::vector<LanePtr>>(); }
     mode.store ((int) PlayMode::Session); loopOn.store (false); loopStart.store (0); loopEnd.store (8); microMs.store (12.0f); masterOut.store (1); launchQuant.store (1);
-    multiOut.store (false); masterBypass.store (false); snap.store (true); punch.store (false);
+    multiOut.store (false); masterBypass.store (false); snap.store (true); punch.store (false); metronome.store (false); countInBars.store (1);
     selectedTrack.store (0); currentScene.store (-1); internalPpq.store (0.0);
     projectName = "untitled"; projectFile = juce::File();
     nextUid = 1; nextClipId = 1; nextModId = 1;
@@ -257,7 +257,7 @@ bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
     mode.store (e.getIntAttribute ("mode", 0)); loopOn.store (e.getIntAttribute ("loop", 0) != 0);
     loopStart.store (e.getDoubleAttribute ("loopStart", 0.0)); loopEnd.store (e.getDoubleAttribute ("loopEnd", 8.0));
     microMs.store ((float) e.getDoubleAttribute ("micro", 12.0)); masterOut.store (e.getIntAttribute ("masterOut", 1)); launchQuant.store (e.getIntAttribute ("quant", 1));
-    multiOut.store (e.getIntAttribute ("multiOut", 0) != 0); masterBypass.store (e.getIntAttribute ("masterBypass", 0) != 0); snap.store (e.getIntAttribute ("snap", 1) != 0); punch.store (e.getIntAttribute ("punch", 0) != 0);
+    multiOut.store (e.getIntAttribute ("multiOut", 0) != 0); masterBypass.store (e.getIntAttribute ("masterBypass", 0) != 0); snap.store (e.getIntAttribute ("snap", 1) != 0); punch.store (e.getIntAttribute ("punch", 0) != 0); metronome.store (e.getIntAttribute ("click", 0) != 0); countInBars.store (juce::jlimit (0, 4, e.getIntAttribute ("countIn", 1)));
     if (auto* g = e.getChildByName ("global")) global->load (*g);
     for (auto* m : e.getChildWithTagNameIterator ("macro")) { const int i = m->getIntAttribute ("i", -1); if (i >= 0 && i < kMacros) macroNames[(size_t) i] = m->getStringAttribute ("name"); }
     for (auto* x : e.getChildWithTagNameIterator ("track"))

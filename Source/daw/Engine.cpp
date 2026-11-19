@@ -118,6 +118,17 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
                 if (auto* d = resolve (map.target)) d->setBase (map.target.param, map.lo + (map.hi - map.lo) * v);
     }
 
+    if (const auto ci = countInLeft.load(); ci > 0)
+    {
+        // the count-in: the transport waits, the clicks count the bars in, what comes in is still heard
+        const double bpm0 = tempo(), spbt = 60.0 / bpm0 * sr;
+        renderSpan (n, internalPpq.load(), bpm0, outs, midi, false, h);
+        clicks (outs, n, (double) (countInTotal - ci) / spbt, spbt);
+        if (ci - n <= 0) { countInLeft.store (0); running.store (true); }
+        else countInLeft.store (ci - n);
+        noteLoad (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0), n);
+        return;
+    }
     bool playing = running.load();
     double ppq = internalPpq.load();
     if (relocate.exchange (false)) { ppq = internalPpq.load(); for (auto& t : tracks) t->lastStepN = -1; }
@@ -187,6 +198,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
             juce::MidiBuffer span;
             for (const auto m : midi) if (m.samplePosition >= done && m.samplePosition < done + len) span.addEvent (m.getMessage(), m.samplePosition - done);
             renderSpan (len, p, bpm, o, span, true, hs);
+            if (metronome.load (std::memory_order_relaxed)) clicks (o, len, p, spb);
             p += len / spb; done += len;
             if (std::abs (p - limit) < 1.0e-6) p = limit;   // land exactly on the bar line
             if (loop && lEnd > lStart && p >= lEnd - 1.0e-6) { p = lStart; for (auto& t : tracks) t->lastStepN = -1; }
@@ -199,6 +211,31 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         while (juce::Time::getHighResolutionTicks() < until) {}
     }
     noteLoad (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0), n);
+}
+
+void Session::clicks (const Outs& outs, int n, double beat0, double samplesPerBeat)
+{
+    const int first = masterOut.load() - 1;
+    float* L = first >= 0 && first < kOutChannels ? outs.ch[(size_t) first] : nullptr;
+    float* R = first + 1 >= 0 && first + 1 < kOutChannels ? outs.ch[(size_t) first + 1] : nullptr;
+    const int len = (int) (0.03 * sr);
+    double next = std::ceil (beat0 - 1.0e-9);
+    for (int i = 0; i < n; ++i)
+    {
+        if ((double) i >= (next - beat0) * samplesPerBeat - 1.0e-6)
+        {
+            const long long b = (long long) std::llround (next);
+            clickAge = 0; clickPh = 0; clickHz = (b % 4 == 0) ? 1760.0f : 1320.0f;
+            next += 1.0;
+        }
+        if (clickAge < 0) continue;
+        const float env = std::exp (-(float) clickAge / (0.008f * (float) sr));
+        const float v = 0.35f * env * std::sin ((float) (kTwoPi * clickPh));
+        clickPh += clickHz / sr; if (clickPh >= 1.0) clickPh -= 1.0;
+        if (L) L[i] += v;
+        if (R) R[i] += v;
+        if (++clickAge >= len) clickAge = -1;
+    }
 }
 
 void Session::automate (double ppq)
@@ -270,6 +307,35 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
                         scratchMidi.addEvent (msg, m.samplePosition);
                     if (msg.isNoteOn()) { t.lastVel = msg.getFloatVelocity(); t.hitEnvT = 0; t.lastHitPpq = ppq0 + m.samplePosition / spb; t.lastRandom = t.rng.uni(); t.hits.fetch_add (1); }
                 }
+            // recording into the steps: an armed instrument track takes what is played into the pattern that is playing
+            if (playing && recording.load (std::memory_order_relaxed) && t.kind == TrackKind::Instrument && t.armed.load (std::memory_order_relaxed))
+            {
+                const bool pu = punch.load() && loopOn.load();
+                const double lS = loopStart.load() * 4.0, lE = loopEnd.load() * 4.0;
+                const int pi = juce::jlimit (0, kPatterns - 1, t.activePattern >= 0 ? t.activePattern : t.pattern.load());
+                const PatternPtr pp = t.patterns[(size_t) pi];
+                const int plen = pp ? juce::jlimit (1, kMaxSteps, pp->length) : 16;
+                const double sb = stepBeatsOf (t, bpm);
+                for (const auto m : live)
+                {
+                    const auto msg = m.getMessage();
+                    if (! msg.isNoteOnOrOff()) continue;
+                    const double e = ppq0 + m.samplePosition / spb;
+                    if (pu && (e < lS || e >= lE)) continue;
+                    Track::RecNote rn; rn.on = msg.isNoteOn(); rn.note = msg.getNoteNumber(); rn.vel = msg.getFloatVelocity(); rn.ppq = e; rn.pattern = pi; rn.stepBeats = sb;
+                    // the nearest step start (steps may last different times), and how far off it the note was played
+                    double span = 0; std::array<double, kMaxSteps + 1> at {};
+                    for (int i = 0; i < plen; ++i) { at[(size_t) i] = span; span += pp ? juce::jlimit (0.05f, 16.0f, pp->s[(size_t) i].dur) : 1.0f; }
+                    double u = std::fmod ((e - t.seqAnchor) / sb, span); if (u < 0) u += span;
+                    int best = 0; double bestD = 1.0e9;
+                    for (int i = 0; i <= plen; ++i) { const double st = i < plen ? at[(size_t) i] : span; const double d = u - st; if (std::abs (d) < std::abs (bestD)) { bestD = d; best = i % plen; } }
+                    rn.step = best;
+                    const double ms = bestD * sb * 60000.0 / bpm;
+                    rn.micro = juce::jlimit (-1.0f, 1.0f, (float) (ms / std::max (1.0f, microMs.load())));
+                    int s1, n1, s2, n2; t.noteFifo.prepareToWrite (1, s1, n1, s2, n2);
+                    if (n1 > 0) { t.noteBuf[(size_t) s1] = rn; t.noteFifo.finishedWrite (1); }
+                }
+            }
             modulate (t, ppq0, n, bpm);
             if (playing && t.kind == TrackKind::Instrument) sequence (t, ppq0, ppq1, spb, bpm, scratchMidi);
             else

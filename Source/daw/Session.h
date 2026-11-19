@@ -90,6 +90,11 @@ struct Track
     std::array<std::atomic<float>, kMaxWidth> meter;
     std::atomic<int> playStep { -1 }, hits { 0 }, shownPattern { -1 };
     std::atomic<float> showFollow { 0 };
+    // midi recording into the steps: the audio thread hands each played note over, already placed on its step
+    struct RecNote { bool on = true; int pattern = 0, step = 0, note = 60; float vel = 0.8f, micro = 0.0f; double ppq = 0, stepBeats = 0.25; };
+    juce::AbstractFifo noteFifo { 1024 }; std::array<RecNote, 1024> noteBuf;
+    struct Held { int note; int pattern; int step; double ppq, stepBeats; };
+    std::vector<Held> held;                           // (message thread) notes down, waiting for their note off
     // recording (set up on the message thread, written on the audio thread)
     juce::AudioFormatWriter::ThreadedWriter* recWriter = nullptr;
     std::atomic<bool> recActive { false };
@@ -172,6 +177,13 @@ public:
     std::atomic<int> mode { (int) PlayMode::Session };
     std::atomic<bool> loopOn { false }; std::atomic<double> loopStart { 0 }, loopEnd { 8 };   // bars
     std::atomic<bool> fill { false }, running { false }, autoWrite { false }, recording { false }, punch { false };
+    std::atomic<bool> metronome { false };       // a click on every beat while playing (and always in a count-in)
+    std::atomic<int> countInBars { 1 };          // 0, 1 or 2 bars of clicks before recording starts from a stop
+    std::atomic<juce::int64> countInLeft { 0 };  // samples of count-in still to go (the transport waits)
+    /** the record button: recording starts now when playing, otherwise after the count-in */
+    void recordWithCountIn();
+    /** the notes played into armed instrument tracks while recording, written into their steps (message thread) */
+    int collectRecordedNotes();
     std::atomic<float> microMs { 12.0f };
     std::atomic<bool> multiOut { false };        // produce (everything to the master) or multi-out (tracks on their own channels)
     std::atomic<bool> masterBypass { false };    // bypass the master chain (mixing elsewhere)
@@ -369,6 +381,10 @@ private:
     void newFromTemplateImpl (int which);
     juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override;
     double sr = 48000; int bs = 512;
+    juce::int64 countInTotal = 0; int clickAge = -1; float clickHz = 1000.0f; double clickPh = 0;
+    /** the metronome: a short tone on every beat that falls inside [beat0, beat0 + n / samplesPerBeat), the bar's
+        first beat higher, into the main pair */
+    void clicks (const Outs&, int n, double beat0, double samplesPerBeat);
     int latTotal = 0, latTracks = 0, latReturns = 0, latMaster = 0;
     double headPpq = 0, headBpm = 124; bool headPlaying = false;
     juce::MidiBuffer scratchMidi, emptyMidi;

@@ -2113,6 +2113,70 @@ int main (int argc, char** argv)
         check (ch == 24, "a 24-channel master is one 24-channel file");
     }
 
+    // ---- 29. recording from a midi keyboard into the steps, with a count-in and the metronome ---------------------
+    std::cout << "== midi recording into steps, count-in, metronome\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        s.setTempo (120.0f); s.microMs.store (12.0f);
+        auto* t = s.addTrack ("keys"); s.setInstrument (*t, s.createDevice ("st:tone"));
+        t->rootNote.store (60); t->armed.store (true);
+        s.editPattern (*t, 0, [] (Pattern& pt) { pt = Pattern(); });
+        p.standaloneInputs = 0; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        s.countInBars.store (1); s.metronome.store (false);
+        s.locate (0.0); p.history.reset();
+        s.recordWithCountIn();
+        juce::AudioBuffer<float> blk (kOutChannels, kBs);
+        const double spbeat = spb (120.0);   // samples per beat
+        const int countInSamples = (int) std::llround (4 * spbeat);
+        int pos = 0; float clickPeak = 0; bool startedEarly = false; int startedAt = -1;
+        // the notes, in samples from the end of the count-in: e4 played 10 ms late on beat 2 (step 5), held one step;
+        // g4 early by 5 ms on step 11, held two steps
+        struct Ev { double at; int note; bool on; };
+        const double stepS = spbeat / 4.0, ms = kSr / 1000.0;
+        const std::vector<Ev> evs { { 4 * stepS + 10 * ms, 64, true }, { 5 * stepS + 10 * ms, 64, false }, { 10 * stepS - 5 * ms, 67, true }, { 12 * stepS - 5 * ms, 67, false } };
+        for (int b = 0; b < 400; ++b, pos += kBs)
+        {
+            blk.clear(); juce::MidiBuffer m;
+            for (auto& e : evs) { const int at = countInSamples + (int) std::llround (e.at); if (at >= pos && at < pos + kBs) m.addEvent (e.on ? juce::MidiMessage::noteOn (1, e.note, 0.9f) : juce::MidiMessage::noteOff (1, e.note), at - pos); }
+            const bool runningBefore = s.running.load();
+            p.processBlock (blk, m);
+            if (pos + kBs <= countInSamples) { clickPeak = std::max (clickPeak, blk.getMagnitude (0, 0, kBs)); startedEarly |= runningBefore; }
+            if (startedAt < 0 && s.running.load()) startedAt = pos + kBs;
+            if (b % 20 == 0) s.collectRecordedNotes();
+        }
+        s.stopRecording(); s.stop();
+        std::cout << "  count-in: clicks at " << db (clickPeak) << ", the transport started after " << startedAt << " samples (one bar = " << countInSamples << ")\n";
+        check (clickPeak > 0.1f && ! startedEarly && std::abs (startedAt - countInSamples) <= kBs, "one bar of clicks, then the transport starts");
+        auto pt = t->patternAt (0);
+        check (pt != nullptr, "the take is in the pattern");
+        if (pt)
+        {
+            const auto& a = pt->s[4]; const auto& b = pt->s[10];
+            std::cout << "  step 5: " << (a.on ? "on" : "off") << " pitch " << a.pitch << " micro " << a.micro * 12.0f << " ms length " << a.len << "; step 11: " << (b.on ? "on" : "off") << " pitch " << b.pitch << " micro " << b.micro * 12.0f << " ms length " << b.len << "\n";
+            check (a.on && a.pitch == 4 && std::abs (a.micro * 12.0f - 10.0f) < 1.5f && std::abs (a.len - 1.0f) < 0.1f, "e4 lands on step 5, 10 ms late, one step long");
+            check (b.on && b.pitch == 7 && std::abs (b.micro * 12.0f + 5.0f) < 1.5f && std::abs (b.len - 2.0f) < 0.1f, "g4 lands on step 11, 5 ms early, two steps long");
+            int on = 0; for (int i = 0; i < pt->length; ++i) on += pt->s[(size_t) i].on ? 1 : 0;
+            check (on == 2, "nothing else written");
+        }
+        {
+            const bool polled = p.history.poll (false); const bool undone = p.history.undo();
+            Track* k = nullptr; for (auto& x : s.tracks) if (x->name == "keys") k = x.get();
+            if (! (polled && undone)) std::cout << "    (history: polled " << (int) polled << ", undone " << (int) undone << ", steps " << p.history.undoSteps() << ")\n";
+            const bool gone = k && (! k->patternAt (0) || ! k->patternAt (0)->s[4].on);
+            t = nullptr;
+            check (polled && undone && gone, "the take is one undo step: the keys track is back to an empty pattern");
+        }
+        // the metronome while playing
+        s.metronome.store (true); s.newFromTemplate (0); s.metronome.store (true);
+        auto r = render (p, 1.0);
+        std::vector<int> on = onsets (r.out, 0, 0.05f, 4000);
+        std::cout << "  metronome, one bar at " << s.tempo() << " bpm: " << on.size() << " clicks\n";
+        check (on.size() == 4, "four clicks in a bar");
+        s.metronome.store (false);
+        auto r2 = render (p, 1.0);
+        check (r2.peak[0] < 1.0e-4f, "and none with the metronome off");
+    }
+
     // ---- 27. hosting the user's own plug-ins: a crash-safe scan, instruments and effects, state, automation, latency ----
     std::cout << "== hosting: scan in child processes, instruments, effects, state, automation, latency\n";
     {

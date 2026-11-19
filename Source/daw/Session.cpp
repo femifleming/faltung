@@ -968,8 +968,10 @@ void Session::startRecording()
 }
 void Session::stopRecording()
 {
+    countInLeft.store (0);
     if (! recording.load()) return;
     recording.store (false);
+    collectRecordedNotes();
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         for (auto& t : tracks) { t->recActive.store (false); t->recWriter = nullptr; }
@@ -1029,7 +1031,63 @@ void Session::freezeEvolution (Track& t)
 
 // ---- transport ------------------------------------------------------------------------------------
 void Session::play() { running.store (true); }
-void Session::stop() { running.store (false); panicFlag.store (true); }
+void Session::stop() { countInLeft.store (0); running.store (false); panicFlag.store (true); }
+void Session::recordWithCountIn()
+{
+    // armed instrument tracks that are not playing start their pattern, so what is played has steps to land on
+    if (mode.load() == (int) PlayMode::Session)
+        for (auto& t : tracks)
+            if (t->armed.load() && t->kind == TrackKind::Instrument && (t->silent || t->activePattern < 0) && ! running.load())
+                launch (*t, t->pattern.load());
+    startRecording();
+    if (running.load()) return;
+    const int bars = juce::jlimit (0, 4, countInBars.load());
+    if (bars == 0) { play(); return; }
+    countInTotal = (juce::int64) std::llround (bars * 4.0 * 60.0 / tempo() * sr);
+    countInLeft.store (countInTotal);
+}
+int Session::collectRecordedNotes()
+{
+    int written = 0;
+    std::vector<Track::RecNote> got;
+    for (auto& tp : tracks)
+    {
+        Track& t = *tp;
+        got.clear();
+        int s1, n1, s2, n2;
+        const int ready = t.noteFifo.getNumReady();
+        if (ready <= 0 && (recording.load() || t.held.empty())) continue;
+        t.noteFifo.prepareToRead (ready, s1, n1, s2, n2);
+        for (int i = 0; i < n1; ++i) got.push_back (t.noteBuf[(size_t) (s1 + i)]);
+        for (int i = 0; i < n2; ++i) got.push_back (t.noteBuf[(size_t) (s2 + i)]);
+        t.noteFifo.finishedRead (n1 + n2);
+        std::map<int, std::vector<std::function<void (Pattern&)>>> edits;
+        const int root = t.rootNote.load();
+        for (auto& rn : got)
+        {
+            if (rn.on)
+            {
+                const int step = rn.step; const int pitch = juce::jlimit (-36, 36, rn.note - root); const float vel = juce::jlimit (0.05f, 1.0f, rn.vel), micro = rn.micro;
+                edits[rn.pattern].push_back ([=] (Pattern& p) { auto& st = p.s[(size_t) step]; st.on = true; st.vel = vel; st.pitch = pitch; st.micro = micro; st.len = 0.5f; st.prob = 1.0f; st.slice = -1; });
+                t.held.push_back ({ rn.note, rn.pattern, rn.step, rn.ppq, rn.stepBeats });
+                ++written;
+            }
+            else
+                for (size_t k = 0; k < t.held.size(); ++k)
+                    if (t.held[k].note == rn.note)
+                    {
+                        const auto h = t.held[k];
+                        const float len = juce::jlimit (0.05f, 16.0f, (float) ((rn.ppq - h.ppq) / std::max (1.0e-6, h.stepBeats)));
+                        edits[h.pattern].push_back ([h, len] (Pattern& p) { p.s[(size_t) h.step].len = len; });
+                        t.held.erase (t.held.begin() + (long) k);
+                        break;
+                    }
+        }
+        if (! recording.load()) t.held.clear();   // (a note still down when recording stopped keeps its default length)
+        for (auto& [pi, fns] : edits) editPattern (t, pi, [&] (Pattern& p) { for (auto& f : fns) f (p); });
+    }
+    return written;
+}
 void Session::togglePlay() { if (running.load()) stop(); else play(); }
 void Session::locate (double bar) { internalPpq.store (std::max (0.0, bar) * 4.0); relocate.store (true); }
 void Session::launch (Track& t, int p)

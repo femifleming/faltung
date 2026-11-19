@@ -45,7 +45,8 @@ public:
             selfDeviceError = deviceManager.initialise (0, kOutChannels, nullptr, false, {}, &setup);
         }
         else deviceManager.initialise (kOutChannels, kOutChannels, saved.get(), true);
-        for (auto& d : juce::MidiInput::getAvailableDevices()) deviceManager.setMidiInputDeviceEnabled (d.identifier, true);
+        // midi inputs: as chosen in the settings; on the first run every keyboard that is plugged in
+        if (saved == nullptr && self.isEmpty()) for (auto& d : juce::MidiInput::getAvailableDevices()) deviceManager.setMidiInputDeviceEnabled (d.identifier, true);
         deviceManager.addMidiInputDeviceCallback ({}, &collector);
         setClockOut (settings->getValue ("clockOut"));
         window = std::make_unique<MainWindow> (*this);
