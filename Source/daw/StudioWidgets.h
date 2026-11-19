@@ -16,10 +16,8 @@ inline ui::Theme studioTheme()
     static const ui::Theme t = []
     {
         const auto& si = studioInfo();
-        const ProductInfo pi { Pid::kt1, si.code, si.name, si.blurb, fal::Kind::Machine, kDeep ? Style::Mirror : Style::Snd, si.ground, si.accent, VType::Kick, si.w, si.h };
-        auto th = themeFor (pi);
-        if (! th.mirror) th.edge = juce::Colours::white;   // (the studio's ground is dark: its slider marks stay white)
-        return th;
+        const ProductInfo pi { Pid::kt1, si.code, si.name, si.blurb, fal::Kind::Machine, Style::Snd, si.ground, si.accent, VType::Kick, si.w, si.h };
+        return themeFor (pi);
     }();
     return t;
 }

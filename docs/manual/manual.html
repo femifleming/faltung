@@ -51,7 +51,7 @@ ul, ol { padding-left: 14pt; } li { margin: 2pt 0; }
 <li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">using the controls</a></li>
 <li><a href="#auto">automation in ableton</a></li><li><a href="#midi">midi</a></li>
 <li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li><li><a href="#modules">the drum modules</a> — bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9</li>
-<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#ballon">ballonwinkel · ballonpaleis</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
+<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#ballon">ballonwinkel · ballonpaleis</a></li><li><a href="#sndstudio">sndstudio</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
 <h2 id="intro">introduction</h2>
 <p>faltung is a set of eighteen instruments and effects for the sound of 2000s minimal and microhouse — Perlon, [a:rpia:r], Villalobos, the Romanian
 labels — and for the bass of early dubstep and neuro. Everything is synthesized or processed live; there are no sample libraries.</p>
@@ -398,7 +398,25 @@ pendulum, column and soundcube; after Iannis Xenakis sonotron, paraboloid, gas, 
 <tr><td class="n">distance</td><td>the bubble you're in, 1 to 50 metres: delay, level, air and the answer of a room, after the IEM RoomEncoder; doppler on or off.</td></tr>
 <tr><td class="n">energy</td><td>the map at the top left and the glow on the sphere show where the sound is loudest, from periwinkle (quiet) to coral (loudest).</td></tr></table>
 <p>The weather happens in 3-d here (patches of cloud, rain, snow and heat drift through the sphere and shake up the grains they pass), and the boom
-breaks where the dive ends, its rings opening out through the sphere.</p></section><section class="page" id="recipes"><h2>recipes</h2>
+breaks where the dive ends, its rings opening out through the sphere.</p></section><section class="divider" style="background:#2b3a40;color:#f6f6f0"><svg class="wire" viewBox="0 0 600 300"><g fill="none" stroke="#8ec3e6" stroke-width="1.2">
+<polyline points="40,250 120,40 300,90 480,70 580,170 540,260 300,285 40,250"/><polyline points="120,40 220,230 300,90"/>
+<polyline points="220,230 480,70"/><polyline points="220,230 300,285"/><polyline points="480,70 540,260"/><polyline points="90,140 400,60 580,170"/></g>
+<g fill="none" stroke="#fff" stroke-width="2.4"><polygon points="150,120 210,122 212,190 154,188"/><polygon points="390,190 450,176 446,224 388,228"/></g></svg><div class="dt"><h1 style="color:#f6f6f0">sndstudio</h1><p>the studio: tracks · scenes · song · sends · modulators · 128 outputs</p></div></section><section class="page" id="sndstudio"><h2>sndstudio</h2>
+<p class="lead">A whole studio made from the suite — tracks, a deep step sequencer, scenes and a song, a timeline with audio clips
+and automation, modulators on any control, sends and returns, a mixer with up to 128 output channels so every track can be
+recorded in Ableton on its own channel, plug-in hosting, recording, resampling, stems export. As a standalone app and as a
+VST3 / AU / VST2 plug-in.</p>
+<img class="shot" src="img/sndstudio-0.png" alt="sndstudio-0">
+<p>Its own manual, <b>sndstudio Manual.pdf</b>, is in the download next to this one. In short: <b>session</b> is the scene grid
+(click a cell to launch a pattern, keys 1–8 launch scenes), <b>arrange</b> the timeline (pattern clips, audio clips dropped from the
+Finder, markers, the loop, automation lanes), <b>seq</b> the step grid of the selected track with every step's velocity, pitch,
+chance, ratchet, micro-timing, length, condition, slide and four parameter locks, the pattern tools (euclid, rotate, mutate,
+humanise, markov …) and the track's devices, <b>mix</b> the strips with meters, sends, output channels, widths and routes,
+<b>mod</b> the modulators, macros and midi maps, <b>browse</b> the devices, plug-ins (scan), files and templates.</p>
+<p>Right-click any control for <i>map a modulator</i>, <i>add an automation lane</i>, <i>midi learn</i> and <i>macro</i>.
+In <b>produce</b> mode everything is mixed to the stereo master (with ms0 on it if you want); switch to <b>multi-out</b> and
+<i>assign all outputs</i> to put every track and return on its own channel pair — in Live, add the plug-in, enable its output
+buses on audio tracks and record; from the standalone, use a 128-channel virtual device (BlackHole 128ch) as the output.</p></section><section class="page" id="recipes"><h2>recipes</h2>
 <h3>a long shuffled groove (kt1)</h3><ol><li>Load <b>a3 tok</b>. Set rm3 length 15, pc7 length 12, cl8 length 7.</li><li>Shift-drag a few rim steps early and hats late.</li>
 <li>Alt-click the offbeat clicks to 50%.</li><li>Automate <i>pattern</i> between a1 and a2 every 16 bars, and <i>pc7 probability</i> slowly up.</li></ol>
 <h3>the dub chain</h3><p>kt1 → rm3 on its own output → <b>dl4</b> (3/16, feedback 60%, age 0.4, send automated) → <b>rv5</b> air with gate. Main mix → <b>gl8</b>.</p>

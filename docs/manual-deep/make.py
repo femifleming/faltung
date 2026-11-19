@@ -218,7 +218,7 @@ movement on pads, tremolo on the electric piano (as in its preset), stepped vowe
 import sys
 sys.path.insert(0, os.path.join(ROOT, 'docs', 'manual'))
 from make_sndstudio import chapter as sndstudio_chapter
-add(sleeve('kt1', 'SNDSTUDIO', ['session', 'arrange', 'seq', 'mix'], ['mod', 'browse', 'devices', 'outputs'], 'FDP020', 'tree-kt1.jpg'))
+add(divider('sndstudio', 'the deep house studio: tracks · scenes · song · sends · modulators · 128 outputs', '#151c2a', wire('#5b7aa3'), INK, '#ffffff'))
 add(sndstudio_chapter(shot))
 
 add('''<section class="page" id="recipes"><h2>recipes</h2>

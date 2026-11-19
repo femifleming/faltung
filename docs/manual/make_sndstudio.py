@@ -6,7 +6,7 @@ import html, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 MAIN = open(os.path.join(HERE, 'make.py')).read()
-FONTS = os.path.join(ROOT, 'Resources', 'fonts')
+FONTS = '../../Resources/fonts'   # (relative: the html sits in docs/manual)
 VERSION = '1.2.0'
 e = html.escape
 g = globals()
@@ -58,7 +58,7 @@ its drum engines, bass synth, effects and mastering bus are the devices, and aro
 scenes and a song, a timeline, automation on everything, modulators on everything, sends and returns, a mixer whose channels
 can leave through 128 outputs, hosted VST3 / AU plug-ins, audio tracks, recording, resampling and stems.</p>
 <p>It comes twice: <b>faltung sndstudio</b> (the microhouse devices and templates) and <b>faltung deep sndstudio</b> (the deep house
-twin, the mirror-tree look). Each is a standalone app and a plug-in. A project (<code>.fstudio</code>) opens in both forms.</p>
+twin, in faltung's dark mode). Each is a standalone app and a plug-in. A project (<code>.fstudio</code>) opens in both forms.</p>
 <p>Two ways of working, switched in the header or the mixer: <b>produce</b> — everything is mixed inside, to a stereo master with the
 ms0 chain on it, and exported as a mastered wav and as stems; <b>multi-out</b> — every track, return and the master leave on their own
 output channels (64 stereo buses as a plug-in; any multichannel device in the standalone), and mixing and mastering happen in Ableton.</p>
