@@ -12,6 +12,10 @@
 #include <cmath>
 #include <cstring>
 #include <thread>
+#if defined (__APPLE__)
+ #include <pthread.h>
+ #include <sched.h>
+#endif
 
 // The server's audio driver with no device behind it: the host calls render() one 64-frame block at a time.
 // It derives from the server's generic driver class, so it is the same on macOS, Windows and Linux.
@@ -58,6 +62,20 @@ public:
         cpu += 0.1 * (secs * rate / 64.0 * 100.0 - cpu);
     }
     double cpu = 0.0;
+
+    // On macOS the server puts its helper thread at the lowest priority there is (nova-tt's priority interval is
+    // 0..0 there). In a stand-alone server that is harmless; inside a plug-in that thread loads the SynthDefs and
+    // the recordings while the host opens a session or renders with every core busy, and at priority 0 it can wait
+    // behind everything else for minutes (the instrument then comes up silent). Give it the default priority.
+    void liftHelperThread()
+    {
+       #if defined (__APPLE__)
+        if (! mThread.joinable()) return;
+        sched_param sp {};
+        sp.sched_priority = (sched_get_priority_min (SCHED_OTHER) + sched_get_priority_max (SCHED_OTHER)) / 2;
+        pthread_setschedparam (mThread.native_handle(), SCHED_OTHER, &sp);
+       #endif
+    }
 protected:
     bool DriverSetup (int* outNumSamples, double* outSampleRate) override { *outNumSamples = 64; *outSampleRate = rate; return true; }
     bool DriverStart() override { return true; }
@@ -116,6 +134,7 @@ bool ScEngine::start (double sampleRate, int numOutputs, const std::string& plug
     driver = new ScEmbeddedDriver (world, sampleRate);
     world->hw->mAudioDriver = driver;
     if (! driver->Setup() || ! driver->Start()) { stop(); return false; }
+    driver->liftHelperThread();
     world->mRealTime = true;                  // asynchronous commands now go through the driver's helper thread
 
     oscInc = (int64_t) ((double) world->mBufLength * 4294967296.0 / sampleRate);
@@ -176,11 +195,12 @@ bool ScEngine::sync (int timeoutMs)
     // by the clock: on a busy machine (a session opening, a build running) the helper thread can take seconds
     // to get its turn, and giving up early leaves the instrument without its SynthDefs or recordings
     const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds (timeoutMs);
-    for (;;)
+    for (int turn = 0;; ++turn)
     {
         pump (1);                                                    // let the engine hand work to its helper thread
         if (doneCount.load() != before) return true;
         if (std::chrono::steady_clock::now() >= until) return false;
+        if (turn % 16 == 8 && driver != nullptr) driver->liftHelperThread();   // (it lowers itself when it starts, whenever that is)
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
     }
 }
