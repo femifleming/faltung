@@ -6,6 +6,7 @@
 #include "Widgets.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <set>
+#include <iostream>
 
 using namespace pt;
 using namespace pt::ui;
@@ -1879,7 +1880,7 @@ public:
                 P (0, PP::timbreMix, 1); P (0, PP::prismAmt, 0.55f); P (0, PP::pluckTime, 0.6f); P (0, PP::hzMix, 0.4f); P (0, PP::hzShiftStep, 3);
                 a.tg[TG::Volume].env.adsr (0.001f, 2.5f, 0.0f, 1.5f); a.tg[TG::Volume].env.on = true; G (GP::rvOn, 1); G (GP::rvDecay, 0.55f); break;
             case 5: proc.presetName = "White noise";
-                P (0, PP::pitchMode, 1); P (0, PP::freqDiv, 9); P (0, PP::detDiv, 6); P (0, PP::uniOrder, 3); P (0, PP::uniPan, 0); P (0, PP::uniPitch, 1); P (0, PP::uniType, 2); P (0, PP::phaseRand, -1); P (0, PP::ramp, 0);
+                P (0, PP::pitchMode, 1); P (0, PP::freqDiv, 9); P (0, PP::detDiv, 6); P (0, PP::uniOrder, 3); P (0, PP::uniPan, 0); P (0, PP::uniPitch, 1); P (0, PP::uniType, 2); P (0, PP::phaseRand, -1); P (0, PP::ramp, 0); P (0, PP::vol, -24.0f);
                 a.shape[SH::Timbre1].line ({ { 0, 0.2f }, { 1, 0.95f } });
                 a.tg[TG::Pitch].mapOn[MAP::Key] = true; a.tg[TG::Pitch].map[MAP::Key].line ({ { 0, 0.5f + 60.0f / 96.0f * 0.5f }, { 1, 0.5f - 67.0f / 96.0f * 0.5f } }); break;
             case 6: proc.presetName = "Arp sequence";
@@ -2041,6 +2042,60 @@ juce::StringArray partialsEditorSelfTest (juce::AudioProcessorEditor* e)
     // switching a part off with the switch under the graph
     ed->artOn->change (0.0f);
     if (proc.edit (0).tg[TG::Pitch].lfo.on) bad.add ("the on / off switch did not switch the LFO off");
+    // what the menus do, called the way the menus call it: tools for the graph on every kind of line
+    {
+        const int envOps[] = { 2, 3, 5, 6, 7, 8, 10, 30, 31, 32, 33, 34, 35, 4, 41, 42, 40, 1 };
+        ed->select (false, TG::F1Res, 0); for (int op : envOps) ed->curveOp (op);
+        if (proc.edit (0).tg[TG::F1Res].env.c.pts.size() != 4) bad.add ("reset did not bring the default envelope back");
+        if (proc.edit (1).tg[TG::F1Res].env.c.pts.empty()) bad.add ("copy to part B did not copy the envelope");
+        const int lineOps[] = { 2, 3, 5, 6, 7, 8, 4, 41, 42, 40, 1 };
+        ed->select (false, TG::F1Res, 1); for (int op : lineOps) ed->curveOp (op);
+        ed->select (false, TG::F1Res, 2 + MAP::Vel); for (int op : lineOps) ed->curveOp (op);
+        if (proc.edit (0).tg[TG::F1Res].map[MAP::Vel].empty()) bad.add ("a reset mapping should be a flat line, not nothing");
+        const int shapeOps[] = { 20, 2, 3, 5, 7, 8, 21, 6, 4, 1 };
+        ed->select (true, SH::PluckShape, 0); for (int op : shapeOps) ed->curveOp (op);
+        ed->select (true, SH::Timbre2, 0); for (int op : shapeOps) ed->curveOp (op);
+    }
+    // the image tools
+    {
+        const int imgOps[] = { 20, 21, 22, 23, 24, 25, 26, 27, 28, 14, 15, 12, 13, 16, 29, 4, 11, 5 };
+        for (int op : imgOps) ed->imageOp (op);
+        if (proc.edit (0).image != nullptr) bad.add ("remove image left an image behind");
+        proc.edit (0).tg[TG::ImgTime] = TargetDef(); proc.commit (0);
+    }
+    // the built-in sounds, each played for a moment; chorus and reverb presets; controllers
+    for (int i = 7; i >= 0; --i)
+    {
+        ed->factory (i);
+        juce::AudioBuffer<float> blk (2, 512); float pk = 0; bool fin = true;
+        for (int b = 0; b < 60; ++b)
+        {
+            juce::MidiBuffer mb; if (b == 0) { mb.addEvent (juce::MidiMessage::noteOn (1, 48, 0.8f), 0); mb.addEvent (juce::MidiMessage::noteOn (1, 55, 0.8f), 0); }
+            if (b == 40) mb.addEvent (juce::MidiMessage::allNotesOff (1), 0);
+            blk.clear(); proc.processBlock (blk, mb);
+            for (int c = 0; c < 2; ++c) for (int k = 0; k < 512; ++k) { const float v = blk.getSample (c, k); fin = fin && std::isfinite (v); pk = juce::jmax (pk, std::abs (v)); }
+        }
+        if (! fin || pk < 0.02f || pk > 1.5f) bad.add ("built-in sound " + proc.presetName + ": peak " + juce::String (pk, 3));
+        if (juce::SystemStats::getEnvironmentVariable ("PARTIALS_LEVELS", {}).isNotEmpty()) std::cout << "        " << proc.presetName << ": two notes peak " << juce::String (pk, 3) << std::endl;
+        juce::MidiBuffer off; off.addEvent (juce::MidiMessage::allSoundOff (1), 0); for (int b = 0; b < 400; ++b) { blk.clear(); proc.processBlock (blk, off); off.clear(); }
+    }
+    if (proc.presetName != "Default") bad.add ("the last built-in sound loaded should be Default");
+    for (int i = 0; i < 9; ++i) ed->chorusPreset (i);
+    for (int i = 0; i < 6; ++i) ed->reverbPreset (i);
+    ed->factory (0);
+    ed->modMenuResult (2, 10); if (proc.learnMod.load() != 2) bad.add ("MIDI learn did not arm");
+    {
+        juce::AudioBuffer<float> blk (2, 256); juce::MidiBuffer mb; mb.addEvent (juce::MidiMessage::controllerEvent (1, 21, 100), 0); blk.clear(); proc.processBlock (blk, mb);
+        if (proc.modCC[2].load() != 21 || proc.learnMod.load() != -1) bad.add ("MIDI learn did not take controller 21 for Z");
+        ed->modMenuResult (2, 11); if (proc.modCC[2].load() != -1) bad.add ("forgetting a controller did not work");
+        ed->modMenuResult (0, 12); if (proc.modCC[0].load() != 1 || proc.modCC[1].load() != 74 || proc.modCC[2].load() != 71) bad.add ("default controllers not restored");
+    }
+    // keyboard hidden and shown, the display wide, narrow and off: the window keeps its proportions
+    ed->showKeys = false; ed->applySize (0.75f);
+    if (std::abs ((double) ed->getWidth() / ed->getHeight() - (double) PartialsEditor::BW / PartialsEditor::BHN) > 0.01) bad.add ("hiding the keyboard should shorten the window");
+    ed->showKeys = true; ed->applySize (0.75f);
+    for (int m = 0; m < 3; ++m) { ed->vizMode = m; ed->layoutViz(); ed->timerCallback(); }
+    ed->vizMode = 0; ed->layoutViz();
     // all four tabs, both parts, a shape
     for (int t = 0; t < 4; ++t) { ed->tab = t; ed->layoutPages(); }
     ed->setPart (1); ed->select (true, SH::GlobalEQ, 0); ed->select (false, TG::LfoSpeed, 0);
