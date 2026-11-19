@@ -87,7 +87,7 @@ int main (int argc, char** argv)
 {
     std::setvbuf (stdout, nullptr, _IONBF, 0);   // (every line out as it happens, so a crash shows where)
     juce::ScopedJuceInitialiser_GUI gui;
-    FreakiePieProcessor::rememberLastState = false;
+    // (the twin never reads or writes a remembered patch: every instance starts from the defaults)
     const juce::File outDir = argc > 1 ? juce::File (argv[1]) : juce::File::getCurrentWorkingDirectory();
 
     std::printf ("spherical harmonics (ACN / SN3D)\n");

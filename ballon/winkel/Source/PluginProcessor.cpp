@@ -239,6 +239,10 @@ const String FreakiePieProcessor::getProgramName (int i)
 void FreakiePieProcessor::setCurrentProgram (int index)
 {
     if (! isPositiveAndBelow (index, getNumPrograms())) return;
+    // a VST2 host (REAPER) restores a session as "set the chunk, then select the saved program": that second step
+    // must not put the preset's own values over the ones just restored (as in the rest of faltung)
+    if (index == currentPreset.load() && stateLoadedMs != 0 && Time::getMillisecondCounter() - stateLoadedMs < 1500) { stateLoadedMs = 0; return; }
+    stateLoadedMs = 0;
     const auto& pr = presets::list()[(size_t) index];
     auto set = [this] (const String& id, float real)
     {
@@ -719,7 +723,10 @@ void FreakiePieProcessor::setStateInformation (const void* data, int sizeInBytes
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
+        {
             loadStateXml (*xml);
+            stateLoadedMs = jmax<uint32> (1, Time::getMillisecondCounter());   // (see setCurrentProgram)
+        }
 }
 
 void FreakiePieProcessor::loadStateXml (const XmlElement& xml)

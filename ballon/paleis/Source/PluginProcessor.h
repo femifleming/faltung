@@ -168,6 +168,7 @@ public:
     std::atomic<float> rainAmount { 0.0f }, heliumAmount { 0.0f }; // how far each filter has eased in (0..1)
     fp::ChalkShape chalk;      // the grain shape drawn on the chalkboard
     fp::EqCurve eq;            // the master EQ drawn on the chalkboard
+    juce::uint32 stateLoadedMs = 0;          // when a state was last restored (see setCurrentProgram)
     std::atomic<int> currentPreset { 0 };   // which preset was last loaded (the editor shows its picture)
     fp::StoreFX storeFX;       // the effects bought from the balloon store
     fp::BalloonFX balloonFX;   // pop balloons + sound balloons (the editor drives it through its atomics)

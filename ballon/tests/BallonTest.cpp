@@ -529,6 +529,18 @@ static void selfChecks()
         auto nothing = [] (auto&, double, int) {};
         const auto d = compare (render (b, 48000.0, 6.0, main, nothing), render (c, 48000.0, 6.0, main, nothing));
         check (d.finite && d.peakD == 0.0 && d.rmsA > 1.0e-4, "a session reopened plays the same samples as before it was closed" + String::formatted (" (%.1f dBFS rms)", db (d.rmsA)));
+        {
+            // a VST2 host (REAPER) reopens a session as "set the chunk, then select the saved program": the values
+            // just restored stay (the originals put the preset back over them)
+            New h; h.setStateInformation (mb.getData(), (int) mb.getSize());
+            h.setCurrentProgram (h.getCurrentProgram());
+            int kept = 0; for (int i = 0; i < a.getParameters().size(); ++i) kept += a.getParameters()[i]->getValue() == h.getParameters()[i]->getValue() ? 1 : 0;
+            check (kept == n, "a host that restores a session and then selects its program keeps the restored values (" + String (kept) + " of " + String (n) + ")");
+            h.setCurrentProgram (h.getCurrentProgram());
+            int preset = 0; New fresh; fresh.setCurrentProgram (h.getCurrentProgram());
+            for (int i = 0; i < n; ++i) preset += fresh.getParameters()[i]->getValue() == h.getParameters()[i]->getValue() ? 1 : 0;
+            check (preset == n, "and picking the program again after that loads it (" + String (preset) + " of " + String (n) + ")");
+        }
         // the original's state does not load (its own tag), and garbage is ignored
         Old orig; MemoryBlock ob; orig.getStateInformation (ob);
         New e; std::vector<float> before; for (auto* prm : e.getParameters()) before.push_back (prm->getValue());

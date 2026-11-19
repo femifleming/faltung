@@ -375,6 +375,7 @@ chapter for everything above.</p>
 <p>ballonpaleis is the same shop inside a sphere, and an Ambisonics encoder: its output is 1st to 7th order (4, 9, 16 … 64 channels, ACN order, SN3D
 normalisation), 3rd order by default. Put an Ambisonics decoder after it at the same order (for example the IEM AllRADecoder for loudspeakers or the
 BinauralDecoder for headphones). On a stereo track the first two channels of the scene come out and the map says the track is too small.</p>
+<p>Formats and channels, as measured in REAPER: the VST2 gives all 64 channels (7th order) on a track that has them; the Audio Unit publishes up to 16 (3rd order); the VST3 opens there as stereo in, stereo out, as the original Balloon Palace does, so for Ambisonics in REAPER use the VST2 (or the Audio Unit).</p>
 <img class="shot" src="img/ballonpaleis.png" alt="ballonpaleis">
 <table class="params"><tr><th>part</th><th>what it does</th></tr>
 <tr><td class="n">the sphere</td><td>drag the empty sphere to turn the view, scroll to zoom, double-click to set it back. The view never changes the sound.</td></tr>
