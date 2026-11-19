@@ -22,8 +22,8 @@ def chapter(sh=shot):
     return f'''<section class="page" id="sndstudio"><h2>sndstudio</h2>
 <p class="lead">A whole studio made from the suite — tracks, a deep step sequencer, scenes and a song, a timeline with audio clips
 and automation, modulators on any control, sends and returns, a mixer with up to 128 output channels so every track can be
-recorded in Ableton on its own channel, plug-in hosting, recording, resampling, stems export. As a standalone app and as a
-VST3 / AU / VST2 plug-in.</p>
+sent to another program on its own channel, hosting of your plug-ins, recording of audio and of notes into the steps, undo, autosave,
+export of mixes, stems and multichannel files. A standalone application (no plug-in versions).</p>
 {sh('sndstudio-0')}
 <p>Its own manual, <b>sndstudio Manual.pdf</b>, is in the download next to this one. In short: <b>session</b> is the scene grid
 (click a cell to launch a pattern, keys 1–8 launch scenes), <b>arrange</b> the timeline (pattern clips, audio clips dropped from the
@@ -33,8 +33,8 @@ humanise, markov …) and the track's devices, <b>mix</b> the strips with meters
 <b>mod</b> the modulators, macros and midi maps, <b>browse</b> the devices, plug-ins (scan), files and templates.</p>
 <p>Right-click any control for <i>map a modulator</i>, <i>add an automation lane</i>, <i>midi learn</i> and <i>macro</i>.
 In <b>produce</b> mode everything is mixed to the stereo master (with ms0 on it if you want); switch to <b>multi-out</b> and
-<i>assign all outputs</i> to put every track and return on its own channel pair — in Live, add the plug-in, enable its output
-buses on audio tracks and record; from the standalone, use a 128-channel virtual device (BlackHole 128ch) as the output.</p></section>'''
+<i>assign all outputs</i> to put every track and return on its own channel pair of the audio interface you chose — or of a
+loopback device such as BlackHole, which another program records from.</p></section>'''
 
 doc = []
 add = doc.append
@@ -50,25 +50,27 @@ add(f'''<section class="cover">{chevrons('#8ec3e6')}
 add('''<section class="page"><h2>contents</h2><ol class="toc">
 <li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
-<li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out, into ableton</a></li>
-<li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#artists">to work like …</a></li></ol>
+<li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out</a></li>
+<li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll</a></li><li><a href="#artists">to work like …</a></li></ol>
 <h2 id="intro">what it is</h2>
 <p class="lead">sndstudio is a studio for microhouse, rominimal, dub techno and the music around them, built out of the faltung suite:
 its drum engines, bass synth, effects and mastering bus are the devices, and around them a step sequencer that goes further than kt1,
 scenes and a song, a timeline, automation on everything, modulators on everything, sends and returns, a mixer whose channels
-can leave through 128 outputs, hosted VST3 / AU plug-ins, audio tracks, recording, resampling and stems.</p>
+can leave through 128 outputs, hosted VST3 / AU plug-ins, audio tracks, recording of audio and of notes, resampling and stems.
+It is not a copy of other daws: there is no piano roll, notes go into steps — played in, typed, drawn as a contour on the pitch lane,
+grown and shrunk as additive figures, sieved and scattered — and everything else serves producing a finished track.</p>
 <p>It comes twice: <b>faltung sndstudio</b> (the microhouse devices and templates) and <b>faltung deep sndstudio</b> (the deep house
-twin, in faltung's dark mode). Each is a standalone app and a plug-in. A project (<code>.fstudio</code>) opens in both forms.</p>
+twin, in faltung's dark mode). Both are standalone applications only: there are no VST3 / AU / VST2 versions. Projects from earlier versions open as they were.</p>
 <p>Two ways of working, switched in the header or the mixer: <b>produce</b> — everything is mixed inside, to a stereo master with the
 ms0 chain on it, and exported as a mastered wav and as stems; <b>multi-out</b> — every track, return and the master leave on their own
-output channels (64 stereo buses as a plug-in; any multichannel device in the standalone), and mixing and mastering happen in Ableton.</p>
+output channels of the interface you chose (up to 128), or of a loopback device such as BlackHole, so another program can record them and the mixing and mastering happen there.</p>
 <h3>the pages</h3>
 <table class="params"><tr><th>page</th><th>what is there</th></tr>
 <tr><td class="n">session</td><td>tracks across, scenes down; every cell is a pattern of that track. Click a cell to launch it (quantised to the bar), the triangle launches the whole scene, keys 1–8 too.</td></tr>
 <tr><td class="n">arrange</td><td>the timeline: pattern clips and audio clips per track, markers, the loop region, the playhead; under it the automation lanes of the selected track; to the right the song (scenes in order with bar counts).</td></tr>
 <tr><td class="n">seq</td><td>the selected track: its pattern (1–64), length, speed, swing, shift, chance, root note, clock, chain; the 16-step grid (pages for longer patterns); the selected step's velocity, pitch, chance, ratchet, micro, length, condition, slide, slice and locks; the tools; the track's devices with every parameter as a slider.</td></tr>
 <tr><td class="n">mix</td><td>strips for the tracks, returns and master: meters (one bar per channel), level, pan, eight sends, mute / solo / rec, output channels, width, to master, routes, input, key. The produce / multi-out switch, assign all outputs, the master width and the master chain bypass.</td></tr>
-<tr><td class="n">mod</td><td>the modulators of the selected track (click one to edit it), the eight macros (named, seen by the host), the midi maps and midi learn.</td></tr>
+<tr><td class="n">mod</td><td>the modulators of the selected track (click one to edit it), the eight macros (named), the midi maps and midi learn.</td></tr>
 <tr><td class="n">browse</td><td>every device (faltung, studio, plug-ins) to add to the selected track, a return or the master; scan plug-ins; a file browser whose files drag onto the timeline or onto a sampler; new from template.</td></tr></table></section>''')
 
 add('''<section class="page"><h2 id="start">first ten minutes</h2>
@@ -79,8 +81,9 @@ two returns (dub delay, room), a filter / glue / ms0 chain on the master, eight 
 <li>Right-click the dub return's <i>feedback</i> slider (mix page → select the return → seq page) and choose <b>map a modulator</b>: a slow random with slew. The orange band under the slider is where it moves.</li>
 <li>Switch the header to <b>song</b>: the eight scenes play in order, 8 bars each. Open <b>arrange</b> to see them as clips; drag an audio file from the Finder onto a lane.</li>
 <li>Press <b>write</b>, play, and move anything: automation lanes appear under the track in arrange.</li>
-<li><b>save</b> (header) writes a <code>.fstudio</code> next to its audio folder. <b>file → export master</b> renders a 24-bit wav through the master chain with a true-peak limiter; <b>export stems</b> one wav per track.</li>
-<li>For Ableton: <b>mix → multi-out → assign all outputs</b>. As a plug-in in Live, enable the buses on audio tracks (the plug-in offers "out 3-4" … "out 127-128"); from the standalone, choose a 128-channel device (BlackHole 128ch) in <b>audio</b>.</li></ol>
+<li><b>save</b> (header, cmd+s) writes a <code>.fstudio</code> next to its audio folder. <b>file → export audio</b> (cmd+e) renders the mix, stems, chosen tracks or a time selection as wav, aiff or flac.</li>
+<li>Made a mistake? <b>cmd+z</b> undoes it, <b>cmd+shift+z</b> brings it back.</li>
+<li>To feed another program: <b>mix → multi-out → assign all outputs</b>, and in <b>audio</b> choose an interface with enough outputs, or a loopback device such as BlackHole.</li></ol>
 <h2 id="session">session</h2>
 ''' + shot('sndstudio-0') + '''
 <p>Tracks are columns, scenes rows. A cell shows the pattern that scene launches on that track (1–64), a square for <i>stop</i>, nothing for <i>keep playing</i>.
@@ -156,15 +159,15 @@ pulse with width; phase, skew, retrigger on each hit), <b>random gate</b> (on / 
 random), <b>envelope</b> (attack / decay on each hit), <b>follower</b> (the track's own level), <b>steps</b> (16 values on a division), <b>macro</b>, <b>velocity</b>, <b>per hit</b>
 (a random value on each hit), <b>midi cc</b>, <b>chaos</b> (a logistic map). Rates are <b>sync</b> (divisions from 1/64 to 16 bars) or <b>free</b> (0.01–40 hz) — flipping the
 switch keeps the current rate. <b>depth</b> ±100%, <b>polarity</b> bipolar (around the base) / up / down, <b>slew</b> smooths every source. Several modulators on one parameter add up.</p>
-<p><b>Macros</b>: eight sliders the host sees as parameters; name them; map a parameter to one from its right-click (the macro sets it between the value it had and the top).
+<p><b>Macros</b>: eight sliders; name them; map a parameter to one from its right-click (the macro sets it between the value it had and the top).
 <b>Midi</b>: right-click a control → <i>midi learn</i>, move a controller; the map is listed here (right-click to remove). Controllers also reach modulators of source <i>midi cc</i>.</p>
 <h2 id="browse">browse</h2>
 ''' + shot('sndstudio-5') + '''
 <p>Devices by family: the faltung (or faltung deep) instruments and effects, the studio devices, and every plug-in the scan found. Click one to add it to the selected
-track (instruments replace the instrument), right-click for a return, the master or a new track. <b>scan plug-ins</b> looks in the usual VST3 / AU folders (a plug-in that
-crashes the scan is skipped next time). Files: choose a folder, drag files onto the arrangement or onto an instrument track with a sampler; double-click a file to put it on
+track (instruments replace the instrument), right-click for a return, the master or a new track. <b>scan plug-ins</b> looks in the usual VST3 / AU folders; every file is opened in a separate
+process, so a plug-in that crashes or hangs while it is scanned cannot take sndstudio down — it is put on a blacklist and skipped from then on. Files: choose a folder, drag files onto the arrangement or onto an instrument track with a sampler; double-click a file to put it on
 the selected audio track at the playhead (or into the selected track's sampler). <b>new from template</b>: empty, microhouse / deep house starter, dub techno / dub house,
-long form (an eight-minute scaffold), multi-out to ableton.</p></section>''')
+long form (an eight-minute scaffold), multi-out (every track on its own outputs).</p></section>''')
 
 add('''<section class="page"><h2 id="devices">the studio devices</h2>
 <p>Next to every faltung engine and effect, sndstudio adds its own devices. All have stable parameter ids (automation and locks keep working across versions),
@@ -188,15 +191,13 @@ have a test in <code>sndstudioTest</code>.</p>
 <tr><td class="n">data</td><td>bursts of bits at a bit rate (bytes → pulses), from the note number or random on each hit, density, tone.</td></tr>
 <tr><td class="n">fm perc</td><td>four-operator fm percussion: ratios, levels, decays, three algorithms, feedback, pitch and sweep, noise, drive, key tracking.</td></tr>
 <tr><td class="n">sampler</td><td>one-shots, loops (while held) and <b>slices</b>: a sample cut on a grid or on its transients into up to 64 slices that steps address with their <i>slice</i> (or notes from C1); root, pitch, start / end, filter, adsr, gain, choke, reverse, velocity. Drop a file on it in the browser or on its track in the arrangement.</td></tr></table>
-<h2 id="modes">produce and multi-out, into ableton</h2>
+<h2 id="modes">produce and multi-out</h2>
 <p><b>produce</b>: every track and return goes to the master; the master's chain (filter → glue → ms0 in the template; ms0 is bypassed until you want it, its <i>auto</i>
-listens to the track and sets a starting point) ends on the main output. Export the master as a wav (24-bit dithered or 32-bit float, true-peak limited at -1 dbtp if you like)
-and the stems.</p>
+listens to the track and sets a starting point) ends on the main output. Export the mix (and stems) from <b>file → export audio</b>.</p>
 <p><b>multi-out</b>: tracks and returns with an output channel go there instead of (or as well as, with <i>to master</i>) the master. <b>assign all outputs</b> puts the master on
-channels 1 … w, then every track and return on consecutive channels, to-master off. As a plug-in, Live shows the buses "out 3-4" … "out 127-128": make an audio track per
-pair with the plug-in's bus as its input and record. A pair that is not enabled in Live folds back into the main output so nothing is lost. The plug-in follows Live's tempo and
-position. From the standalone, choose a 128-channel virtual device (BlackHole 128ch) as the output in <b>audio</b>, set the same device as the input of Live's tracks, and switch
-<b>master chain bypass</b> on when the mastering happens there. The project remembers the mode.</p></section>''')
+channels 1 … w, then every track and return on consecutive channels, to-master off. The channels are those of the audio interface chosen in <b>audio</b> (up to 128):
+to separate outputs of a mixing desk, or to a loopback device such as BlackHole, from which another program (Ableton, Logic, REAPER …) records each pair on its own track.
+A channel the device does not have folds back into the master so nothing is lost. Switch <b>master chain bypass</b> on when the mastering happens elsewhere.<b>master chain bypass</b> on when the mastering happens there. The project remembers the mode.</p></section>''')
 
 add('''<section class="page"><h2 id="spatial">spatial audio and ambisonics</h2>
 <p>A track's <b>width</b> is the width of its chain and its output, 1 … 64 channels, changed any time; clips and instruments feed channels 1–2 of it and the devices negotiate their
@@ -212,32 +213,37 @@ than the incoming width reads the first ones; one with fewer outputs than the tr
 the destination's arrival time), so an encoder with latency still lands with everything else. Hosted plug-ins get the bus layout that matches (stereo in, 16 out for an encoder;
 16 in, 2 out for a decoder; ambisonic layouts for 4, 9, 16, 25, 36, 49, 64 channels, discrete otherwise).</p>
 <h2 id="audio">audio settings and recording</h2>
-<p><b>audio</b> (header, standalone) opens the device page: input and output device, sample rate, buffer size, which channels are enabled (up to 128 each way), midi inputs.
+<p><b>audio</b> (header; also the app's <i>audio</i> menu) opens the device page: input and output device, sample rate, buffer size, which channels are enabled (up to 128 each way), the midi inputs
+(your keyboards; on the first start every connected one is on) and a midi clock output.
 Audio tracks pick their <b>in</b>: a mono or stereo pair of device inputs, the master (resampling) or any track; <b>monitor</b> off / in / auto (when armed) passes the input through
 the track's inserts. Arm the track (<b>rec</b>), press <b>rec</b> in the header (or <b>r</b>) and play: a clip is written as 32-bit wav into the project's audio folder, placed at the
 transport position with the device's input latency compensated; with the loop on and <b>punch</b>, only inside the loop. Stop ends the take; the clip appears on the timeline and
 plays back sample aligned. Recording from the master or a track while playing is resampling; <b>render project to a new track</b> (file menu / browse) does the same offline for the
-whole arrangement or the loop, 32-bit float, at bar 1 or the loop start, and equals the master export sample for sample. As a plug-in, recording takes the plug-in's own output only
-(hosts do not give instrument plug-ins audio inputs).</p>
+whole arrangement or the loop, 32-bit float, at bar 1 or the loop start, and equals the master export sample for sample.
+Notes from a midi keyboard are recorded into the steps of armed instrument tracks: see <a href="#daw">recording notes</a>.</p>
 <h2 id="export">export and resampling</h2>
 <table class="params"><tr><th>what</th><th>how</th></tr>
-<tr><td class="n">export master</td><td>file menu: a wav through the master chain at the project sample rate, 24-bit with tpdf dither or 32-bit float, optionally true-peak limited at the ceiling; one bar of tail.</td></tr>
-<tr><td class="n">export stems</td><td>one wav per track (post fader), per used return and the master, into a folder; the same options.</td></tr>
+<tr><td class="n">export audio</td><td>file menu, cmd+e: <i>what</i> — the mix through the master chain, the mix before the master chain, stems of every track, used return and the master, or stems of the tracks you number;
+<i>which bars</i> — the whole project, the loop (the time selection: drag it on the ruler), or bars you type; <i>file</i> — wav, aiff or flac; 16 bit, 24 bit or 32-bit float (wav);
+the project's rate or 44.1 / 48 / 88.2 / 96 khz; normalised to -1, -0.3 or 0 dbfs or not; tpdf dither below 32 bit; a true-peak limiter at -1 dbtp for the mix. A master wider than stereo
+(a 16-, 24- or 64-channel spatial mix) is written as one file with that many channels; stems keep each track's width.</td></tr>
 <tr><td class="n">export midi</td><td>the sequencer as a midi file, one track per track, conditions and chance resolved.</td></tr>
 <tr><td class="n">resample</td><td>an audio track with <i>in</i> = the master or a track records what plays; <i>render project to a new track</i> renders offline; a track's output can be bounced to a new audio track from its strip.</td></tr></table>
 <h2 id="keys">keys</h2>
 <table class="params"><tr><th>key</th><th>does</th></tr>
 <tr><td class="n">space</td><td>play / stop</td></tr><tr><td class="n">1–8</td><td>launch scene 1–8</td></tr><tr><td class="n">shift 1–8</td><td>launch pattern 1–8 on the selected track</td></tr>
 <tr><td class="n">m · s</td><td>mute / solo the selected track</td></tr><tr><td class="n">f</td><td>fill, while held</td></tr><tr><td class="n">r</td><td>record</td></tr><tr><td class="n">l</td><td>loop</td></tr>
-<tr><td class="n">↑ ↓</td><td>select the previous / next track</td></tr><tr><td class="n">return</td><td>stop the selected track at the next bar</td></tr><tr><td class="n">tab</td><td>next page</td></tr></table>
+<tr><td class="n">↑ ↓</td><td>select the previous / next track</td></tr><tr><td class="n">return</td><td>stop the selected track at the next bar</td></tr><tr><td class="n">tab</td><td>next page</td></tr>
+<tr><td class="n">cmd+z · cmd+shift+z</td><td>undo · redo (cmd+y too)</td></tr><tr><td class="n">cmd+s · cmd+shift+s</td><td>save · save as</td></tr><tr><td class="n">cmd+o · cmd+n</td><td>open · a new empty project</td></tr><tr><td class="n">cmd+e</td><td>export audio</td></tr></table>
 <h2 id="tech">technical notes</h2>
-<ul><li>One engine for the app and the plug-in. The audio thread never allocates; structure changes happen on the message thread under a spin lock the audio thread only tries.</li>
+<ul><li>One engine, driven by the app's own audio callback (up to 128 outputs and 128 inputs). The audio thread never allocates; structure changes happen on the message thread under a spin lock the audio thread only tries.</li>
 <li>Every block is split at bar lines, so launches, scenes and clips start exactly on the beat; hits are sample accurate; the suite's engines read their parameters at the hit.</li>
-<li>Latency: tracks are aligned to the longest chain, returns to theirs, routes to their destination's arrival; the plug-in reports the total. Direct outputs wait for the returns and the master so all 128 channels line up.</li>
+<li>Latency: tracks are aligned to the longest chain, returns to theirs, routes to their destination's arrival; the header shows the total. Direct outputs wait for the returns and the master so all 128 channels line up.</li>
 <li>Devices: the suite's processors run in-process with their own presets and state; hosted VST3 / AU get stereo or multichannel layouts; a base value per parameter is what automation, modulators, macros and locks act on; the sum is written to the real parameter once per block when it changed.</li>
 <li>Audio clips: cubic interpolation; the stretcher is a wsola (2048-sample grains, half overlap, phase-aligned by cross-correlation) with transients pinned to their time.</li>
-<li>Exports: dither only at 24 bit, a true-peak limiter (4× interpolated detection) when asked, no processing otherwise.</li>
-<li>Projects are xml; audio files are referenced relative to the project when they sit next to it; autosave every two minutes while there are changes.</li></ul>
+<li>Exports: rendered to 32-bit float first, then written in a second pass (resampled, normalised, dithered below 32 bit) so every option is exact; a true-peak limiter (4× interpolated detection) when asked.</li>
+<li>Projects are xml; audio files are referenced relative to the project when they sit next to it; autosave every minute while there are changes.</li>
+<li>Undo keeps the project as it was before each edit (up to 200 steps); a drag is one step, a recorded take is one step.</li></ul>
 </section>''')
 
 # ------------------------------------------------------------------------------------------------
@@ -347,8 +353,8 @@ for _d in _P['devices']: _ref.append(_devtable(_d))
 _ref.append('</section>')
 add(''.join(_ref))
 
-add('''<section class="page"><h2 id="blackhole">from the standalone into Ableton (BlackHole)</h2>
-<p>As a plug-in inside Live, sndstudio's 64 stereo buses reach Live directly (the modes chapter). From the standalone app, the channels travel through a virtual audio device:</p>
+add('''<section class="page"><h2 id="blackhole">into another program (BlackHole)</h2>
+<p>sndstudio has no plug-in versions: to record its tracks separately in another program, the channels travel through a virtual audio device:</p>
 <ol><li>Install BlackHole (<code>brew install --cask blackhole-64ch</code>, or the 128-channel build from existential.audio). It appears as an audio device with that many inputs and outputs.</li>
 <li>In sndstudio: <b>audio</b> → output device <i>BlackHole 64ch</i> (or 128ch), the same sample rate as Live, all output channels enabled.</li>
 <li><b>mix → multi-out → assign all outputs</b>. The master leaves on 1 … w (its width), then every track and return on its own channels in order; the strips show which.</li>
@@ -358,15 +364,62 @@ add('''<section class="page"><h2 id="blackhole">from the standalone into Ableton
 <p>A 16- or 64-channel track (spatial work) uses consecutive channels; make a Live track per channel, or record them as one multichannel file in a host that takes them.</p>
 
 <h2 id="install">installing</h2>
-<table class="params"><tr><th>format</th><th>macOS</th></tr>
-<tr><td class="n">app</td><td>/Applications/faltung/faltung sndstudio.app (deep: faltung deep sndstudio.app)</td></tr>
-<tr><td class="n">VST3</td><td>~/Library/Audio/Plug-Ins/VST3/faltung sndstudio.vst3</td></tr>
-<tr><td class="n">Audio Unit</td><td>~/Library/Audio/Plug-Ins/Components/faltung sndstudio.component (an instrument, FreakiePie)</td></tr>
-<tr><td class="n">VST2</td><td>~/Library/Audio/Plug-Ins/VST/faltung sndstudio.vst</td></tr></table>
+<table class="params"><tr><th>what</th><th>macOS</th></tr>
+<tr><td class="n">app</td><td>/Applications/faltung/faltung sndstudio.app (deep: /Applications/faltung deep/faltung deep sndstudio.app)</td></tr></table>
 <p>With Homebrew: <code>brew tap femifleming/tap &amp;&amp; brew install --cask femifleming/tap/faltung</code> (deep: <code>…/faltung-deep</code>); or from the release zips
-(Windows: the .exe app and the VST3 / VST2 into the usual folders; Linux: the app, the VST3, the LV2 and the VST2 .so). In Live: <i>Settings → Plug-Ins</i>, VST3 / Audio Units on, <i>Rescan</i>;
-it is under FreakiePie. Projects (<code>.fstudio</code>) and their audio folders go to <i>Documents/faltung sndstudio</i> by default; settings and the plug-in scan list live in the
+(Windows: the .exe; Linux: the program). sndstudio is an application only; older installs of its plug-in versions can be deleted. Projects (<code>.fstudio</code>) and their audio folders go to <i>Documents/faltung sndstudio</i> by default; settings and the plug-in scan list live in the
 user's application data folder.</p></section>''')
+
+
+add('''<section class="page"><h2 id="daw">a new kind of daw: what it does for production</h2>
+<p class="lead">sndstudio is built from the techniques of the artists it was shaped around, not after other daws. What a finished production needs is all here; what is
+only for playing live, and the piano roll, are left out on purpose.</p>
+<h3>undo and redo</h3><p>Every edit is a step: steps, patterns, clips, lanes, devices, routes, a fader or a knob moved (a drag is one step), a recorded take. <b>cmd+z</b> goes back,
+<b>cmd+shift+z</b> (or cmd+y) forward; the <i>edit</i> menu shows how many steps there are. The transport keeps playing while you undo. Opening a project or starting a new one starts a new history.</p>
+<h3>autosave and crash recovery</h3><p>While there are unsaved changes the project is written to an autosave every minute (a whole file or nothing). If sndstudio did not close properly
+last time, it offers the autosave at the next start; it opens unsaved, with the name of the project it came from: save it to keep it. <i>file → open the autosave</i> does the same by hand.
+Quitting with unsaved changes asks whether to save.</p>
+<h3>the cpu meter</h3><p>In the bottom right corner: the engine's load (the time a block takes against the time it lasts), a tick at the highest load since the last reset, and the number
+of overruns (blocks that took longer than they last: the interface would drop out). Click it to reset. A bigger buffer in <b>audio</b> gives the engine more room.</p>
+''' + shot('sndstudio-cpu', 'shot') + '''
+<h3>recording notes into the steps</h3><p>Arm an instrument track (<b>rec</b> on its strip) and press <b>rec</b> in the header (or <b>r</b>). From a stop, the <b>count-in</b> clicks one or two bars first
+(the link next to the pages cycles none / 1 / 2) and the transport starts on the downbeat, to the sample. What you play on a midi keyboard goes into the pattern that is playing: each note on
+the nearest step, its pitch counted from the track's root (or its nearest degree, with a scale), its velocity, how early or late you played it as the step's micro-timing, and how long you held it
+as its length. The pattern loops, so every pass can add notes (overdub); with the loop and <b>punch</b> on, only inside the loop. A take is one undo step. <b>click</b> switches the metronome on for
+playing and recording.</p>
+<h3>your plug-ins</h3><p><b>browse → scan plug-ins</b> finds the VST3 and Audio Unit plug-ins in the usual folders; each is opened in a process of its own, so one that crashes is blacklisted and the
+scan goes on. Instruments go on an instrument track, effects on any chain — tracks, returns, the master, at any width (an encoder 2 → 16, a decoder 16 → 24). <b>window</b> opens the plug-in's own
+editor. Its parameters take automation lanes, modulators, macros and step locks like any other; its state is saved with the project; its latency is compensated with everything else.
+Tested with Quell, ConvoSolution, faltung ms0 (9106 samples of latency) and EX Poly FM as an instrument.</p>
+<h3>export</h3><p>See <a href="#export">export and resampling</a>: the mix, stems, the tracks you choose, a time selection, multichannel files, wav / aiff / flac, 16 / 24 / 32-bit float, any common rate,
+normalised, dithered.</p>
+<h3>multi-out</h3><p>Every track, return and the master can leave on its own outputs of the interface (up to 128 channels) — to a desk, or through a loopback device into another program.
+See <a href="#modes">produce and multi-out</a>.</p></section>''')
+
+add('''<section class="page"><h2 id="notes">notes without a piano roll</h2>
+<p class="lead">Notes are steps. These are the ways to make them, each from a way of working the studio was shaped around.</p>
+<h3>the pitch lane, scales and tunings</h3><p>Under the step grid in <b>seq</b>: every step's pitch as a mark. Click in the lane to set a step's pitch; drag across it to draw a contour —
+each step you pass takes the height under the mouse, snapped to the track's scale. <b>scale</b> (track settings on the left): <i>semitones</i> (as before), thirteen built-in scales (major,
+minor and the modes, harmonic minor, the pentatonics, whole tone, just major in 5-limit ratios, a 7-limit scale after the well-tuned piano, the harmonic series 8–15), or <i>a scala file</i>:
+any <code>.scl</code> tuning — the archives of tunings, Colundi sets among them — with its own period. With a scale, a step's pitch is a degree (0 the root, the scale's size an octave up,
+negative below). Degrees between the keys reach the instrument as a note and a pitch bend (±2 semitones; <b>tone</b>, the <b>sampler</b>, wb1 and most plug-ins follow it; one bend per track
+at a time, so chords on a microtonal step share it). Notes played in while recording land on their nearest degree.</p>
+<h3>typing a pattern</h3><p><b>type</b> (second row of tools): one word per step. A number is a note (a degree with a scale, semitones without), <b>x</b> the root, <b>.</b> or <b>-</b> a rest,
+<b>_</b> holds the note before one step longer. After a note: <b>!</b> accent, <b>~</b> soft, <b>?</b> half the chance, <b>*3</b> a ratchet of three, <b>'</b> an octave up, <b>,</b> an octave down.
+<code>0 . 2 _ 4! . 7? . 0' . 4~ 2*3</code> is twelve steps.</p>
+<h3>additive and subtractive figures</h3><p><b>additive</b>: the pattern shown is the cell. <i>additive</i> writes its figures into the next patterns — the first note, then the first two, the first
+three … the whole cell — and chains them; <i>subtractive</i> goes from the whole cell down to one note; <i>both</i> grows and shrinks. <i>repeats</i> plays each figure 1–8 times. A note's
+unit is the note and the rests after it, so the figures keep the cell's rhythm.</p>
+<h3>parts out of phase</h3><p><b>phase</b> (track settings): this part runs a little faster or slower (±5%) than the others, so the same pattern on two tracks drifts apart bar by bar
+and, much later, comes back together.</p>
+<h3>chance, euclidean and ratio rhythms, mutate</h3><p>Every step has a <b>chance</b> (alt-click a step, or the slider) and a <b>condition</b> (1:2 … 8:8, fill, first, prev); the track a
+<b>probability</b> on top. <b>euclid</b> spreads hits evenly (hits over the length, rotated); <b>ratios</b> gives every step its own time (1 1 2/3 2/3 2/3 3/2); <b>accelerate</b>, <b>strict</b>;
+<b>mutate</b> nudges a few steps at a time, <b>evolve</b> lets the pattern drift on every pass and <b>freeze</b> keeps what it drifted to.</p>
+<h3>sieves and clouds</h3><p><b>sieve</b> takes the steps from residue classes (<code>3@0 | 4@1</code>, &amp;, !), <b>sieve pitch</b> the pitches, <b>cloud</b> scatters events with exponential gaps and a
+pitch range: stochastic note events after Xenakis.</p>
+<h3>micro-loops</h3><p>The <b>sampler</b>'s <i>micro-loop</i>: from where the note starts, a sliver of the sample (in ms, down to a few hundredths, or a 16th to a 256th note at the tempo) repeats
+for as long as the note lasts — a click becomes a pulse, a fragment of a record a tone. Its <i>cutoff</i> and <i>resonance</i> and a dub delay on a send do the rest.</p>
+''' + shot('sndstudio-2', 'shot') + '''</section>''')
 
 # ---- the artist appendix: one how-to per artist
 _artists = [
@@ -402,8 +455,8 @@ _artists = [
   '<b>vinyl</b> and <b>throw</b> on the track; a slow <i>slewed random</i> or drift lfo on pitch; resample to audio and split / duplicate clips for stutters.'),
  ('Todd Edwards', 'Syllables chopped, pitched and stacked.',
   'A sampler in slices mode on a vocal; one slice per step with pitch; <i>chord</i> on some steps; swing from sw6 or the per-track swing; start from <i>two-step (garage, 132)</i>.'),
- ('Oval (Markus Popp)', 'Skipping CDs: fragments that repeat and jump.',
-  'Put <b>skip</b> on a track with a sample; raise <i>intensity</i>; fragments on the grid or in ms; steps address places in the file. Loop and split audio clips on the timeline. openprocess / openfield, if installed, are in the device list.'),
+ ('Oval (Markus Popp)', 'Skipping CDs: fragments that repeat and jump; tiny files placed in time.',
+  'Put <b>skip</b> on a track with a sample; raise <i>intensity</i>; fragments on the grid or in ms; steps address places in the file. Loop and split audio clips on the timeline; micro-loops in the <b>sampler</b> for the smallest fragments. Your openprocess / openfield, if installed, are in the device list.'),
  ('Gábor Lázár', 'Bursts that accelerate, pulse widths and pitches locked per hit.',
   'Ratchets with a strong <i>ratchet curve</i>, <i>accelerate</i> on the pattern, locks with <i>slide</i> on <b>fm perc</b> and <b>tone</b> (pulse width, frequency); speed x8.'),
  ('Kindohm (Mike Hodnick)', 'Live-coded patterns: degrade, every nth, polymeter.',
@@ -418,8 +471,20 @@ _artists = [
   '<b>tone</b> with <i>second tone</i> a difference (e.g. 40 hz) or a ratio (1.22) away, <i>one tone per channel</i> at 100%, quiet levels, on headphones or two speakers.'),
  ('La Monte Young', 'Drones in just intonation.',
   '<b>tone</b> held by the note\'s <i>gate</i>, <i>tuning</i> just (7-limit) or the harmonic series, key tracking on, chords on a long step for sine chords.'),
- ('William Basinski, Ian William Craig, Amulets', 'Loops that decay as they repeat.',
-  '<b>wear</b> on the track (loop length on the grid or in seconds), <b>vinyl</b> and <b>colour</b> for wow, flutter and hiss; layer looped audio clips on the timeline.'),
+ ('William Basinski, Ian William Craig, Amulets', 'Loops that decay as they repeat, left to run for a long time.',
+  '<b>wear</b> on the track (loop length on the grid or in seconds), <b>vinyl</b> and <b>colour</b> for wow, flutter and hiss, or your own tape plug-ins on the chain; layer looped audio clips on the timeline, a long arrangement, and a reverb on a return to fill the gaps.'),
+ ('Venetian Snares', 'Breaks cut to pieces in odd meters, rolls that speed up and climb.',
+  'Load a break into the <b>sampler</b> in slices mode; one slice per step, with ratchets up to 8 and a <i>ratchet curve</i> for rolls; lock the sampler\'s pitch per step and <i>slide</i> between steps for a climbing roll. Odd meters by pattern length: 14 steps is 7/8, 22 steps 11/8, or a ratio series; tracks of different lengths against each other.'),
+ ('Fennesz', 'A guitar through the laptop: smeared, broken, washed in reverb.',
+  'An audio track with your interface\'s guitar input, <i>monitor in</i>, armed; <b>grain</b> and <b>clip</b> (bits and rate) on its chain, or your own granular and reverb plug-ins (Cloudfin, ConvoSolution); a long reverb on a return with the send automated; record takes and cut them on the timeline.'),
+ ('Philip Glass', 'Additive and subtractive cells, arpeggios, parts out of phase.',
+  'Type a cell with <b>type</b> (e.g. <code>0 2 4 2</code>), then <b>additive</b> → <i>both</i>, repeats 2–4: the figures grow and shrink as a chain. Put the same cell on a second track with <b>phase</b> +1% so it drifts against the first. A scale on the pitch lane keeps every figure in the key.'),
+ ('Aleksi Perälä', 'Colundi tunings, colourful sequences.',
+  'Load a Colundi set (or any tuning) as a <b>scala file</b> in the track\'s <i>scale</i>; draw contours on the pitch lane — every step lands on a degree of the tuning; <b>tone</b> or the <b>sampler</b> (or your plug-in synths, which follow the pitch bend) as the instrument; <b>mutate</b> and <b>evolve</b> to keep the sequence moving.'),
+ ('Boards of Canada', 'Detuned, warm, lo-fi, nostalgic.',
+  '<b>vinyl</b> (wow and flutter detune the whole track), <b>colour</b> in tape mode, <b>clip</b> for fewer bits and a lower rate, a slow <i>slewed random</i> on a synth\'s pitch or filter; your own chorus and tape plug-ins on the chain. A just or harmonic-series scale on the pitch lane for the slightly-off intervals.'),
+ ('Jan Jelinek', 'Micro-loops of jazz records and crackle, dub filtering.',
+  'Put tiny fragments into the <b>sampler</b> and set its <i>micro-loop</i> to a 64th or 128th note (or a few ms): clicks become pulses; the sampler\'s cutoff and resonance, locked per step; <b>throw</b> or dl4 on a send for the dub; a <b>noise bed</b> for the crackle.'),
  ('Loefah, Skream, Rusko, Jakes, Billain', 'Half-step wobble and sub.',
   'Start from <i>half-step (140)</i>; wb1\'s wobble on the grid or free, its vowel filter, sub; <b>multiband</b>; bounce the bass to a sampler and resequence it.'),
 ]

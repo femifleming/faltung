@@ -84,12 +84,26 @@ channels — to an interface, or through a loopback device such as BlackHole int
 - **studio devices**: strip, transient, sidechain (keyed from any track, duck / pump shapes), colour, stereo, throw (dub send delay
   with throw and hold), spring (with freeze), vinyl, repeat (buffer glitch), grain, multiband, clip, noise bed, tone (precision
   generator), data (byte bursts), fm perc, sampler (one-shots, loops, slices to steps).
-- **files**: `.fstudio` projects (xml), autosave, templates (microhouse / deep house starter, dub, long form, multi-out), stems
-  export (24-bit dithered or 32-bit float), a mastered stereo export with a true-peak limiter, midi export, resample to a new track.
+- **files**: `.fstudio` projects (xml), autosave, templates (microhouse / deep house starter, dub, long form, multi-out); export of
+  the mix, the mix before the master chain, stems of every track or of the tracks you choose, the whole project, the loop / time
+  selection or any bars, as wav / aiff / flac at 16 / 24 / 32-bit float and 44.1 – 96 khz, normalised, dithered, a true-peak limiter
+  for the mix; a spatial master (16, 24 … 64 channels) as one multichannel file; midi export; resample to a new track.
 - **audio and midi**: the interface, its inputs and outputs, sample rate and buffer, midi inputs and a midi clock out, in *audio → audio and midi settings*.
+- **production**: undo / redo of every edit (cmd+z / cmd+shift+z), autosave every minute with crash recovery, a cpu meter in the
+  corner (load, peak, overruns); recording of audio and of notes from a midi keyboard into the steps (nearest step, pitch, velocity,
+  timing as micro, held length; overdub, punch, a count-in that ends on the downbeat, a metronome).
+- **notes without a piano roll**: the pitch lane under the steps (click, or draw a contour that snaps to the scale), scales per track
+  (13 built in, or any Scala `.scl` tuning, Colundi sets included; degrees between the keys as a pitch bend), patterns typed as text,
+  additive / subtractive figures chained (1, 1 2, 1 2 3 …), parts drifting out of phase, chance / euclid / ratios / mutate, sieves
+  and stochastic clouds, micro-loops in the sampler (a sliver shorter than a beat, in ms or a 16th to a 256th note).
+- **your plug-ins**: VST3 / AU scanned in separate processes (one that crashes is blacklisted, sndstudio carries on), instruments and
+  effects on any track, return or the master at any width, their windows, automation, modulators and locks on their parameters,
+  their state in the project, their latency compensated.
 
-The way into Ableton from the standalone: a 128-channel virtual device such as *BlackHole 128ch* as the output, *multi-out*
-and *assign all outputs* in the mixer, then one audio track per channel pair in Live.
+The way into another program: a loopback device such as *BlackHole 128ch* as the output, *multi-out* and *assign all outputs*
+in the mixer, then one audio track per channel pair there (Live, Logic, REAPER …). sndstudio is not a copy of other daws: it is built
+from the techniques of the artists named in [docs/daw-research.md](docs/daw-research.md), with no piano roll and nothing for live
+performance beyond what production needs.
 
 ## faltung deep
 

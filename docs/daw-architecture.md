@@ -1,8 +1,10 @@
 # sndstudio — how it is built
 
-Source/daw. One engine (`Session`) shared by the standalone app (`StudioApp.cpp`, its own audio callback so any
-device's 128 channels are reachable) and the plug-in (`StudioProcessor`, 64 stereo output buses, host sync, the
-project as plug-in state).
+Source/daw. A standalone application only (no plug-in formats since 2026-11-19). One engine (`Session`), driven by
+the app's own audio callback (`StudioApp.cpp`, so any device's 128 outputs and inputs are reachable) through
+`StudioProcessor` (the inputs first in one buffer, then the outputs; project files, autosave, crash recovery and the
+undo history, `Undo.h`). Plug-in scans run in child processes (`Session::scanPlugins`: the app itself with
+`--scan-plugin`), so a plug-in that crashes is blacklisted instead of taking the app down.
 
 ## threads
 - The message thread edits the structure (tracks, devices, routes) under `Session::lock` (a spin lock held only
@@ -24,11 +26,12 @@ changed. The device's own window edits flow back into the base (and into automat
 3. per track: resolve the pattern (session / song / arrangement / chain) → modulation sources → sequencer events
    (conditions, probability, ratchets, micro, swing, speed, locks) → instrument → inserts → latency alignment →
    strip (level, pan, mute, solo) → sends (pre / post) → routes → master or its own output pair
-4. returns, then the master (its chain, e.g. ms0 bypassed for Ableton)
+4. returns, then the master (its chain, e.g. ms0 bypassed when another program masters)
+5. the metronome (and, from a stop, the count-in: the transport waits, split to the sample where it ends)
 
 ## latency
 Every track is delayed to the longest track chain; returns to the longest return chain; direct outputs wait for
-the returns and the master as well, so all 128 channels line up. The plug-in reports the total.
+the returns and the master as well, so all 128 channels line up. The header shows the total.
 
 ## channels (spatial)
 A track has a width (1–64, default 2). Clips and instruments feed channels 1–2; devices negotiate their widths

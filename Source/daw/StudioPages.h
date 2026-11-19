@@ -1073,7 +1073,7 @@ public:
             g.setColour (theme.ink.withAlpha (0.05f)); g.fillRect (x0, laneTop, x1 - x0, laneBottom - laneTop);
             for (int d = lo; d <= hi; d += n) { g.setColour (theme.ink.withAlpha (d == 0 ? 0.45f : 0.2f)); g.fillRect (x0, laneY (t, d), x1 - x0, 1.0f); }
             g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (8.5f));
-            g.drawText ("pitch lane: " + (t->scale ? t->scale->name : juce::String ("semitones")), (int) x0 + 4, (int) laneTop - 1, 260, 11, juce::Justification::centredLeft, true);
+            g.drawText ("pitch lane: " + (t->scale ? t->scale->name : juce::String ("semitones")), (int) x1 - 264, (int) laneBottom - 11, 260, 11, juce::Justification::centredRight, true);
             for (int k = 0; k < 16; ++k)
             {
                 const int i = page * 16 + k; if (i >= len || ! p) continue;

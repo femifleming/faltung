@@ -53,7 +53,24 @@ well. Same columns, same rule: what a source does not say is marked as missing, 
 - a live-coding language (Orca, Fish, TidalCycles themselves): a different instrument; they play the studio over midi, and the standalone sends midi clock.
 - measured-ear (HRTF set) binaural decoding: `st:binaural` is a spherical-head model for placing things while arranging; hosted decoders (IEM, SPARTA) do the rest.
 - visual artists and inventors the user named for the look of other instruments (not methods for a studio).
-- Aleksi Perälä (named in a background note, not in a request): his Colundi work rests on a fixed set of chosen frequencies rather than a scale formula; `st:tone` takes exact frequencies per step (the `frequency` lock), but no such table is built in.
+
+## added 2026-11-19: Venetian Snares, Fennesz, Philip Glass, Aleksi Perälä, Boards of Canada, Jan Jelinek (and Oval, Basinski again)
+
+The user named these eight together ("i want to make music like …"). The descriptions below are general knowledge of their
+methods, written down for this table; unlike the rows above, no interview was looked up for them in this pass, so nothing
+is quoted. The user asked for no new effects ("i have plugins for lot of effects already"): where an artist's sound is an
+effect, the answer is the user's own plug-ins, hosted.
+
+| artist | method (general) | in sndstudio |
+|---|---|---|
+| **Venetian Snares** | breakbeats cut into very short slices and re-sequenced at high tempos, odd and compound meters (7/4 and others), rolls that speed up and rise in pitch | the sampler in slices mode, a slice per step; ratchets up to 8 with a ratchet curve; per-step pitch locks with slide; odd meters as pattern lengths (14 steps = 7/8) or ratio series; tracks of different lengths |
+| **Fennesz** | guitar and laptop: live processing, granular smear, digital breakup, long washes | an audio track on the guitar input with monitoring; `st:grain`, `st:clip` (bits, rate); hosted reverbs and granular plug-ins (Cloudfin, ConvoSolution); takes recorded and cut on the timeline |
+| **Philip Glass** | additive and subtractive process on short cells (1, 1 2, 1 2 3 …), repeated figures, arpeggios | *additive* (additive / subtractive / both, with repeats) writes the figures into patterns and chains them; *type* for cells; a scale on the pitch lane; *phase* for parts that drift against each other (after the phasing in Reich's early pieces) |
+| **Aleksi Perälä** | the Colundi sequence: sets of chosen frequencies instead of equal temperament; colourful, arpeggiated sequences | per-track scales from Scala `.scl` files (any tuning, Colundi sets included, loaded by the user); degrees between the keys as a pitch bend; the pitch lane to draw sequences; mutate / evolve |
+| **Boards of Canada** | detuned and wavering pitch, tape and lo-fi colour, warm filtering | `st:vinyl` (wow, flutter), `st:colour` (tape), `st:clip` (bits, rate), slewed-random modulators on pitch and filter; the user's own chorus and tape plug-ins; just and harmonic scales |
+| **Jan Jelinek** | micro-loops of tiny fragments of old records (clicks, crackle, jazz), layered, dub filtering | the sampler's *micro-loop* (in ms, or a 16th to a 256th note at the tempo), its filter locked per step; `st:throw` / dl4 on sends; `st:noise` for crackle |
+| **Oval** (again) | see above | `st:skip`, looped and split clips, and now micro-loops for the smallest fragments |
+| **William Basinski** (again) | see above | `st:wear`, long looped clips, a reverb return; the user's tape plug-ins |
 
 ## cross-cutting, and where they live in sndstudio
 1. non-isochronous and per-step-length sequencing → `step time`, the tools `ratios` and `accelerate`, speed, free clock, ratchets with a curve
