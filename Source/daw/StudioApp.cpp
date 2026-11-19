@@ -21,7 +21,6 @@ public:
         o.applicationName = "standalone"; o.filenameSuffix = "settings"; o.folderName = Session::dataDir().getFullPathName(); o.storageFormat = juce::PropertiesFile::storeAsXML;
         settings = std::make_unique<juce::PropertiesFile> (Session::dataDir().getChildFile ("standalone.settings"), o);
         processor.reset (dynamic_cast<StudioProcessor*> (createPluginFilter()));
-        processor->isStandaloneApp = true;
         processor->midiClockOut = [this] (const juce::MidiMessage& m) { if (clockOut) clockOut->sendMessageNow (m); };
         processor->openAudioSettings = [this] { menuItemSelected (10, 1); };
         std::unique_ptr<juce::XmlElement> saved (settings->getXmlValue ("audio"));

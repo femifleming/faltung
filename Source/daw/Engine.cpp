@@ -102,7 +102,6 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
     if (! lock.tryEnter()) return;
     struct Unlock { juce::SpinLock& l; ~Unlock() { l.exit(); } } unlock { lock };
     if (! prepared || n <= 0) return;
-    if (onBlock) onBlock();
     const auto t0 = juce::Time::getHighResolutionTicks();
     inputChannels.store (h.numIn);
 
@@ -119,11 +118,9 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
                 if (auto* d = resolve (map.target)) d->setBase (map.target.param, map.lo + (map.hi - map.lo) * v);
     }
 
-    const bool host = h.playing && h.hasPpq && ! h.standalone;
-    hostDriven.store (host);
-    bool playing = host || running.load();
-    double ppq = host ? h.ppq : internalPpq.load();
-    if (! host && relocate.exchange (false)) { ppq = internalPpq.load(); for (auto& t : tracks) t->lastStepN = -1; }
+    bool playing = running.load();
+    double ppq = internalPpq.load();
+    if (relocate.exchange (false)) { ppq = internalPpq.load(); for (auto& t : tracks) t->lastStepN = -1; }
     if (panicFlag.exchange (false))
     {
         auto allOff = [] (Track& t)
@@ -140,19 +137,10 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         for (auto& t : tracks) allOff (*t);
         for (auto& t : tracks) if (mode.load() == (int) PlayMode::Session) { t->pendingPattern.store (t->pattern.load()); t->pendingAt.store (0.0); }
     }
-    // a host that jumps (a render that starts over, a loop, a click on its ruler) without stopping: levels, pans and
-    // sends go straight to their values instead of gliding from where the old place left them
-    if (host && wasPlaying && std::abs (ppq - expectedPpq) > 0.01)
-    {
-        for (auto& t : tracks) t->snapMixer = true;
-        for (auto& r : returns) r->snapMixer = true;
-        master->snapMixer = true;
-    }
-    expectedPpq = ppq + (double) n / sr * (host ? h.bpm : (double) tempo()) / 60.0;
     if (playing && ! wasPlaying)
     {
-        // every start begins the same way: the steps' chance, the modulators and the drift start over, so a host that
-        // renders the same bars twice gets the same notes twice
+        // every start begins the same way: the steps' chance, the modulators and the drift start over, so the same
+        // bars render the same notes twice
         auto fresh = [] (Track& t)
         {
             t.rng.seed ((uint32_t) (t.uid * 7919 + 13)); t.evoRng.seed ((uint32_t) (t.uid * 104729 + 7));
@@ -167,7 +155,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
     wasPlaying = playing;
     automate (ppq);
     global->apply (nullptr, ppq);
-    const double bpm = host ? h.bpm : (double) tempo();
+    const double bpm = tempo();
     bpmShown.store ((float) bpm);
 
     if (! playing)
@@ -179,7 +167,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
     {
         playPpq.store (ppq);
         int done = 0; double p = ppq;
-        const bool loop = ! host && loopOn.load();
+        const bool loop = loopOn.load();
         const double lStart = loopStart.load() * 4.0, lEnd = loopEnd.load() * 4.0;
         while (done < n)
         {
@@ -1018,7 +1006,7 @@ bool Session::renderStems (const juce::File& dir, double fromBar, double toBar, 
     std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
     Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
     double p = fromBar * 4.0; const double end = (toBar + (opt.tail ? 1.0 : 0.0)) * 4.0;
-    juce::MidiBuffer none; HostInfo h; h.standalone = true;
+    juce::MidiBuffer none; HostInfo h;
     Dither dither;
     juce::AudioBuffer<float> tmp (kMaxWidth, bs);
     bool ok = true;
@@ -1073,7 +1061,7 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
     std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
     Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
     double p = fromBar * 4.0; const double end = (toBar + (opt.tail ? 1.0 : 0.0)) * 4.0;
-    juce::MidiBuffer none; HostInfo h; h.standalone = true;
+    juce::MidiBuffer none; HostInfo h;
     Dither dither;
     PeakLimiter limiter; const int look = (int) (0.003 * sr);
     if (opt.limit) limiter.prepare (look, true);
@@ -1142,7 +1130,7 @@ juce::File Session::renderTrackFile (Track& src, double fromBar, double toBar, j
         std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
         Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
         double p = fromBar * 4.0; const double end = toBar * 4.0;
-        juce::MidiBuffer none; HostInfo h; h.standalone = true;
+        juce::MidiBuffer none; HostInfo h;
         while (p < end)
         {
             automate (p); global->apply (nullptr, p);

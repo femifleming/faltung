@@ -20,7 +20,6 @@ constexpr int kOutChannels = 128;  // 64 stereo pairs
 constexpr int kMaxWidth = 64;      // channels of one track / the master
 constexpr int kMaxInserts = 12;
 constexpr int kStepMod = 16;
-constexpr int kHostTracks = 32;    // strips the host sees as parameters (the first 32 tracks)
 
 /** step conditions, Elektron style */
 enum class Cond : int { Always, X1of2, X2of2, X1of3, X2of3, X3of3, X1of4, X2of4, X3of4, X4of4, X1of8, X8of8, Fill, NotFill, First, NotFirst, Prev, NotPrev, Count };

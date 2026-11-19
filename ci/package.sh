@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Collects the built plug-ins, apps and manuals of one suite into dist/<suite>-<os>/<product>/
+# Collects the built plug-ins, apps and manuals (sndstudio: the application only, it has no plug-in formats) of one suite into dist/<suite>-<os>/<product>/
 # usage: ci/package.sh <macOS|Windows|Linux> <build dir> [faltung|deep]
 set -euo pipefail
 OS="$1"; B="$2"; SUITE="${3:-faltung}"
@@ -11,7 +11,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 art() {   # artefact folder of a target (single- or multi-config generators)
     local tgt="$1"
     for sub in "" partials/ cloudfin/ convosolution/ obliqsound/ ballon/; do for d in "$B/${sub}${tgt}_artefacts/Release" "$B/${sub}${tgt}_artefacts"; do
-        [ -d "$d/VST3" ] && { echo "$d"; return; }
+        { [ -d "$d/VST3" ] || [ -d "$d/Standalone" ]; } && { echo "$d"; return; }
     done; done
     echo "missing artefacts for $tgt" >&2; exit 1
 }
@@ -43,17 +43,30 @@ product() {   # product <folder name> <target> <file name>
     return 0   # optional formats above may be missing; that is not a failure
 }
 
+app_only() {   # app_only <folder name> <target> <file name>: a standalone application without plug-in formats
+    local name="$1" tgt="$2" file="$3"
+    local A; A="$(art "$tgt")"
+    local P="$OUT/$name"; mkdir -p "$P"
+    case "$OS" in
+        macOS)   cp -R "$A/Standalone/$file.app" "$P/"; codesign --force --deep -s - "$P/$file.app" ;;
+        Windows) cp "$A/Standalone/$file.exe" "$P/" ;;
+        Linux)   cp "$A/Standalone/$file" "$P/" ;;
+    esac
+}
+
 if [ "$SUITE" = "deep" ]; then
-    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 sb1 sndstudio; do
+    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 sb1; do
         product "faltung deep $p" "faltung_deep_$p" "faltung deep $p"
     done
+    app_only "faltung deep sndstudio" faltung_deep_sndstudio "faltung deep sndstudio"
     product "ballonwinkel deep" ballonwinkel_deep "ballonwinkel deep"
     product "ballonpaleis deep" ballonpaleis_deep "ballonpaleis deep"
     cp "$ROOT/docs/manual-deep/faltung deep Manual.pdf" "$ROOT/docs/manual/sndstudio Manual.pdf" "$OUT/"
 else
-    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0 sndstudio; do
+    for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do
         product "faltung $p" "faltung_$p" "faltung $p"
     done
+    app_only "faltung sndstudio" faltung_sndstudio "faltung sndstudio"
     product Partials Partials Partials
     product Cloudfin Cloudfin Cloudfin
     product ConvoSolution ConvoSolution ConvoSolution

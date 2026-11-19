@@ -133,7 +133,8 @@ faltung_plugin(gl8 15 Fgl8 effect  "glue")
 faltung_plugin(wb1 16 Fwb1 module  "dubstep + neuro bass synth")
 faltung_plugin(ms0 17 Fms0 effect  "mastering bus")
 
-# sndstudio: the daw (Source/daw). 64 stereo output buses, hosts VST3 / AU, its own standalone app.
+# sndstudio: the daw (Source/daw). A standalone application only (no plug-in formats): its own audio callback reaches
+# up to 128 outputs of the chosen interface, it hosts VST3 / AU plug-ins.
 set(FAL_DAW_SOURCES Source/daw/Device.cpp Source/daw/Session.cpp Source/daw/Engine.cpp Source/daw/Project.cpp
     Source/daw/StudioProcessor.cpp Source/daw/StudioEditor.cpp Source/daw/devices/StudioDevices.cpp)
 set(FAL_HOST_DEFS JUCE_PLUGINHOST_VST3=1)
@@ -146,13 +147,13 @@ function(faltung_studio DEEP)
         set(PNAME "faltung deep sndstudio")
         set(BID "com.freakiepie.faltungdeep.sndstudio")
         set(CODE Dsnd)
-        set(DESC "deep house studio: tracks, scenes, song, sends, 128 outputs")
+        set(DESC "deep house studio (standalone daw): tracks, scenes, song, sends, 128 outputs")
     else()
         set(T faltung_sndstudio)
         set(PNAME "faltung sndstudio")
         set(BID "com.freakiepie.faltung.sndstudio")
         set(CODE Fsnd)
-        set(DESC "microhouse studio: tracks, scenes, song, sends, 128 outputs")
+        set(DESC "microhouse studio (standalone daw): tracks, scenes, song, sends, 128 outputs")
     endif()
     juce_add_plugin(${T}
         VERSION ${PROJECT_VERSION}
@@ -160,7 +161,7 @@ function(faltung_studio DEEP)
         BUNDLE_ID "${BID}"
         PLUGIN_MANUFACTURER_CODE Frkp
         PLUGIN_CODE ${CODE}
-        FORMATS ${FAL_FORMATS}
+        FORMATS Standalone
         PRODUCT_NAME "${PNAME}"
         DESCRIPTION "${DESC}"
         IS_SYNTH TRUE
@@ -168,13 +169,9 @@ function(faltung_studio DEEP)
         NEEDS_MIDI_OUTPUT FALSE
         IS_MIDI_EFFECT FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-        AU_MAIN_TYPE kAudioUnitType_MusicDevice
-        VST3_CATEGORIES Instrument
-        VST2_CATEGORY kPlugCategSynth
-        LV2URI "urn:freakiepie:faltung:sndstudio"
         MICROPHONE_PERMISSION_ENABLED TRUE
         MICROPHONE_PERMISSION_TEXT "sndstudio records from your audio inputs."
-        COPY_PLUGIN_AFTER_BUILD ${FALTUNG_COPY_AFTER_BUILD})
+        COPY_PLUGIN_AFTER_BUILD FALSE)
     target_sources(${T} PRIVATE ${FAL_SOURCES} ${FAL_DAW_SOURCES} Source/daw/StudioApp.cpp Source/daw/StudioEntry.cpp)
     target_compile_definitions(${T} PUBLIC ${FAL_DEFS} ${FAL_HOST_DEFS} FALTUNG_PRODUCT=18 FALTUNG_DEEP=${DEEP}
         JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)

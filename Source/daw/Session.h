@@ -1,6 +1,6 @@
 #pragma once
 // faltung sndstudio — the session: tracks, returns, master, routes, arrangement, automation, modulators, clips,
-// and the audio engine that plays it. One instance is shared by the standalone app and the plug-in.
+// and the audio engine that plays it (driven by the standalone application's audio callback).
 // Threads: the message thread edits the structure under `lock`; the audio thread takes the lock with
 // tryEnter for the whole block (silence if it cannot) and reads everything directly. Pattern, lane, clip,
 // modulator and arrangement edits replace immutable snapshots (shared_ptr) under the same lock.
@@ -111,12 +111,10 @@ struct Track
     int sourceWidth = 2;     // what feeds the chain: instrument / clips (2, or a wider file) and the routes into the track
 };
 
+/** what the audio callback brings besides the outputs: the device inputs */
 struct HostInfo
 {
-    bool playing = false, hasPpq = false;
-    double ppq = 0, bpm = 124;
-    bool standalone = false;
-    const float* const* in = nullptr; int numIn = 0;    // device inputs (standalone)
+    const float* const* in = nullptr; int numIn = 0;    // device inputs
     int inputLatency = 0;                                 // samples, for placing recordings
 };
 
@@ -172,11 +170,9 @@ public:
     std::atomic<double> playPpq { -1.0 };       // < 0 when stopped
     std::atomic<double> internalPpq { 0.0 };
     std::atomic<float> bpmShown { 124.0f };
-    std::atomic<bool> hostDriven { false };
     std::atomic<float> cpu { 0 };
     std::atomic<bool> rendering { false };
     std::atomic<int> inputChannels { 0 };       // what the device offers (standalone)
-    std::function<void()> onBlock;              // called inside the lock at the start of every block (host parameter sync)
 
     // plug-in hosting
     juce::AudioPluginFormatManager formats;

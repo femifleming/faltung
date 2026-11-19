@@ -26,7 +26,6 @@ struct Render
 static Render render (StudioProcessor& p, double bars, std::function<void (int block, double ppq)> each = {}, int ins = 0,
                       std::function<void (juce::AudioBuffer<float>&, int pos)> fillIn = {}, std::function<void (int block, juce::AudioBuffer<float>&)> after = {})
 {
-    p.isStandaloneApp = true;
     p.standaloneInputs = ins;
     p.setRateAndBufferSizeDetails (kSr, kBs);
     p.prepareToPlay (kSr, kBs);
@@ -228,15 +227,10 @@ int main (int argc, char** argv)
 
         bool ms0 = false; for (auto& d : s.master->inserts) if (d->typeId == "fal:ms0") { ms0 = true; check (d->bypass.load(), "ms0 bypassed for ableton"); }
         check (ms0 || kDeep, "ms0 on the master");
-        if (auto* hp = p.apvts.getParameter (StudioProcessor::hostParamId (0, MP_LEVEL)))
-        {
-            hp->setValueNotifyingHost (0.0f);
-            auto r6 = render (p, 1.0);
-            check (std::abs (s.tracks[0]->mixer->baseValue (MP_LEVEL)) < 1.0e-4f, "host parameter reaches the strip");
-            check (r6.peak[0] < r.peak[0] * 0.95f, "and the kick is gone");
-            hp->setValueNotifyingHost (0.8f);
-        }
-        check (p.getBusCount (false) == kOutChannels / 2, "64 output buses");
+        // the strip's level reaches the output
+        s.tracks[0]->mixer->setBase (MP_LEVEL, 0.0f);
+        { auto r6 = render (p, 1.0); check (r6.peak[0] < r.peak[0] * 0.95f, "level down: the kick is gone"); }
+        s.tracks[0]->mixer->setBase (MP_LEVEL, 0.8f);
         check (p.getTotalNumInputChannels() == 0, "no inputs");
         // the other templates load and play
         for (int k = 2; k < Session::templateNames().size(); ++k)
@@ -874,39 +868,11 @@ int main (int argc, char** argv)
         else std::cout << "  (no built dl4.vst3 found: skipped; pass --vst3)\n";
     }
 
-    // ---- 12. plug-in mode: the aux buses -------------------------------------------------------------------
-    std::cout << "== plug-in buses\n";
-    {
-        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
-        p.isStandaloneApp = false;
-        auto layout = p.getBusesLayout();
-        for (int i = 0; i < layout.outputBuses.size(); ++i) layout.outputBuses.getReference (i) = (i == 0 || i == 2 || i == 63) ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::disabled();
-        check (p.checkBusesLayoutSupported (layout) && p.setBusesLayout (layout), "main + bus 3 + bus 64 enabled");
-        check (p.getTotalNumOutputChannels() == 6, "6 channels active");
-        auto& t = *s.tracks[0]; shortHit (t); s.setTempo (120.0f);
-        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].vel = 1; pt.s[8].on = true; });
-        s.launch (t, 0); s.multiOut.store (true); t.outChannel.store (127); t.toMaster.store (false);
-        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
-        struct Head : juce::AudioPlayHead { double ppq = 0; juce::Optional<PositionInfo> getPosition() const override { PositionInfo i; i.setBpm (120.0); i.setIsPlaying (true); i.setPpqPosition (ppq); return i; } } head;
-        p.setPlayHead (&head);
-        juce::AudioBuffer<float> blk (6, kBs); float pk[6] = {};
-        for (int b = 0; b < 100; ++b) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); for (int c = 0; c < 6; ++c) pk[c] = std::max (pk[c], blk.getMagnitude (c, 0, kBs)); head.ppq += kBs / kSr * 2.0; }
-        std::cout << "  bus 64 (channels 5-6 of the active set): " << db (pk[4]) << ", main: " << db (pk[0]) << "\n";
-        check (pk[4] > 0.05f && pk[5] > 0.05f, "track reaches the enabled aux bus");
-        check (pk[0] < 1.0e-6f, "and not the main bus");
-        t.outChannel.store (19);   // a disabled bus folds back into the main output
-        for (int c = 0; c < 6; ++c) pk[c] = 0;
-        for (int b = 0; b < 100; ++b) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); for (int c = 0; c < 6; ++c) pk[c] = std::max (pk[c], blk.getMagnitude (c, 0, kBs)); head.ppq += kBs / kSr * 2.0; }
-        check (pk[0] > 0.05f, "a disabled pair folds into the main output");
-        check (s.hostDriven.load(), "follows the host transport");
-        p.setPlayHead (nullptr);
-    }
-
     // ---- 13. export: stems and midi; produce vs multi-out -------------------------------------------------
     std::cout << "== export + modes\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (1);
-        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
         s.launchScene (4);
         auto dir = tmp.getChildFile ("stems");
         juce::String err;
@@ -1240,7 +1206,7 @@ int main (int argc, char** argv)
     std::cout << "== spatial workflow with the studio's own devices, through the mixer page\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
-        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
         auto* se = dynamic_cast<StudioEditor*> (ed.get());
         se->showPage (3); se->tickForTest();
@@ -1396,7 +1362,7 @@ int main (int argc, char** argv)
     std::cout << "== the pages, used\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (1);
-        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
         s.projectFile = tmp.getChildFile ("pages.fstudio"); s.projectName = "pages";
         std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
         auto* se = dynamic_cast<StudioEditor*> (ed.get());
@@ -1548,18 +1514,12 @@ int main (int argc, char** argv)
         }
     }
 
-    // ---- 21. what a new instance opens on; the host's parameters ---------------------------------------------
+    // ---- 21. what a new window opens on; state round trips ------------------------------------------------------
     std::cout << "== a new instance\n";
     {
         StudioProcessor a, b;
         check (a.session.save()->toString() == b.session.save()->toString(), "two new instances open on the same project, to the last value");
         check (a.session.projectName == Session::templateNames()[1], "a new instance opens on the starter");
-        // the host's parameters hold the project's strip values from the first moment
-        bool agree = true;
-        for (int t = 0; t < 8; ++t) for (int prm : { (int) MP_LEVEL, (int) MP_PAN, (int) MP_MUTE, (int) MP_SEND1, (int) MP_SEND1 + 1 })
-            agree &= std::abs (a.apvts.getParameter (StudioProcessor::hostParamId (t, prm))->getValue() - a.session.tracks[(size_t) t]->mixer->baseValue (prm)) < 1.0e-6f;
-        agree &= std::abs (a.apvts.getParameter ("master")->getValue() - a.session.global->baseValue (GP_MASTER)) < 1.0e-6f;
-        check (agree, "host parameters equal the project's strips right after construction");
         auto ra = render (a, 2.0); auto rb = render (b, 2.0);
         float md = 0; for (int i = 0; i < ra.out.getNumSamples(); ++i) md = std::max (md, std::abs (ra.out.getSample (0, i) - rb.out.getSample (0, i)) + std::abs (ra.out.getSample (1, i) - rb.out.getSample (1, i)));
         std::cout << "  two new instances, two bars: largest difference " << md << ", peak " << db (ra.peak[0]) << "\n";
@@ -1570,13 +1530,13 @@ int main (int argc, char** argv)
         std::cout << "  left / right correlation of the starter " << corr << " (a centred kick and bass, the rest around them)\n";
         check (corr < 0.99995 && corr > 0.5, "the output is stereo, not two copies of one channel");
         // hard left and hard right stay apart all the way out
-        b.apvts.getParameter (StudioProcessor::hostParamId (0, MP_PAN))->setValueNotifyingHost (0.0f); b.apvts.getParameter (StudioProcessor::hostParamId (2, MP_PAN))->setValueNotifyingHost (1.0f);
-        for (int t : { 1, 3, 4, 5, 6, 7 }) b.apvts.getParameter (StudioProcessor::hostParamId (t, MP_MUTE))->setValueNotifyingHost (1.0f);
+        b.session.tracks[0]->mixer->setBase (MP_PAN, 0.0f); b.session.tracks[2]->mixer->setBase (MP_PAN, 1.0f);
+        for (int t : { 1, 3, 4, 5, 6, 7 }) b.session.tracks[(size_t) t]->mixer->setBase (MP_MUTE, 1.0f);
         auto rw = render (b, 2.0);
         ll = rr = lr = 0; for (int i = 0; i < rw.out.getNumSamples(); ++i) { const double l = rw.out.getSample (0, i), r = rw.out.getSample (1, i); ll += l * l; rr += r * r; lr += l * r; }
         std::cout << "  kick hard left, hat hard right: correlation " << lr / std::sqrt (ll * rr + 1.0e-20) << "\n";
         check (std::abs (lr / std::sqrt (ll * rr + 1.0e-20)) < 0.3, "hard-panned tracks stay decorrelated at the output");
-        // state through the host: save while it has been playing (modulators mid-flight), a fresh instance, load:
+        // the project as state: save while it has been playing (modulators mid-flight), a fresh instance, load:
         // every base value comes back, and from then on the state is the same bytes
         a.session.tracks[2]->mixer->setBase (MP_PAN, 0.9f); a.session.setMacro (1, 0.77f);
         juce::MemoryBlock mb; a.getStateInformation (mb);
@@ -1592,14 +1552,13 @@ int main (int argc, char** argv)
         for (size_t i = 0; i < a.session.returns.size(); ++i) cmp (*a.session.returns[i], *c.session.returns[i]);
         cmp (*a.session.master, *c.session.master);
         std::cout << "  state of an instance that has been playing, into a fresh one: " << baseDiffs << " of " << compared << " base values differ\n";
-        check (c.session.tracks.size() == a.session.tracks.size() && baseDiffs == 0, "every base value survives the host's save / reload, modulated ones included");
+        check (c.session.tracks.size() == a.session.tracks.size() && baseDiffs == 0, "every base value survives save / reload, modulated ones included");
         check (mc == mc2, "state out, into a fresh instance, out again: the same bytes");
-        check (std::abs (c.apvts.getParameter (StudioProcessor::hostParamId (2, MP_PAN))->getValue() - 0.9f) < 1.0e-6f && std::abs (c.apvts.getParameter ("macro2")->getValue() - 0.77f) < 1.0e-6f, "the host's parameters show the loaded project");
-        // host automation of a macro reaches what the macro is mapped to
-        c.apvts.getParameter ("macro1")->setValueNotifyingHost (1.0f);
+        // a macro moves what it is mapped to
+        c.session.setMacro (0, 1.0f);
         render (c, 0.25);
         auto* dl = c.session.returns[0]->inserts[0].get(); const int fb = dl->paramIndexForId ("feedback");
-        check (std::abs (dl->finalValue (fb) - 0.9f) < 0.01f, "a host-automated macro moves its target (the dub feedback)");
+        check (std::abs (dl->finalValue (fb) - 0.9f) < 0.01f, "a macro moves its target (the dub feedback)");
     }
 
     // ---- 22. real ambisonic plug-ins, when they are installed (IEM, SPARTA) ----------------------------------
@@ -1908,7 +1867,7 @@ int main (int argc, char** argv)
     std::cout << "== arcs, capture, nudge: through the editor\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
-        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
         s.projectFile = tmp.getChildFile ("arcs.fstudio"); s.projectName = "arcs";
         auto& t = *s.tracks[0]; s.setInstrument (t, s.createDevice ("st:tone")); s.setTempo (120.0f);
         auto* d = t.instrument.get(); const int hz = d->paramIndexForId ("hz");
@@ -1964,7 +1923,7 @@ int main (int argc, char** argv)
     if (shotDir != juce::File())
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (1);
-        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
         s.launchScene (4);
         {
             auto sdir = tmp.getChildFile ("samples"); sdir.createDirectory();

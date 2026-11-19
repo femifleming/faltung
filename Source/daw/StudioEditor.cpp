@@ -46,7 +46,6 @@ public:
         autoWrite.onClick = [this] { s.autoWrite.store (! s.autoWrite.load()); };
         panic.onClick = [this] { s.panic(); };
         audio.onClick = [this] { if (proc.openAudioSettings) proc.openAudioSettings(); };
-        audio.setVisible (proc.isStandaloneApp.load());
         save.onClick = [this] { fileAction (2); };
         setWantsKeyboardFocus (true);
         setPage (0);
@@ -157,7 +156,7 @@ public:
         if (fp->autoListening()) { fp->autoStop(); return true; }
         ms->bypass.store (false); s.masterBypass.store (false); s.rebuildLatency();
         fp->autoStart (20.0);
-        if (s.playPpq.load() < 0 && ! s.hostDriven.load()) s.play();
+        if (s.playPpq.load() < 0) s.play();
         autoDevice = ms->uid;
         say ("auto master: listening (20 s of sound; click again to decide early)");
         return true;
@@ -267,7 +266,7 @@ public:
         const double secs = bar * 4.0 * 60.0 / std::max (20.0, (double) s.bpmShown.load());
         g.drawText (juce::String (b + 1) + "." + juce::String (beat + 1) + "   " + juce::String ((int) secs / 60) + ":" + juce::String ((int) secs % 60).paddedLeft ('0', 2) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm", getWidth() - 330, 34, 260, 14, juce::Justification::centredLeft);
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.7f));
-        juce::String info = juce::String (s.hostDriven.load() ? "host clock" : "internal clock") + ui::U ("  ·  ") + juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
+        juce::String info = juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
         info << ui::U ("  ·  latency ") << juce::String (s.totalLatency() * 1000.0 / s.sampleRate(), 1) << " ms" << ui::U ("  ·  cpu ") << juce::String (juce::roundToInt (s.cpu.load() * 100)) << "%";
         if (s.isRecording()) info << ui::U ("  ·  recording");
         if (s.learning.load()) info << ui::U ("  ·  midi learn: move a controller");

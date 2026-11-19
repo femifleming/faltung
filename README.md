@@ -53,14 +53,15 @@ and standalone on Linux. (ObliqSound and ObliqSonic on Windows and Linux keep an
 | **ObliqSonic** | obliqsonic | ObliqSound as a sound source for third-order Ambisonics (16 channels, ACN / SN3D, for the IEM and SPARTA decoders): every voice, six copies of the field recording, the effects and the nature bed are points that fly on a flock, Lorenz attractors or gravity wells, with Doppler, distance and air; a space page with a thin wireframe sphere. Same manual as ObliqSound. |
 | **ballonwinkel** | ballonwinkel | the faltung-series twin of Pinkie Pie's Balloon Shop (which carries on as it is, in its own repository): the same multi-effect and every one of its controls, played as balloons. Spectral smear / freeze / tilt, a scale-locked pitch shifter with feedback, a granulator (a shape you draw), a reverb, main feedback, the stutter and eleven more effects from the store in any order, a pop pump, sounds caught in balloons, helium, ten weather switches and a rainbow, and the sonic boom. A rose field; the balloons are faceted wire solids that fill with colour to their value; a sliders page. Stereo (1 > 1, 1 > 2, 2 > 1, 2 > 2). |
 | **ballonpaleis** | ballonpaleis | the faltung-series twin of Pinkie Pie's Balloon Palace (which carries on as it is): ballonwinkel inside a sphere, as an Ambisonics encoder from 1st to 7th order (4 to 64 channels, ACN / SN3D): up to 16 grains fly on 20 flights (orbit, Lorenz, flock, Leitner's lines and Soundcube, Xenakis's sonotron, gas, Nomos …) with distance, doppler and a 64-line reverb; an energy map. A deep plum field with the sphere as a thin wireframe. In REAPER the VST2 carries all 64 channels and the AU 16; the VST3 opens there in stereo, as the original's does. |
-| **sndstudio** | studio | the daw: see [sndstudio](#sndstudio) below. |
+| **sndstudio** | studio | the daw, a standalone application (no plug-in versions): see [sndstudio](#sndstudio) below. |
 | **wb1** | wub | dubstep / neuro bass synth, after DMZ, Hench, Skream, Rusko, Noisa, Current Value, Billain. Two oscillators (sine to saw to square to "hard", up to 7-voice unison, b phase-modulates a), clean sub, noise; lp24/lp12/bp/hp/notch filter with drive; formant filter (a e i o u, the "yoy"); comb tuned to the note; 6 distortions (pre or post filter); host-synced wobble with sine, wow, yoy, ramps, square, random, routable to cutoff, vowel, fm, drive, pitch, volume, comb; mod envelope; mono / legato / glide; mod wheel to wobble depth or rate; 3-band "ott" compression; mono below 140 Hz. Runs at 2× oversampling. 10 presets (sub wob, square pump, wow, yoy, sub pressure, reese, fm growl, neuro growl, talk box, neuro stab). |
 
 ## sndstudio
 
 A whole studio made from the suite, for producing full-length microhouse / rominimal (and deep house, in *faltung deep sndstudio*)
-tracks, as a standalone app and as a VST3 / AU / VST2 plug-in with **64 stereo output buses (128 channels)** so every track, return
-and the master can be recorded on its own channel in Ableton (or any other DAW) and mixed and mastered there.
+tracks. **A standalone application only** (no VST3 / AU / VST2 / LV2 versions): its own audio engine drives the interface you
+choose, with up to **128 output channels**, so in *multi-out* every track, return and the master can also go out on its own
+channels — to an interface, or through a loopback device such as BlackHole into Ableton (or any other DAW) to be mixed there.
 
 - **tracks**: any number of instrument tracks (every faltung drum engine, wb1 / sb1, the studio's own devices, and hosted VST3 / AU
   instruments), audio tracks (drag files onto the timeline; clips with gain, fades, reverse, repitch, transient-preserving stretch,
@@ -76,7 +77,7 @@ and the master can be recorded on its own channel in Ableton (or any other DAW) 
   markers, automation lanes on any parameter (linear / curved, drawn or recorded) — sends, mutes, macros, tempo, swing included.
 - **modulation**: any control, right-click → *map a modulator*: lfo (12 shapes incl. s&h, drift, pulse, mpc shuffle), random
   gates, slewed random, envelope, follower, steps, chaos, macros, velocity, midi cc; synced or free (hz), bipolar / up / down,
-  slew; a modulator can drive another's rate; 8 macros the host sees; midi learn on anything.
+  slew; a modulator can drive another's rate; 8 macros; midi learn on anything.
 - **mixer**: strips with multichannel meters, the output map (*produce*: everything to the stereo master; *multi-out*: every
   track on its own channels — *assign all* lays them out consecutively), the master width (2 … 64), the ms0 chain on the master
   with *bypass* (master in Ableton instead).
@@ -85,7 +86,7 @@ and the master can be recorded on its own channel in Ableton (or any other DAW) 
   generator), data (byte bursts), fm perc, sampler (one-shots, loops, slices to steps).
 - **files**: `.fstudio` projects (xml), autosave, templates (microhouse / deep house starter, dub, long form, multi-out), stems
   export (24-bit dithered or 32-bit float), a mastered stereo export with a true-peak limiter, midi export, resample to a new track.
-- **sync**: host tempo and position as a plug-in; internal clock, midi clock out and audio / midi settings in the standalone.
+- **audio and midi**: the interface, its inputs and outputs, sample rate and buffer, midi inputs and a midi clock out, in *audio → audio and midi settings*.
 
 The way into Ableton from the standalone: a 128-channel virtual device such as *BlackHole 128ch* as the output, *multi-out*
 and *assign all outputs* in the mixer, then one audio track per channel pair in Live.
@@ -95,7 +96,7 @@ and *assign all outputs* in the mixer, then one audio track per channel pair in 
 The deep house twin: the same engines, retuned and re-preset for warm, swung house — round kicks, wooden
 rims, soft room claps, shakers and congas, chord stabs and sub bass. Seventeen plug-ins (no mastering bus,
 no Partials): **kt1** kit (kick, rim, clap, closed / open hat, shaker, conga, tom), **kt2** loop, the eight
-modules **bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9**, the six effects **mc3 dl4 rv5 sw6 fl7 gl8**, **sb1 stabs** and **sndstudio** —
+modules **bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9**, the six effects **mc3 dl4 rv5 sw6 fl7 gl8** and **sb1 stabs** (plus the *faltung deep sndstudio* application) — sb1 is
 the bass synth with a chord section (one key plays a minor 9, minor 7, 6/9 … in close, open or drop-2 voicing)
 and organ, electric piano, pad, stab and sub presets. Every plug-in is named *faltung deep …* and opens on a
 deep house preset.

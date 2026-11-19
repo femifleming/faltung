@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs every built faltung and faltung deep plug-in for the current user.
+# Installs every built faltung and faltung deep plug-in for the current user (sndstudio: the application only).
 # Apps: /Applications/faltung and /Applications/faltung deep.
 set -euo pipefail
 B="${1:-$(cd "$(dirname "$0")/.." && pwd)/build}"
@@ -9,6 +9,12 @@ for d in "$B"/faltung_*_artefacts/Release; do
     [ -d "$d" ] || continue
     t="$(basename "$(dirname "$d")" _artefacts)"; n="${t//_/ }"          # faltung_deep_kt1 -> "faltung deep kt1"
     case "$t" in faltung_deep_*) apps="/Applications/faltung deep" ;; *) apps="/Applications/faltung" ;; esac
+    case "$t" in
+        *_sndstudio)   # sndstudio is an application only: no plug-ins (and none left over from older builds)
+            rm -rf "$P/VST3/$n.vst3" "$P/Components/$n.component" "$P/VST/$n.vst"
+            if [ -d "$d/Standalone/$n.app" ]; then rm -rf "$apps/$n.app"; cp -R "$d/Standalone/$n.app" "$apps/"; fi
+            echo "installed $n (application)"; continue ;;
+    esac
     if [ -d "$d/VST3/$n.vst3" ]; then rm -rf "$P/VST3/$n.vst3"; cp -R "$d/VST3/$n.vst3" "$P/VST3/"; fi
     if [ -d "$d/AU/$n.component" ]; then rm -rf "$P/Components/$n.component"; cp -R "$d/AU/$n.component" "$P/Components/"; fi
     if [ -d "$d/VST/$n.vst" ]; then rm -rf "$P/VST/$n.vst"; cp -R "$d/VST/$n.vst" "$P/VST/"; fi

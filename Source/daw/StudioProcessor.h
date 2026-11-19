@@ -1,6 +1,7 @@
 #pragma once
-// faltung sndstudio — the AudioProcessor around the session: 64 stereo output buses (128 channels), the
-// host-visible parameters (macros, master, the first 32 strips' level / pan / mute / sends), the project as plug-in state.
+// faltung sndstudio — the engine wrapper the standalone application drives: its audio callback hands it one buffer with
+// the device inputs first and then up to 128 device outputs; project files, autosave and crash recovery.
+// sndstudio is a standalone application only (no plug-in formats): there are no host parameters and no host transport.
 #include "Session.h"
 
 namespace fal::daw
@@ -11,7 +12,6 @@ public:
     StudioProcessor();
     ~StudioProcessor() override;
     Session session;
-    juce::AudioProcessorValueTreeState apvts;
 
     void prepareToPlay (double, int) override;
     void releaseResources() override;
@@ -40,30 +40,19 @@ public:
     static juce::File projectsDir();
     /** the standalone's midi clock output (set by the app) */
     std::function<void (const juce::MidiMessage&)> midiClockOut;
-    std::atomic<bool> isStandaloneApp { false };
     /** the standalone's callback hands the device inputs first in the buffer: how many, and their latency */
     std::atomic<int> standaloneInputs { 0 }, standaloneInputLatency { 0 };
     /** the standalone's audio settings page (set by the app; the editor shows it) */
     std::function<void()> openAudioSettings;
-    /** called on the message thread right after a project replaced the session (open, a host's state): the editor
+    /** called on the message thread right after a project replaced the session (open, undo): the editor
         rebuilds its views before anything paints the tracks that are gone */
     std::function<void()> onProjectReplaced;
     void projectReplaced() { if (onProjectReplaced && juce::MessageManager::existsAndIsCurrentThread()) onProjectReplaced(); }
     /** the editor can close plug-in windows before a device is deleted */
     std::function<void (Device*)> onDeviceRemoving;
 
-    static juce::String hostParamId (int track, int param);   // track: 0..31, -1..-8 returns, -100 master; param: MP_*
 private:
     static BusesProperties buses();
-    static juce::AudioProcessorValueTreeState::ParameterLayout layout();
-    struct Bridge { juce::RangedAudioParameter* host; int trackSel; int param; float lastHost = -1, lastBase = -1; };
-    std::vector<Bridge> bridges;
-    void buildBridges();
-public:
-    /** the project's strip values into the host-visible parameters, at once */
-    void pushToHost();
-private:
-    void syncFromHost();
     void timerCallback() override;
     int lastLatency = -1;
     juce::int64 lastAutosave = 0;
