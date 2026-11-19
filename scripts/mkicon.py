@@ -26,6 +26,8 @@ ICONS = {  # product: (glyph, letter colour, background)
  "Orca Seaflake":        ("E", "#72dec2", "#000000"),
  "ObliqSound":           ("q", "#1f3a2c", "#c8d6a0"),
  "ObliqSonic":           ("c", "#c8d6a0", "#1f3a2c"),
+ "ballonwinkel":         ("b", "#fbe3ea", "#c9567f"),
+ "ballonpaleis":         ("n", "#e58aa6", "#3d1f3a"),
  "Pinkie Pies Balloon Shop":   ("b", "#ffffff", "#ff6fb5"),
  "Pinkie Pies Balloon Palace": ("a", "#ff6fb5", "#fff0f7"),
  "AERIA Flasher":        ("A", "#ffffff", "#4a5d73"),

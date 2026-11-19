@@ -1,5 +1,4 @@
 #include "PluginProcessor.h"
-#include "PluginEditor.h"
 
 using namespace juce;
 
@@ -18,104 +17,104 @@ AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout(
     };
 
     // Spectral gate
-    mixParam (ids::sgMix, "Spectral Mix", 0.35f);
+    mixParam (ids::sgMix, "spectral mix", 0.35f);
 
     // Pitch shifter
     StringArray scaleNames;
     for (auto& s : fp::getScales()) scaleNames.add (s.name);
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::psScale, 1 }, "Scale", scaleNames, 0));
-    layout.add (std::make_unique<F> (ParameterID { ids::psShift, 1 }, "Pitch Shift",
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::psScale, 1 }, "scale", scaleNames, 0));
+    layout.add (std::make_unique<F> (ParameterID { ids::psShift, 1 }, "pitch shift",
                                      NormalisableRange<float> (-24.0f, 24.0f, 0.0f), 7.0f,
                                      A().withLabel ("st").withStringFromValueFunction ([] (float v, int)
                                          { return (v > 0 ? "+" : "") + String (v, 1) + " st"; })));
-    layout.add (std::make_unique<F> (ParameterID { ids::psFeedback, 1 }, "Pitch Feedback",
+    layout.add (std::make_unique<F> (ParameterID { ids::psFeedback, 1 }, "pitch feedback",
                                      NormalisableRange<float> (0.0f, 0.95f), 0.35f, A().withStringFromValueFunction (pct)));
-    mixParam (ids::psMix, "Pitch Mix", 0.3f);
+    mixParam (ids::psMix, "pitch mix", 0.3f);
 
     // Grains
-    mixParam (ids::grMix, "Grain Mix", 0.4f);
-    layout.add (std::make_unique<F> (ParameterID { ids::grFade, 1 }, "Freeze Fade",
+    mixParam (ids::grMix, "grain mix", 0.4f);
+    layout.add (std::make_unique<F> (ParameterID { ids::grFade, 1 }, "freeze fade",
                                      NormalisableRange<float> (0.01f, 10.0f, 0.0f, 0.35f), 1.0f,
                                      A().withLabel ("s").withStringFromValueFunction ([] (float v, int)
                                          { return v < 1.0f ? String (roundToInt (v * 1000.0f)) + " ms" : String (v, 2) + " s"; })));
-    layout.add (std::make_unique<AudioParameterInt> (ParameterID { ids::grOctave, 1 }, "Grain Octave", -2, 2, 0,
+    layout.add (std::make_unique<AudioParameterInt> (ParameterID { ids::grOctave, 1 }, "grain octave", -2, 2, 0,
                                      AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int)
                                          { return (v > 0 ? "+" : "") + String (v) + " oct"; })));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::grRandOct, 1 }, "Random Octave", true));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::grFreeze, 1 }, "Freeze", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::grRandOct, 1 }, "random octave", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::grFreeze, 1 }, "freeze", false));
 
     // Reverb
-    layout.add (std::make_unique<F> (ParameterID { ids::rvDecay, 1 }, "Reverb Decay",
+    layout.add (std::make_unique<F> (ParameterID { ids::rvDecay, 1 }, "reverb decay",
                                      NormalisableRange<float> (0.2f, 20.0f, 0.0f, 0.4f), 4.0f,
                                      A().withLabel ("s").withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " s"; })));
-    mixParam (ids::rvMix, "Reverb Mix", 0.3f);
+    mixParam (ids::rvMix, "reverb mix", 0.3f);
 
     // Master
-    mixParam (ids::masterFb, "Main Feedback", 0.0f);
+    mixParam (ids::masterFb, "main feedback", 0.0f);
 
     // Weather on the master output
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rain, 1 }, "Rain", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::helium, 1 }, "Helium", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::cloudy, 1 }, "Cloudy", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::snow, 1 }, "Snow", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::heat, 1 }, "Heatwave", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::autoWeather, 1 }, "Auto Weather", false));
-    for (auto [id, name] : { std::pair { ids::fog, "Fog" }, std::pair { ids::wind, "Wind" }, std::pair { ids::hail, "Hail" },
-                             std::pair { ids::aurora, "Aurora" }, std::pair { ids::twister, "Twister" } })
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rain, 1 }, "rain", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::helium, 1 }, "helium", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::cloudy, 1 }, "cloudy", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::snow, 1 }, "snow", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::heat, 1 }, "heatwave", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::autoWeather, 1 }, "auto weather", false));
+    for (auto [id, name] : { std::pair { ids::fog, "fog" }, std::pair { ids::wind, "wind" }, std::pair { ids::hail, "hail" },
+                             std::pair { ids::aurora, "aurora" }, std::pair { ids::twister, "twister" } })
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id, 1 }, name, false));
     // the sonic rainboom
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbBoom, 1 }, "Rainboom", false));
-    layout.add (std::make_unique<F> (ParameterID { ids::rbLevel, 1 }, "Rainboom Level", NormalisableRange<float> (0.0f, 1.0f), 0.7f,
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbBoom, 1 }, "boom", false));
+    layout.add (std::make_unique<F> (ParameterID { ids::rbLevel, 1 }, "boom level", NormalisableRange<float> (0.0f, 1.0f), 0.7f,
                                      A().withStringFromValueFunction (pct)));
-    layout.add (std::make_unique<F> (ParameterID { ids::rbTail, 1 }, "Rainbow Length", NormalisableRange<float> (1.0f, 12.0f, 0.0f, 0.6f), 5.0f,
+    layout.add (std::make_unique<F> (ParameterID { ids::rbTail, 1 }, "rainbow length", NormalisableRange<float> (1.0f, 12.0f, 0.0f, 0.6f), 5.0f,
                                      A().withLabel ("s").withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " s"; })));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbHits, 1 }, "Rainboom On Hits", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbStorms, 1 }, "Rainboom After Storms", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbThrows, 1 }, "Rainboom On Throws", true));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbFast, 1 }, "Rainboom On Fast Grains", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbHits, 1 }, "boom on hits", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbStorms, 1 }, "boom after storms", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbThrows, 1 }, "boom on throws", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::rbFast, 1 }, "boom on fast grains", false));
     {
         // 5 s to 5 min; the middle of the range sits at 30 s so the short times are easy to set
         auto secs = [] (float v, int) { return snowFadeText (v); };
-        for (auto [id, name] : { std::pair { ids::snowIn, "Snow Fade In" }, std::pair { ids::snowOut, "Snow Fade Out" },
-                                 std::pair { ids::heatIn, "Heatwave Fade In" }, std::pair { ids::heatOut, "Heatwave Fade Out" } })
+        for (auto [id, name] : { std::pair { ids::snowIn, "snow fade in" }, std::pair { ids::snowOut, "snow fade out" },
+                                 std::pair { ids::heatIn, "heatwave fade in" }, std::pair { ids::heatOut, "heatwave fade out" } })
         {
             NormalisableRange<float> r (5.0f, 300.0f);
             r.setSkewForCentre (30.0f);
             layout.add (std::make_unique<F> (ParameterID { id, 1 }, name, r, 5.0f, A().withStringFromValueFunction (secs)));
         }
     }
-    mixParam (ids::stAmount, "Stutter", 0.0f);
-    mixParam (ids::stBounce, "Stutter Bounce", 0.5f);
-    mixParam (ids::stSway,   "Stutter Sway", 0.0f);
-    mixParam (ids::stCutup,  "Stutter Cut-up", 0.25f);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::fxBypass, 1 }, "Bypass Effects", false));
-    layout.add (std::make_unique<F> (ParameterID { ids::grainsLevel, 1 }, "Frozen Balloons Volume", NormalisableRange<float> (0.0f, 2.0f), 1.0f,
+    mixParam (ids::stAmount, "stutter", 0.0f);
+    mixParam (ids::stBounce, "stutter bounce", 0.5f);
+    mixParam (ids::stSway,   "stutter sway", 0.0f);
+    mixParam (ids::stCutup,  "stutter cut-up", 0.25f);
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::fxBypass, 1 }, "bypass effects", false));
+    layout.add (std::make_unique<F> (ParameterID { ids::grainsLevel, 1 }, "frozen balloons volume", NormalisableRange<float> (0.0f, 2.0f), 1.0f,
                                      A().withStringFromValueFunction ([] (float v, int)
-                                     { return v < 0.001f ? String ("silent") : String (Decibels::gainToDecibels (v), 1) + " dB"; })));
+                                     { return v < 0.001f ? String ("silent") : String (Decibels::gainToDecibels (v), 1) + " db"; })));
 
     auto logRange = [] (float lo, float hi, float centre) { NormalisableRange<float> r (lo, hi); r.setSkewForCentre (centre); return r; };
     auto ms = [] (float v, int) { return v < 1000.0f ? String (roundToInt (v)) + " ms" : String (v * 0.001f, 2) + " s"; };
 
     // more spectral smear
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::sgFreeze, 1 }, "Spectral Freeze", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::sgFreeze, 1 }, "spectral freeze", false));
 
     // more grains
-    layout.add (std::make_unique<F> (ParameterID { ids::grSize, 1 }, "Grain Size", logRange (10.0f, 1500.0f, 150.0f), 120.0f, A().withStringFromValueFunction (ms)));
-    layout.add (std::make_unique<F> (ParameterID { ids::grDensity, 1 }, "Grain Density", logRange (1.0f, 24.0f, 6.0f), 7.0f,
+    layout.add (std::make_unique<F> (ParameterID { ids::grSize, 1 }, "grain size", logRange (10.0f, 1500.0f, 150.0f), 120.0f, A().withStringFromValueFunction (ms)));
+    layout.add (std::make_unique<F> (ParameterID { ids::grDensity, 1 }, "grain density", logRange (1.0f, 24.0f, 6.0f), 7.0f,
                                      A().withStringFromValueFunction ([] (float v, int) { return String (v, 1) + "x"; })));
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::grShape, 1 }, "Grain Shape",
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::grShape, 1 }, "grain shape",
                                                         StringArray { "saw", "reverse saw", "bell", "triangle", "pulse", "sine", "chalk" }, 2));   // (bell: a Hann window, as IEM's grains)
-    mixParam (ids::grPan, "Grain Spread", 0.25f);   // in the sphere: how far round its place each grain may land
-    mixParam (ids::grReverse, "Grain Reverse", 0.0f);
-    layout.add (std::make_unique<F> (ParameterID { ids::grPos, 1 }, "Grain Position", NormalisableRange<float> (0.0f, 1.0f), 0.5f,
+    mixParam (ids::grPan, "grain spread", 0.25f);   // in the sphere: how far round its place each grain may land
+    mixParam (ids::grReverse, "grain reverse", 0.0f);
+    layout.add (std::make_unique<F> (ParameterID { ids::grPos, 1 }, "grain position", NormalisableRange<float> (0.0f, 1.0f), 0.5f,
                                      A().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " % back"; })));
-    mixParam (ids::grPosRand, "Grain Position Random", 1.0f);
+    mixParam (ids::grPosRand, "grain position random", 1.0f);
 
     // the inflation tone, and what the sound pump catches
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::catchFrom, 1 }, "Catch From", StringArray { "effects", "input" }, 0));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::balloonSfx, 1 }, "Balloon Sounds", true));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::popsThru, 1 }, "Pop Sounds Through FX", false));
-    layout.add (std::make_unique<F> (ParameterID { ids::grainsThru, 1 }, "Frozen Grains Through FX", NormalisableRange<float> (0.0f, 1.0f), 0.0f,
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::catchFrom, 1 }, "catch from", StringArray { "effects", "input" }, 0));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::balloonSfx, 1 }, "balloon sounds", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::popsThru, 1 }, "pop sounds through fx", false));
+    layout.add (std::make_unique<F> (ParameterID { ids::grainsThru, 1 }, "frozen grains through fx", NormalisableRange<float> (0.0f, 1.0f), 0.0f,
                                      A().withStringFromValueFunction ([] (float v, int)
                                      {
                                          if (v < 0.005f) return String ("straight out");
@@ -127,15 +126,15 @@ AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout(
     for (int e = 0; e < fp::StoreFX::kNum; ++e)
     {
         const auto& info = fp::StoreFX::infos()[(size_t) e];
-        const String nm (info.name);
-        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::store (e, ids::storeOwned), 1 }, nm + " Bought", false));
+        const String nm = String (info.name).toLowerCase();
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::store (e, ids::storeOwned), 1 }, nm + " bought", false));
         auto control = [&] (const fp::StoreFX::Control& c, ids::StorePart part)
         {
             NormalisableRange<float> range (c.lo, c.hi);
             if (c.log) range.setSkewForCentre (std::sqrt (c.lo * c.hi));
             const int pitch = c.pitch;
             const String unit (c.unit);
-            layout.add (std::make_unique<F> (ParameterID { ids::store (e, part), 1 }, nm + " " + String (c.name).toUpperCase().substring (0, 1) + String (c.name).substring (1),
+            layout.add (std::make_unique<F> (ParameterID { ids::store (e, part), 1 }, nm + " " + String (c.name),
                                              range, c.def, A().withLabel (unit).withStringFromValueFunction ([pitch, unit] (float v, int)
             {
                 const auto& sc = fp::getScales()[(size_t) jlimit (0, (int) fp::getScales().size() - 1, fp::StoreFX::displayScale().load())];
@@ -146,7 +145,7 @@ AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout(
                     return std::abs (st - std::round (st)) < 0.01 ? (st > 0 ? "+" : "") + String (roundToInt (st)) + " st"
                                                                   : (st > 0 ? "+" : "") + String (st, 2) + " st";
                 }
-                if (unit == "Hz") return v >= 1000.0f ? String (v / 1000.0f, 2) + " kHz" : String (v, v < 10.0f ? 2 : 0) + " Hz";
+                if (unit == "Hz") return v >= 1000.0f ? String (v / 1000.0f, 2) + " khz" : String (v, v < 10.0f ? 2 : 0) + " hz";
                 if (unit == "s")  return v < 1.0f ? String (roundToInt (v * 1000.0f)) + " ms" : String (v, 1) + " s";
                 if (unit == "bits") return String (v, 1) + " bits";
                 return String (v, 2);
@@ -154,9 +153,9 @@ AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout(
         };
         control (info.c1, ids::storeA);
         control (info.c2, ids::storeB);
-        layout.add (std::make_unique<F> (ParameterID { ids::store (e, ids::storeLevel), 1 }, nm + " Level", NormalisableRange<float> (0.0f, 2.0f), 1.0f,
+        layout.add (std::make_unique<F> (ParameterID { ids::store (e, ids::storeLevel), 1 }, nm + " level", NormalisableRange<float> (0.0f, 2.0f), 1.0f,
                                          A().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
-        layout.add (std::make_unique<F> (ParameterID { ids::store (e, ids::storeWidth), 1 }, nm + " Width", NormalisableRange<float> (0.0f, 1.0f), 0.5f,
+        layout.add (std::make_unique<F> (ParameterID { ids::store (e, ids::storeWidth), 1 }, nm + " width", NormalisableRange<float> (0.0f, 1.0f), 0.5f,
                                          A().withStringFromValueFunction ([] (float v, int)
                                          {
                                              if (v < 0.005f) return String ("mono");
@@ -166,34 +165,34 @@ AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout(
     }
 
     // the gumball machine (the stutter) is sold at the balloon store too
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::stOwned, 1 }, "Stutter Bought", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::stOwned, 1 }, "stutter bought", false));
     // the spectral smear's tilt: up brightens it (the highs up, the lows down), down darkens it
-    layout.add (std::make_unique<F> (ParameterID { ids::sgTilt, 1 }, "Spectral Tilt", NormalisableRange<float> (-6.0f, 6.0f), 0.0f,
-                                     A().withLabel ("dB/oct").withStringFromValueFunction ([] (float v, int)
+    layout.add (std::make_unique<F> (ParameterID { ids::sgTilt, 1 }, "spectral tilt", NormalisableRange<float> (-6.0f, 6.0f), 0.0f,
+                                     A().withLabel ("db/oct").withStringFromValueFunction ([] (float v, int)
                                      {
                                          if (std::abs (v) < 0.05f) return String ("flat");
-                                         return (v > 0 ? "+" : "") + String (v, 1) + " dB/oct " + (v > 0 ? "brighter" : "darker");
+                                         return (v > 0 ? "+" : "") + String (v, 1) + " db/oct " + (v > 0 ? "brighter" : "darker");
                                      })));
 
     // the sphere
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::grainMode, 1 }, "Grain Mode",
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::grainMode, 1 }, "grain mode",
                                                         StringArray { "spatial", "scatter", "copies" }, 0));
-    layout.add (std::make_unique<AudioParameterInt> (ParameterID { ids::grains, 1 }, "Grains", 1, fp::Flight::kMax, 4,
+    layout.add (std::make_unique<AudioParameterInt> (ParameterID { ids::grains, 1 }, "grains", 1, fp::Flight::kMax, 4,
                                      AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int)
                                          { return String (v) + (v == 1 ? " grain" : " grains"); })));
-    mixParam (ids::deviate, "Deviate", 0.35f);
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::flight, 1 }, "Flight",
+    mixParam (ids::deviate, "deviate", 0.35f);
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::flight, 1 }, "flight",
                                                         StringArray (fp::Flight::modeNames(), fp::Flight::numModes), 1));   // (orbit: things flying round you; the new ones are added at the end, so old sessions keep theirs)
-    layout.add (std::make_unique<F> (ParameterID { ids::flightSpeed, 1 }, "Flight Speed", NormalisableRange<float> (0.0f, 1.0f), 0.4f,
+    layout.add (std::make_unique<F> (ParameterID { ids::flightSpeed, 1 }, "flight speed", NormalisableRange<float> (0.0f, 1.0f), 0.4f,
                                      A().withStringFromValueFunction ([] (float v, int)
                                      {
                                          const float sf = 0.05f * std::pow (60.0f, v);
                                          return sf < 1.0f ? String (sf, 2) + "x" : String (sf, 1) + "x";
                                      })));
-    layout.add (std::make_unique<F> (ParameterID { ids::spread, 1 }, "Distance", NormalisableRange<float> (0.0f, 1.0f), 0.5f,
+    layout.add (std::make_unique<F> (ParameterID { ids::spread, 1 }, "distance", NormalisableRange<float> (0.0f, 1.0f), 0.5f,
                                      A().withStringFromValueFunction ([] (float v, int) { const float m = FreakiePieProcessor::bubbleMetres (v); return (m < 10.0f ? String (m, 1) : String (roundToInt (m))) + " m bubble"; })));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::doppler, 1 }, "Doppler", true));
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::ambiOrder, 1 }, "Ambisonic Order",
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids::doppler, 1 }, "doppler", true));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ids::ambiOrder, 1 }, "ambisonic order",
                                                         StringArray { "1st", "2nd", "3rd", "4th", "5th", "6th", "7th" }, 2));
     return layout;
 }
@@ -214,7 +213,7 @@ AudioProcessor::BusesProperties FreakiePieProcessor::sphereBuses()
 
 FreakiePieProcessor::FreakiePieProcessor()
     : AudioProcessor (sphereBuses()),
-      apvts (*this, nullptr, "FreakiePie", createLayout())
+      apvts (*this, nullptr, "ballonpaleis", createLayout())
 {
     auto get = [this] (const char* id) { return apvts.getRawParameterValue (id); };
     p_sgMix = get (ids::sgMix);
@@ -275,52 +274,13 @@ FreakiePieProcessor::FreakiePieProcessor()
     setShelfOrder (fp::Engine::defaultOrder());
     balloonFX.chalk = &chalk;
 
-    setCurrentProgram (0);   // a fresh one opens on the default patch
-
-    // start where you left off
-    if (rememberLastState)
-    {
-        // (it was called Mellyloon before: its last patch is picked up once, if there isn't one under the new name yet)
-        auto last = lastStateFile();
-        if (! last.existsAsFile() && lastStateOverride == File())
-            last = last.getSiblingFile ("Mellyloon last patch.xml");
-        if (auto xml = parseXML (last))
-            if (xml->hasTagName (apvts.state.getType()))
-                loadStateXml (*xml);
-    }
+    setCurrentProgram (0);   // every new one opens on the default patch (a session's own state comes after, from the host)
     startTimer (1000);   // auto weather ticks once a second
 }
 
 FreakiePieProcessor::~FreakiePieProcessor()
 {
     stopTimer();
-    if (MessageManager::existsAndIsCurrentThread()) saveLastState();
-}
-
-File FreakiePieProcessor::lastStateFile()
-{
-    if (lastStateOverride != File()) return lastStateOverride;
-   #if JUCE_MAC
-    const auto folder = File::getSpecialLocation (File::userApplicationDataDirectory).getChildFile ("Application Support");
-   #else
-    const auto folder = File::getSpecialLocation (File::userApplicationDataDirectory);   // AppData\Roaming on Windows, ~/.config on Linux
-   #endif
-    return folder.getChildFile ("FreakiePie").getChildFile ("Balloon Palace last patch.xml");   // (its own, apart from the shop's)
-}
-
-void FreakiePieProcessor::saveLastState()
-{
-    if (! rememberLastState) return;
-    MemoryBlock mb;
-    getStateInformation (mb);
-    if (auto xml = getXmlFromBinary (mb.getData(), (int) mb.getSize()))
-    {
-        const auto text = xml->toString();
-        if (text == lastSaved) return;   // nothing changed since the last save
-        const auto f = lastStateFile();
-        f.getParentDirectory().createDirectory();
-        if (f.replaceWithText (text)) lastSaved = text;
-    }
 }
 
 //==============================================================================
@@ -1368,8 +1328,6 @@ void FreakiePieProcessor::moreWeatherOnMaster (float* const* chans, int numCh, i
     windAmount.store (wind.amount()); windGust.store (wind.gust()); windLean.store (wind.lean()); windHeading.store (wind.heading());
     fogAmount.store (fog.amount());
 }
-
-AudioProcessorEditor* FreakiePieProcessor::createEditor() { return new FreakiePieEditor (*this); }
 
 void FreakiePieProcessor::getStateInformation (MemoryBlock& destData)
 {

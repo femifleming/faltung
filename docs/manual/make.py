@@ -224,7 +224,7 @@ add('''<section class="page"><h2>contents</h2><ol class="toc">
 <li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">using the controls</a></li>
 <li><a href="#auto">automation in ableton</a></li><li><a href="#midi">midi</a></li>
 <li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li><li><a href="#modules">the drum modules</a> — bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9</li>
-<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
+<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#ballon">ballonwinkel · ballonpaleis</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
 <h2 id="intro">introduction</h2>
 <p>faltung is a set of eighteen instruments and effects for the sound of 2000s minimal and microhouse — Perlon, [a:rpia:r], Villalobos, the Romanian
 labels — and for the bass of early dubstep and neuro. Everything is synthesized or processed live; there are no sample libraries.</p>
@@ -642,6 +642,52 @@ holds, the limiter meter's too.</p>
 nothing after ms0 should change the level.</p></section>'''
 add(divider('ms0 master', 'linear-phase mastering bus · mid / side · imaging · true-peak limiter', '#1a242c', chevrons('#5aaad8', 5), '#e9eef0', '#e9eef0'))
 add(ms0_html)
+
+# ---- ballonwinkel + ballonpaleis ----------------------------------------------------------------------------
+add(divider('ballonwinkel · ballonpaleis', 'the balloon shop and the balloon palace, in the faltung series', '#c9567f', wire('#f3c1d1'), '#1d1d1d', '#ffffff'))
+add('''<section class="page" id="ballon"><h2>ballonwinkel</h2>
+<p class="lead">ballonwinkel (Dutch: balloon shop) and ballonpaleis (balloon palace) are the faltung-series twins of <b>Pinkie Pie's Balloon Shop</b>
+and <b>Pinkie Pie's Balloon Palace</b>. The originals carry on as they are, in their own repository and with their own installs; the twins have their
+own names, plug-in codes and saved state, so both generations can sit in one session side by side.</p>
+<p>The engine is the original's, unchanged, and so is every control: the same 109 parameters (118 in ballonpaleis), with the same ids, ranges and
+defaults, the same programs, bus layouts, latency (71 samples at 48 khz) and tail. <code>ballonwinkelTest</code> runs the original's own processor
+and the twin's on the same input and the same parameter script — every program, every control moving, all the weather — and the two outputs are
+the same samples. Only the window is new.</p>
+<img class="shot" src="img/ballonwinkel.png" alt="ballonwinkel">
+<h3>playing it</h3>
+<table class="params"><tr><th>gesture</th><th>what it does</th></tr>
+<tr><td class="n">balloon</td><td>every balloon is a control. How far the colour has risen in it is its value; drag it to move it and let go to watch it
+float back on its thread; scroll over it to fill it or let some out; shift-drag up or down to set it by hand (alt as well for finer steps);
+double-click to reset. A setting (shape, octave) steps on with a click; a switch (freeze) is whole when on and only its edges when off.</td></tr>
+<tr><td class="n">strip</td><td>each bunch hangs from a folded strip in its colour (sm1 smear, pt2 pitch, gr3 grains, rv4 reverb …); drag a strip to move the bunch.</td></tr>
+<tr><td class="n">order</td><td>move the cursor to the left edge: the effects slide out as strips, top (in) to bottom (out); drag to reorder, shuffle rolls one.</td></tr>
+<tr><td class="n">pumps</td><td>hold the pump on the left to blow up a balloon that plays plucks until it pops; hold the one on the right to catch the sound
+in a balloon that plays it as frozen grains (six at most; click one to type its interval; drag the pin onto one to pop it).</td></tr>
+<tr><td class="n">store</td><td>top right: eleven more effects and the stutter, each a box of four balloons (two controls, level, width) that joins the chain.</td></tr>
+<tr><td class="n">weather</td><td>the row along the top: cloudy, rain, snow, heatwave, fog, wind, hail, aurora, twister and auto (right-click snow or heatwave
+for their fade times); a rainbow after rain.</td></tr>
+<tr><td class="n">boom</td><td>the white dart under help and reset: a dive, a sonic boom and a rainbow of seven bands of your sound. Right-click for what else sets one off.</td></tr>
+<tr><td class="n">sliders</td><td>every control again as the suite's slider, one row per effect (the original's gumball menu).</td></tr>
+<tr><td class="n">board</td><td>the sheet on the floor: draw the grain shape, or the master eq.</td></tr>
+<tr><td class="n">card</td><td>move the cursor to the name at the top left: presets, scale, bypass.</td></tr></table>
+<p>New instances start the same way every time, on the first program, with nothing random and no remembered patch. The help (top right) has a
+chapter for everything above.</p>
+<img class="shot" src="img/ballonwinkel-sliders.png" alt="ballonwinkel sliders"></section>
+<section class="page"><h2>ballonpaleis</h2>
+<p>ballonpaleis is the same shop inside a sphere, and an Ambisonics encoder: its output is 1st to 7th order (4, 9, 16 … 64 channels, ACN order, SN3D
+normalisation), 3rd order by default. Put an Ambisonics decoder after it at the same order (for example the IEM AllRADecoder for loudspeakers or the
+BinauralDecoder for headphones). On a stereo track the first two channels of the scene come out and the map says the track is too small.</p>
+<img class="shot" src="img/ballonpaleis.png" alt="ballonpaleis">
+<table class="params"><tr><th>part</th><th>what it does</th></tr>
+<tr><td class="n">the sphere</td><td>drag the empty sphere to turn the view, scroll to zoom, double-click to set it back. The view never changes the sound.</td></tr>
+<tr><td class="n">grains</td><td>up to 16; click the jar (the wire box on the left) for one more, drag one out and drop it anywhere, drag it back to take it away. The dry sound is the speaker mark.</td></tr>
+<tr><td class="n">grain mode</td><td>spatial (every grain carries its own copy of the effects), scatter (one copy, the granulator's grains spread over all of them) or copies (every grain the whole shop).</td></tr>
+<tr><td class="n">flight</td><td>20 ways to move: still, orbit, lorenz, flock, random, spiral, lissajous, rossler, breathe, fall, ping-pong; after Bernhard Leitner line,
+pendulum, column and soundcube; after Iannis Xenakis sonotron, paraboloid, gas, nomos and screens. Speed sets how fast.</td></tr>
+<tr><td class="n">distance</td><td>the bubble you're in, 1 to 50 metres: delay, level, air and the answer of a room, after the IEM RoomEncoder; doppler on or off.</td></tr>
+<tr><td class="n">energy</td><td>the map at the top left and the glow on the sphere show where the sound is loudest, from periwinkle (quiet) to coral (loudest).</td></tr></table>
+<p>The weather happens in 3-d here (patches of cloud, rain, snow and heat drift through the sphere and shake up the grains they pass), and the boom
+breaks where the dive ends, its rings opening out through the sphere.</p></section>''')
 
 # ---- recipes + tech -----------------------------------------------------------------------------------------
 add('''<section class="page" id="recipes"><h2>recipes</h2>

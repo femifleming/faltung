@@ -1,8 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>faltung manual</title><style>
-@font-face { font-family: Inter; src: url("file:///Users/femishonugafleming/faltung/Resources/fonts/Inter-Regular.ttf"); font-weight: 400; }
-@font-face { font-family: Inter; src: url("file:///Users/femishonugafleming/faltung/Resources/fonts/Inter-Medium.ttf"); font-weight: 600; }
-@font-face { font-family: Plex; src: url("file:///Users/femishonugafleming/faltung/Resources/fonts/IBMPlexMono-Regular.ttf"); font-weight: 400; }
-@font-face { font-family: Plex; src: url("file:///Users/femishonugafleming/faltung/Resources/fonts/IBMPlexMono-Medium.ttf"); font-weight: 600; }
+@font-face { font-family: Inter; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/Inter-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: Inter; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/Inter-Medium.ttf"); font-weight: 600; }
+@font-face { font-family: Plex; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/IBMPlexMono-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: Plex; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/IBMPlexMono-Medium.ttf"); font-weight: 600; }
 @page { size: A4; margin: 16mm 15mm 16mm 15mm; @bottom-right { content: counter(page); font: 8pt Plex; } }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { font: 9.4pt/1.5 Inter, Helvetica, sans-serif; color: #1d1c15; margin: 0; }
@@ -51,7 +51,7 @@ ul, ol { padding-left: 14pt; } li { margin: 2pt 0; }
 <li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">using the controls</a></li>
 <li><a href="#auto">automation in ableton</a></li><li><a href="#midi">midi</a></li>
 <li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li><li><a href="#modules">the drum modules</a> — bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9</li>
-<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
+<li><a href="#fx">the processes</a> — mc3 dl4 rv5 sw6 fl7 gl8</li><li><a href="#wb1">wb1 wub</a></li><li><a href="#ms0">ms0 master</a></li><li><a href="#ballon">ballonwinkel · ballonpaleis</a></li><li><a href="#recipes">recipes</a></li><li><a href="#tech">technical notes</a></li></ol>
 <h2 id="intro">introduction</h2>
 <p>faltung is a set of eighteen instruments and effects for the sound of 2000s minimal and microhouse — Perlon, [a:rpia:r], Villalobos, the Romanian
 labels — and for the bass of early dubstep and neuro. Everything is synthesized or processed live; there are no sample libraries.</p>
@@ -340,7 +340,52 @@ holds, the limiter meter's too.</p>
 <p class="small">eq bands 2 – 8 work like band 1 and multiband bands 2 – 4 like the sub band; every one of them is its own automatable parameter
 (<i>eq 5 gain</i>, <i>high width</i> …).</p>
 <h3>export</h3><p>Bounce at the project's sample rate as 24-bit (dither 24) or 32-bit float (dither off). For 16-bit delivery, set dither to 16 bit;
-nothing after ms0 should change the level.</p></section><section class="page" id="recipes"><h2>recipes</h2>
+nothing after ms0 should change the level.</p></section><section class="divider" style="background:#c9567f;color:#1d1d1d"><svg class="wire" viewBox="0 0 600 300"><g fill="none" stroke="#f3c1d1" stroke-width="1.2">
+<polyline points="40,250 120,40 300,90 480,70 580,170 540,260 300,285 40,250"/><polyline points="120,40 220,230 300,90"/>
+<polyline points="220,230 480,70"/><polyline points="220,230 300,285"/><polyline points="480,70 540,260"/><polyline points="90,140 400,60 580,170"/></g>
+<g fill="none" stroke="#fff" stroke-width="2.4"><polygon points="150,120 210,122 212,190 154,188"/><polygon points="390,190 450,176 446,224 388,228"/></g></svg><div class="dt"><h1 style="color:#ffffff">ballonwinkel · ballonpaleis</h1><p>the balloon shop and the balloon palace, in the faltung series</p></div></section><section class="page" id="ballon"><h2>ballonwinkel</h2>
+<p class="lead">ballonwinkel (Dutch: balloon shop) and ballonpaleis (balloon palace) are the faltung-series twins of <b>Pinkie Pie's Balloon Shop</b>
+and <b>Pinkie Pie's Balloon Palace</b>. The originals carry on as they are, in their own repository and with their own installs; the twins have their
+own names, plug-in codes and saved state, so both generations can sit in one session side by side.</p>
+<p>The engine is the original's, unchanged, and so is every control: the same 109 parameters (118 in ballonpaleis), with the same ids, ranges and
+defaults, the same programs, bus layouts, latency (71 samples at 48 khz) and tail. <code>ballonwinkelTest</code> runs the original's own processor
+and the twin's on the same input and the same parameter script — every program, every control moving, all the weather — and the two outputs are
+the same samples. Only the window is new.</p>
+<img class="shot" src="img/ballonwinkel.png" alt="ballonwinkel">
+<h3>playing it</h3>
+<table class="params"><tr><th>gesture</th><th>what it does</th></tr>
+<tr><td class="n">balloon</td><td>every balloon is a control. How far the colour has risen in it is its value; drag it to move it and let go to watch it
+float back on its thread; scroll over it to fill it or let some out; shift-drag up or down to set it by hand (alt as well for finer steps);
+double-click to reset. A setting (shape, octave) steps on with a click; a switch (freeze) is whole when on and only its edges when off.</td></tr>
+<tr><td class="n">strip</td><td>each bunch hangs from a folded strip in its colour (sm1 smear, pt2 pitch, gr3 grains, rv4 reverb …); drag a strip to move the bunch.</td></tr>
+<tr><td class="n">order</td><td>move the cursor to the left edge: the effects slide out as strips, top (in) to bottom (out); drag to reorder, shuffle rolls one.</td></tr>
+<tr><td class="n">pumps</td><td>hold the pump on the left to blow up a balloon that plays plucks until it pops; hold the one on the right to catch the sound
+in a balloon that plays it as frozen grains (six at most; click one to type its interval; drag the pin onto one to pop it).</td></tr>
+<tr><td class="n">store</td><td>top right: eleven more effects and the stutter, each a box of four balloons (two controls, level, width) that joins the chain.</td></tr>
+<tr><td class="n">weather</td><td>the row along the top: cloudy, rain, snow, heatwave, fog, wind, hail, aurora, twister and auto (right-click snow or heatwave
+for their fade times); a rainbow after rain.</td></tr>
+<tr><td class="n">boom</td><td>the white dart under help and reset: a dive, a sonic boom and a rainbow of seven bands of your sound. Right-click for what else sets one off.</td></tr>
+<tr><td class="n">sliders</td><td>every control again as the suite's slider, one row per effect (the original's gumball menu).</td></tr>
+<tr><td class="n">board</td><td>the sheet on the floor: draw the grain shape, or the master eq.</td></tr>
+<tr><td class="n">card</td><td>move the cursor to the name at the top left: presets, scale, bypass.</td></tr></table>
+<p>New instances start the same way every time, on the first program, with nothing random and no remembered patch. The help (top right) has a
+chapter for everything above.</p>
+<img class="shot" src="img/ballonwinkel-sliders.png" alt="ballonwinkel sliders"></section>
+<section class="page"><h2>ballonpaleis</h2>
+<p>ballonpaleis is the same shop inside a sphere, and an Ambisonics encoder: its output is 1st to 7th order (4, 9, 16 … 64 channels, ACN order, SN3D
+normalisation), 3rd order by default. Put an Ambisonics decoder after it at the same order (for example the IEM AllRADecoder for loudspeakers or the
+BinauralDecoder for headphones). On a stereo track the first two channels of the scene come out and the map says the track is too small.</p>
+<img class="shot" src="img/ballonpaleis.png" alt="ballonpaleis">
+<table class="params"><tr><th>part</th><th>what it does</th></tr>
+<tr><td class="n">the sphere</td><td>drag the empty sphere to turn the view, scroll to zoom, double-click to set it back. The view never changes the sound.</td></tr>
+<tr><td class="n">grains</td><td>up to 16; click the jar (the wire box on the left) for one more, drag one out and drop it anywhere, drag it back to take it away. The dry sound is the speaker mark.</td></tr>
+<tr><td class="n">grain mode</td><td>spatial (every grain carries its own copy of the effects), scatter (one copy, the granulator's grains spread over all of them) or copies (every grain the whole shop).</td></tr>
+<tr><td class="n">flight</td><td>20 ways to move: still, orbit, lorenz, flock, random, spiral, lissajous, rossler, breathe, fall, ping-pong; after Bernhard Leitner line,
+pendulum, column and soundcube; after Iannis Xenakis sonotron, paraboloid, gas, nomos and screens. Speed sets how fast.</td></tr>
+<tr><td class="n">distance</td><td>the bubble you're in, 1 to 50 metres: delay, level, air and the answer of a room, after the IEM RoomEncoder; doppler on or off.</td></tr>
+<tr><td class="n">energy</td><td>the map at the top left and the glow on the sphere show where the sound is loudest, from periwinkle (quiet) to coral (loudest).</td></tr></table>
+<p>The weather happens in 3-d here (patches of cloud, rain, snow and heat drift through the sphere and shake up the grains they pass), and the boom
+breaks where the dive ends, its rings opening out through the sphere.</p></section><section class="page" id="recipes"><h2>recipes</h2>
 <h3>a long shuffled groove (kt1)</h3><ol><li>Load <b>a3 tok</b>. Set rm3 length 15, pc7 length 12, cl8 length 7.</li><li>Shift-drag a few rim steps early and hats late.</li>
 <li>Alt-click the offbeat clicks to 50%.</li><li>Automate <i>pattern</i> between a1 and a2 every 16 bars, and <i>pc7 probability</i> slowly up.</li></ol>
 <h3>the dub chain</h3><p>kt1 → rm3 on its own output → <b>dl4</b> (3/16, feedback 60%, age 0.4, send automated) → <b>rv5</b> air with gate. Main mix → <b>gl8</b>.</p>

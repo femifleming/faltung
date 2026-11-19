@@ -4,31 +4,20 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
 
-// The interface colours. They follow the preset's picture: each editor sets them from its
-// theme just before it paints (painting is on the message thread, one editor at a time).
+#include "Look.h"   // (ballon/Look.h: the faltung look both windows draw with; the balloons' colours and shape are declared there)
+
+// The interface colours: the product's colour field and what sits on it (see Look.h). The names are the
+// ones the code has always used.
 namespace palette
 {
-    inline juce::Colour ink        { 0xff111b2c };
-    inline juce::Colour slate      { 0xff1c2638 };
-    inline juce::Colour dustyPink  { 0xffe79ab9 };
-    inline juce::Colour rose       { 0xffc26b93 };
-    inline juce::Colour blush      { 0xfff6c9dc };
-    inline juce::Colour tearBlue   { 0xffa7cfdc };
-    inline juce::Colour faded      { 0xffb9a7b3 };
+    inline juce::Colour ink        { 0xff111b2c };   // the field itself
+    inline juce::Colour slate      { 0xff1c2638 };   // a panel on it
+    inline juce::Colour dustyPink  { 0xffe79ab9 };   // thin lines
+    inline juce::Colour rose       { 0xffc26b93 };   // a fill
+    inline juce::Colour blush      { 0xfff6c9dc };   // text on the field
+    inline juce::Colour tearBlue   { 0xffa7cfdc };   // a second line colour
+    inline juce::Colour faded      { 0xffb9a7b3 };   // text, stepped back
 }
-
-// Balloon colours, flat cartoon style: fill, line (darker same hue), cel shadow, highlight.
-struct BalloonColours { juce::Colour fill, line, shade, shine; };
-enum BalloonHue { balloonBlue = 0, balloonYellow, balloonPink, balloonMint, balloonLilac, balloonOrange, balloonTeal, numHues };
-const BalloonColours& balloonColours (int hue);
-
-// Where a balloon's body and knot sit inside a square of space, for a given inflation.
-struct BalloonShape
-{
-    float cx, cy, rx, ry, knot, lw;
-    juce::Point<float> knotBottom() const noexcept { return { cx, cy + ry + knot }; }
-};
-BalloonShape balloonShape (juce::Rectangle<float> bounds, float inflate);
 
 //==============================================================================
 class SadLookAndFeel : public juce::LookAndFeel_V4
@@ -44,11 +33,13 @@ public:
     // (JUCE outlines menus that open inside the window with a resize frame; ours draw their own edges)
     void drawResizableFrame (juce::Graphics&, int, int, const juce::BorderSize<int>&) override {}
 
-    // A slightly see-through cartoon balloon with writing on it.
+    // A balloon: a faceted solid with its name on it.
     //   wrinkles: limp (0..1)   wet: rained on (0..1)   murk: muffled by a lowpass (0..1)
+    //   level: how far its colour has risen (its value, 0..1); < 0: a whole one
     void drawBalloon (juce::Graphics&, const BalloonShape&, int hue, const juce::String& label,
                       const juce::String& value, bool hot, float wrinkles, float wet = 0.0f,
-                      float murk = 0.0f, float labelSize = 10.5f) const;
+                      float murk = 0.0f, float labelSize = 10.0f, float level = -1.0f) const;
+    void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
     void drawTinyBalloon (juce::Graphics&, juce::Point<float> anchor, float r, int hue) const;
     // ice over a balloon as the snow freezes everything (0..1)
     void drawFrost (juce::Graphics&, const BalloonShape&, float frost, float seed) const;
@@ -702,7 +693,6 @@ private:
     // presets: a picture behind everything, fading across when the preset changes, and the
     // interface colours following it
     int seenStutter = 0;     // the stutter's event counter, last time we looked
-    double lastSave = 0.0;   // the last patch is saved every couple of seconds while you play
     // the preset name in the card: it looks like the other boxes, but a click opens the filmstrip
     struct PresetBox : public juce::ComboBox
     {

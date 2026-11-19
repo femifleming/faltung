@@ -3,7 +3,7 @@
 #include <functional>
 #include <vector>
 
-// Shared by the Balloon Shop and the Balloon Palace (keep the two copies identical):
+// Shared by ballonwinkel and ballonpaleis (keep the two copies identical):
 //   SkyArt       the pictures and the switches of the newer weather (fog, wind, hail, aurora, twister, rainbow)
 //   GumballPage  the gumball menu: every balloon's control again as a gumball that stays put
 
@@ -89,10 +89,11 @@ struct SkyArt
     // behind the balloons: the aurora's curtains across the top of the sky, the rainbow standing on the ground
     void paintBehind (juce::Graphics& g) const
     {
+        // (the faltung twins: the aurora as hanging lines in three of the strip colours, the rainbow as seven
+        //  thin arcs)
         using namespace juce;
         if (in.aurora > 0.002f)
         {
-            static const uint32 cols[4] = { 0xff4cffa0, 0xff59e0ff, 0xffa77bff, 0xff66ffcf };
             for (int j = 0; j < 4; ++j)
             {
                 const float bright = in.aurora * (0.2f + 0.8f * in.curtains[j]);
@@ -100,28 +101,26 @@ struct SkyArt
                 const float tall = 150.0f + 150.0f * in.curtains[j];
                 constexpr int strips = 9;
                 const float sw = 190.0f / (float) strips;
+                g.setColour (bal::strip (j + 1).withAlpha (jmin (1.0f, 0.9f * bright)));
                 for (int s = 0; s < strips; ++s)
                 {
                     const float x = x0 + (float) s * sw + 12.0f * std::sin (t * 0.6f + (float) s * 0.8f + (float) j);
                     const float top = 8.0f + 14.0f * std::sin (t * 0.4f + (float) s * 0.9f + (float) j * 2.0f);
                     const float edge = std::sin (MathConstants<float>::pi * ((float) s + 0.5f) / (float) strips);
-                    const auto c = Colour (cols[j]);
-                    g.setGradientFill (ColourGradient (c.withAlpha (0.5f * bright * edge), x, top, c.withAlpha (0.0f), x, top + tall, false));
-                    g.fillRect (Rectangle<float> (x, top, sw + 1.0f, tall));
+                    g.drawLine (x, top, x + 6.0f * std::sin (t * 0.3f + (float) s), top + tall * edge, 1.0f);
                 }
             }
         }
         if (in.rainbow > 0.002f)
         {
-            static const uint32 cols[7] = { 0xffff4d4d, 0xffff9a3c, 0xffffe14d, 0xff5fdc6a, 0xff4db8ff, 0xff5b6cff, 0xffb06cff };
             const Point<float> c (w * 0.5f, h * 0.96f);
             for (int k = 0; k < 7; ++k)
             {
                 const float r = h * 0.72f - 8.0f * (float) k;   // red outermost
                 Path arc;
                 arc.addCentredArc (c.x, c.y, r, r, 0.0f, -MathConstants<float>::halfPi, MathConstants<float>::halfPi, true);
-                g.setColour (Colour (cols[k]).withAlpha (0.5f * in.rainbow));
-                g.strokePath (arc, PathStrokeType (8.5f));
+                g.setColour (bal::rainbow (k).withAlpha (0.9f * in.rainbow));
+                g.strokePath (arc, PathStrokeType (1.6f));
             }
         }
     }
@@ -189,85 +188,81 @@ struct SkyArt
     // one place in the weather row: its picture, its name underneath, and a lit plate behind it while it's on
     void drawSlot (juce::Graphics& g, int i, bool on, const juce::String& label) const
     {
+        // (the faltung twins: every picture a few thin white lines; a switch that is on stands on a filled
+        //  parallelogram in the window's line colour, its name in mono underneath)
         using namespace juce;
         const auto r = slot (i);
         const Point<float> c (r.getCentreX(), r.getY() + 22.0f);
-        const float a = on ? 1.0f : 0.72f, s = 30.0f;
+        const float s = 30.0f;
         if (on)
         {
-            g.setColour (palette::dustyPink.withAlpha (0.22f));
-            g.fillRoundedRectangle (r.reduced (3.0f, 1.0f), 10.0f);
-            g.setColour (palette::dustyPink.withAlpha (0.8f));
-            g.drawRoundedRectangle (r.reduced (3.0f, 1.0f), 10.0f, 1.2f);
+            g.setColour (bal::line().withAlpha (0.85f));
+            g.fillPath (fal::ui::skewRect (r.reduced (6.0f, 4.0f).withTrimmedBottom (14.0f), 0.3f));
         }
-        const auto white = Colour (0xfff3f4fa).withAlpha (a);
-        auto cloud = [&] (Point<float> at, float size, Colour col)
+        const auto ink = on ? fal::ui::inkFor (bal::line()) : bal::white().withAlpha (0.85f);
+        const float th = 1.2f;
+        auto stroke = [&] (const Path& p) { g.setColour (ink); g.strokePath (p, PathStrokeType (th)); };
+        auto seg = [&] (Point<float> a, Point<float> b) { g.setColour (ink); g.drawLine ({ a, b }, th); };
+        auto cloud = [&] (Point<float> at, float size)   // a cloud: a low faceted hull
+        {
+            stroke (bal::poly ({ { at.x - size * 0.5f, at.y + size * 0.22f }, { at.x - size * 0.42f, at.y - size * 0.02f },
+                                 { at.x - size * 0.18f, at.y - size * 0.12f }, { at.x, at.y - size * 0.3f }, { at.x + size * 0.26f, at.y - size * 0.16f },
+                                 { at.x + size * 0.48f, at.y + size * 0.0f }, { at.x + size * 0.5f, at.y + size * 0.22f } }));
+            seg ({ at.x - size * 0.18f, at.y - size * 0.12f }, { at.x - size * 0.05f, at.y + size * 0.22f });
+        };
+        auto sun = [&] (Point<float> at, float rad, float turn)   // an octagon with short rays
         {
             Path p;
-            p.addEllipse (Rectangle<float> (size * 0.6f, size * 0.6f).withCentre ({ at.x - size * 0.35f, at.y + size * 0.1f }));
-            p.addEllipse (Rectangle<float> (size * 0.8f, size * 0.8f).withCentre ({ at.x, at.y - size * 0.12f }));
-            p.addEllipse (Rectangle<float> (size * 0.56f, size * 0.56f).withCentre ({ at.x + size * 0.38f, at.y + size * 0.1f }));
-            p.addRectangle (at.x - size * 0.35f, at.y + size * 0.1f, size * 0.73f, size * 0.3f);
-            g.setColour (col);
-            g.fillPath (p);
-        };
-        auto sun = [&] (Point<float> at, float rad, Colour col, float turn)
-        {
-            g.setColour (col);
-            g.fillEllipse (Rectangle<float> (rad * 2.0f, rad * 2.0f).withCentre (at));
             for (int k = 0; k < 8; ++k)
             {
                 const float ang = (float) k * 0.7854f + turn;
-                g.drawLine (at.x + std::cos (ang) * rad * 1.4f, at.y + std::sin (ang) * rad * 1.4f, at.x + std::cos (ang) * rad * 1.85f, at.y + std::sin (ang) * rad * 1.85f, jmax (1.2f, rad * 0.22f));
+                const Point<float> q (at.x + std::cos (ang) * rad, at.y + std::sin (ang) * rad);
+                if (k == 0) p.startNewSubPath (q); else p.lineTo (q);
+                seg ({ at.x + std::cos (ang) * rad * 1.35f, at.y + std::sin (ang) * rad * 1.35f }, { at.x + std::cos (ang) * rad * 1.75f, at.y + std::sin (ang) * rad * 1.75f });
             }
+            p.closeSubPath();
+            stroke (p);
         };
-        auto line = [&] (const Path& p, Colour col, float th) { g.setColour (col); g.strokePath (p, PathStrokeType (th, PathStrokeType::curved, PathStrokeType::rounded)); };
         const float move = on ? t : 0.0f;   // (the pictures only move while their weather is on)
         switch (i)
         {
             case slotCloudy:
-                sun (c.translated (-s * 0.22f, -s * 0.2f), s * 0.2f, Colour (0xffffcf3a).withAlpha (a), move * 0.5f);
-                cloud (c.translated (s * 0.08f + (on ? 1.5f * std::sin (t * 0.8f) : 0.0f), s * 0.1f), s * 0.8f, Colour (0xffc9cfe4).withAlpha (a));
+                sun (c.translated (-s * 0.2f, -s * 0.18f), s * 0.17f, move * 0.5f);
+                cloud (c.translated (s * 0.08f + (on ? 1.5f * std::sin (t * 0.8f) : 0.0f), s * 0.12f), s * 0.8f);
                 break;
             case slotRain:
-                cloud (c.translated (0.0f, -s * 0.12f), s * 0.85f, Colour (0xffaab2cf).withAlpha (a));
+                cloud (c.translated (0.0f, -s * 0.1f), s * 0.85f);
                 for (int k = 0; k < 3; ++k)
                 {
                     const float u = on ? (move * 1.6f + (float) k * 0.33f) - std::floor (move * 1.6f + (float) k * 0.33f) : 0.0f;
-                    const float x = c.x - s * 0.25f + (float) k * s * 0.25f, y = c.y + s * 0.3f + u * s * 0.16f;
-                    g.setColour (Colour (0xffbcd6ff).withAlpha (a * (on ? 1.0f - 0.6f * u : 1.0f)));
-                    g.drawLine (x, y, x - s * 0.06f, y + s * 0.2f, s * 0.07f);
+                    const float x = c.x - s * 0.25f + (float) k * s * 0.25f, y = c.y + s * 0.24f + u * s * 0.16f;
+                    seg ({ x, y }, { x - s * 0.06f, y + s * 0.2f });
                 }
                 break;
             case slotSnow:
-                g.setColour (white);
                 for (int k = 0; k < 3; ++k)
                 {
                     const float ang = (float) k * 1.0472f + move * 0.4f;
-                    g.drawLine (c.x - std::cos (ang) * s * 0.42f, c.y - std::sin (ang) * s * 0.42f, c.x + std::cos (ang) * s * 0.42f, c.y + std::sin (ang) * s * 0.42f, s * 0.08f);
+                    seg ({ c.x - std::cos (ang) * s * 0.42f, c.y - std::sin (ang) * s * 0.42f }, { c.x + std::cos (ang) * s * 0.42f, c.y + std::sin (ang) * s * 0.42f });
                 }
                 break;
             case slotHeat:
-                sun (c.translated (0.0f, -s * 0.12f), s * 0.2f, Colour (0xffffb02e).withAlpha (a), move * 0.6f);
+                sun (c.translated (0.0f, -s * 0.12f), s * 0.17f, move * 0.6f);
                 for (int k = 0; k < 2; ++k)
                 {
-                    Path p;
+                    std::vector<Point<float>> pts;
                     for (int j = 0; j <= 8; ++j)
-                    {
-                        const Point<float> q (c.x - s * 0.35f + (float) j * s * 0.0875f, c.y + s * 0.32f + (float) k * s * 0.14f + std::sin ((float) j * 1.5f + move * 4.0f) * s * 0.04f);
-                        if (j == 0) p.startNewSubPath (q); else p.lineTo (q);
-                    }
-                    line (p, Colour (0xffffb02e).withAlpha (a), s * 0.06f);
+                        pts.push_back ({ c.x - s * 0.35f + (float) j * s * 0.0875f, c.y + s * 0.32f + (float) k * s * 0.14f + ((j % 2) ? 1.0f : -1.0f) * s * 0.04f * (on ? std::cos (move * 4.0f) : 1.0f) });
+                    stroke (bal::polyline (pts));
                 }
                 break;
             case slotFog:
             {
                 const float rows[3][3] = { { -0.4f, 0.4f, -0.22f }, { -0.28f, 0.44f, 0.0f }, { -0.4f, 0.2f, 0.22f } };
-                g.setColour (white);
                 for (int k = 0; k < 3; ++k)
                 {
                     const float dx = on ? 2.0f * std::sin (t * 1.3f + (float) k * 2.0f) : 0.0f;
-                    g.drawLine (c.x + rows[k][0] * s + dx, c.y + rows[k][2] * s, c.x + rows[k][1] * s + dx, c.y + rows[k][2] * s, s * 0.1f);
+                    seg ({ c.x + rows[k][0] * s + dx, c.y + rows[k][2] * s }, { c.x + rows[k][1] * s + dx, c.y + rows[k][2] * s });
                 }
                 break;
             }
@@ -275,59 +270,49 @@ struct SkyArt
                 for (int k = 0; k < 2; ++k)
                 {
                     const float dx = on ? 2.5f * std::sin (t * 4.0f + (float) k * 1.5f) : 0.0f;
-                    const float y = c.y - s * 0.12f + (float) k * s * 0.26f, cy = y + (k == 0 ? -s * 0.13f : s * 0.13f);
-                    Path p;
-                    p.startNewSubPath (c.x - s * 0.42f + dx, y);
-                    p.lineTo (c.x + s * 0.18f + dx, y);
-                    // (curling back on itself: up for the top one, down for the bottom one)
-                    p.addCentredArc (c.x + s * 0.18f + dx, cy, s * 0.13f, s * 0.13f, 0.0f, k == 0 ? MathConstants<float>::pi : 0.0f, k == 0 ? -MathConstants<float>::pi * 0.35f : MathConstants<float>::pi * 1.35f, false);
-                    line (p, white, s * 0.08f);
+                    const float y = c.y - s * 0.12f + (float) k * s * 0.26f, turn = k == 0 ? -1.0f : 1.0f;
+                    stroke (bal::polyline ({ { c.x - s * 0.42f + dx, y }, { c.x + s * 0.18f + dx, y }, { c.x + s * 0.3f + dx, y + turn * s * 0.12f },
+                                             { c.x + s * 0.18f + dx, y + turn * s * 0.24f }, { c.x + s * 0.08f + dx, y + turn * s * 0.14f } }));
                 }
                 break;
             case slotHail:
-                cloud (c.translated (0.0f, -s * 0.15f), s * 0.8f, Colour (0xffaab2cf).withAlpha (a));
-                g.setColour (white);
+                cloud (c.translated (0.0f, -s * 0.15f), s * 0.8f);
                 for (int k = 0; k < 3; ++k)
                 {
                     const float bounce = on ? std::abs (std::sin (t * 5.0f + (float) k * 1.1f)) * s * 0.12f : 0.0f;
-                    g.fillEllipse (Rectangle<float> (s * 0.14f, s * 0.14f).withCentre ({ c.x - s * 0.24f + (float) k * s * 0.24f, c.y + s * 0.42f + (float) (k % 2) * s * 0.06f - bounce }));
+                    const auto q = Point<float> (c.x - s * 0.24f + (float) k * s * 0.24f, c.y + s * 0.4f + (float) (k % 2) * s * 0.06f - bounce);
+                    stroke (bal::poly ({ q.translated (0.0f, -3.0f), q.translated (3.0f, 0.0f), q.translated (0.0f, 3.0f), q.translated (-3.0f, 0.0f) }));
                 }
                 break;
             case slotAurora:
-            {
-                static const uint32 cols[3] = { 0xff4cffa0, 0xff59e0ff, 0xffa77bff };
                 for (int k = 0; k < 3; ++k)
                 {
                     Path p;
                     const float x = c.x - s * 0.26f + (float) k * s * 0.26f, sway = on ? 2.0f * std::sin (t * 1.5f + (float) k) : 0.0f;
                     p.startNewSubPath (x + sway, c.y - s * 0.38f);
                     p.quadraticTo (x + s * 0.16f - sway, c.y, x + sway, c.y + s * 0.38f);
-                    line (p, Colour (cols[k]).withAlpha (a), s * 0.12f);
+                    g.setColour (on ? ink : bal::strip (k + 1).withAlpha (0.95f));
+                    g.strokePath (p, PathStrokeType (1.6f));
                 }
                 break;
-            }
             case slotTwister:
-                g.setColour (white);
                 for (int k = 0; k < 4; ++k)
                 {
                     const float half = s * (0.42f - 0.1f * (float) k);
                     const float dx = on ? 2.0f * std::sin (t * 9.0f + (float) k * 1.3f) : (float) (k % 2) * s * 0.05f;
-                    g.fillRoundedRectangle (c.x - half + dx, c.y - s * 0.36f + (float) k * s * 0.22f, half * 2.0f, s * 0.11f, s * 0.05f);
+                    seg ({ c.x - half + dx, c.y - s * 0.32f + (float) k * s * 0.22f }, { c.x + half + dx, c.y - s * 0.32f + (float) k * s * 0.22f });
                 }
                 break;
-            default:   // auto: a little switch
+            default:   // auto: the suite's toggle mark
             {
-                const auto track = Rectangle<float> (s * 0.84f, s * 0.4f).withCentre (c);
-                g.setColour (on ? palette::dustyPink : Colour (0xff59627c));
-                g.fillRoundedRectangle (track, s * 0.2f);
-                g.setColour (Colours::white);
-                g.fillEllipse (Rectangle<float> (s * 0.3f, s * 0.3f).withCentre ({ c.x + (on ? s * 0.2f : -s * 0.2f), c.y }));
+                const auto m = Rectangle<float> (s * 0.84f, s * 0.4f).withCentre (c);
+                const auto p = fal::ui::skewRect (m);
+                if (on) { g.setColour (ink); g.fillPath (p); }
+                g.setColour (ink); g.strokePath (p, PathStrokeType (th));
                 break;
             }
         }
-        g.setFont (SadLookAndFeel::uiFont (8.8f, true));
-        g.setColour (palette::blush.withAlpha (on ? 1.0f : 0.72f));
-        g.drawFittedText (label, r.withTop (r.getY() + 41.0f).withHeight (13.0f).toNearestInt(), Justification::centred, 1, 0.75f);
+        bal::label (g, label, r.withTop (r.getY() + 41.0f).withHeight (13.0f), on ? bal::white() : bal::ink().withAlpha (0.75f), 8.5f);
     }
 
     // (the first version's small switch with its name beside it; kept for anything that still wants one)
@@ -409,8 +394,8 @@ private:
 };
 
 //==============================================================================
-// The gumball menu: a page with every balloon's control on it again, as a gumball that stays where
-// it is. (The stutter effect is called the gumball machine; this page is its menu of gumballs.) One row for each effect, in its balloon's colour. Each gumball is a glass ball that fills
+// The sliders page (the original's gumball menu): every balloon's control on it again, as a slider that stays
+// where it is. (The stutter effect is called the gumball machine; this page is its menu of gumballs.) One row for each effect, in its balloon's colour. Each gumball is a glass ball that fills
 // with colour as its value goes up, with the value written inside.
 //   drag up or down: turn it (shift: finely)   scroll: turn it   click a switch: flip it
 //   click a choice: the next one (right-click: the one before)   double-click: back to where it starts
@@ -496,23 +481,21 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        // (the faltung twins: a sheet of the suite's paper over the room, every control a gumball drawn as a
+        //  thin octagon that fills with its row's colour, the names in mono)
         using namespace juce;
         const float a = anim * anim * (3.0f - 2.0f * anim);
-        g.setGradientFill (ColourGradient (palette::ink.withAlpha (0.93f * a), 0.0f, 0.0f, palette::slate.withAlpha (0.95f * a), 0.0f, H, false));
+        g.setColour (bal::paper().withAlpha (0.97f * a));
         g.fillRect (getLocalBounds());
         g.setOpacity (a);
-        g.setFont (SadLookAndFeel::uiFont (24.0f, true));
-        g.setColour (palette::dustyPink.withAlpha (a));
-        g.drawText ("gumball menu", Rectangle<float> (left, 16.0f, 320.0f, 32.0f), Justification::centredLeft);
-        g.setFont (SadLookAndFeel::uiFont (10.5f));
-        g.setColour (palette::faded.withAlpha (0.8f * a));
-        g.drawText ("drag up or down or scroll to turn  -  click a switch  -  double-click: back to the start  -  the balloons follow",
-                    Rectangle<float> (300.0f, 18.0f, W - 360.0f, 28.0f), Justification::centredRight);
+        bal::title (g, "sliders", Rectangle<float> (left, 14.0f, 320.0f, 34.0f), bal::paperInk().withAlpha (a), 24.0f);
+        bal::label (g, "drag along or up and down, or scroll  -  click a switch  -  double-click: back to the start  -  the balloons follow",
+                    Rectangle<float> (300.0f, 18.0f, W - 360.0f, 28.0f), bal::paperInk().withAlpha (0.6f * a), 10.0f, Justification::centredRight);
         {
             const auto c = closeArea().reduced (7.0f);
-            g.setColour (palette::dustyPink.withAlpha (a));
-            g.drawLine (c.getX(), c.getY(), c.getRight(), c.getBottom(), 2.4f);
-            g.drawLine (c.getRight(), c.getY(), c.getX(), c.getBottom(), 2.4f);
+            g.setColour (bal::paperInk().withAlpha (a));
+            g.drawLine (c.getX(), c.getY(), c.getRight(), c.getBottom(), 1.4f);
+            g.drawLine (c.getRight(), c.getY(), c.getX(), c.getBottom(), 1.4f);
         }
 
         g.saveState();
@@ -521,18 +504,16 @@ public:
         {
             const float pop = jlimit (0.0f, 1.25f, s.pop);
             if (pop <= 0.01f) continue;
-            const auto& col = balloonColours (s.row.hue);
-            g.setFont (SadLookAndFeel::uiFont (14.0f, true));
-            g.setColour (col.fill.withAlpha (a * jmin (1.0f, pop)));
-            g.drawText (s.row.name, Rectangle<float> (s.pos.x, s.pos.y - scroll - 12.0f, labelW - 8.0f, 24.0f), Justification::centredLeft);
+            const auto rowC = bal::hue (s.row.hue);
+            bal::foldStrip (g, Rectangle<float> (s.pos.x, s.pos.y - scroll - 10.0f, labelW - 22.0f, 20.0f), rowC.withMultipliedAlpha (a * jmin (1.0f, pop)), s.row.name, false, 0.0f, 11.0f);
             for (int k = 0; k < (int) s.row.knobs.size(); ++k)
                 drawGumball (g, centreOf (s, k).translated (0.0f, -scroll), R * pop, s.row.hue, s.row.knobs[(size_t) k], a,
                              hoverKey == s.row.key && hoverIndex == k);
         }
         for (auto& sp : sparks)
         {
-            g.setColour (balloonColours (sp.hue).fill.withAlpha (a * jlimit (0.0f, 1.0f, sp.life * 2.0f)));
-            g.fillEllipse (Rectangle<float> (5.0f, 5.0f).withCentre (sp.p.translated (0.0f, -scroll)));
+            g.setColour (bal::hue (sp.hue).withAlpha (a * jlimit (0.0f, 1.0f, sp.life * 2.0f)));
+            g.drawLine ({ sp.p.translated (-2.5f, -scroll), sp.p.translated (2.5f, -scroll) }, 1.2f);
         }
         g.restoreState();
 
@@ -541,16 +522,12 @@ public:
         {
             const auto c = knobCentre (hoverKey, hoverIndex).translated (0.0f, -scroll);
             const String text = kn->param->getName (40) + ":  " + kn->param->getCurrentValueAsText();
-            g.setFont (SadLookAndFeel::uiFont (11.5f, true));
-            const float tw = GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 18.0f;
+            const float tw = GlyphArrangement::getStringWidth (bal::mono (11.0f), text) + 18.0f;
             auto box = Rectangle<float> (tw, 20.0f).withCentre ({ jlimit (tw * 0.5f + 6.0f, W - tw * 0.5f - 6.0f, c.x), c.y - R - 16.0f });
             if (box.getY() < top - 30.0f) box = box.withY (c.y + R + 26.0f);
-            g.setColour (palette::ink.withAlpha (0.95f * a));
-            g.fillRoundedRectangle (box, 6.0f);
-            g.setColour (palette::dustyPink.withAlpha (0.8f * a));
-            g.drawRoundedRectangle (box, 6.0f, 1.0f);
-            g.setColour (palette::blush.withAlpha (a));
-            g.drawText (text, box, Justification::centred);
+            g.setColour (bal::paperInk().withAlpha (0.92f * a));
+            g.fillPath (fal::ui::skewRect (box, 0.3f));
+            bal::label (g, text, box, bal::paper().withAlpha (a), 11.0f);
         }
     }
 
@@ -583,6 +560,7 @@ public:
         dragKnob = &p;
         dragFrom = p.getValue();
         dragY = e.position.y;
+        dragX = e.position.x;
         p.beginChangeGesture();
     }
 
@@ -590,7 +568,7 @@ public:
     {
         if (dragKnob == nullptr) return;
         const float range = e.mods.isShiftDown() ? 900.0f : 170.0f;
-        dragKnob->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, dragFrom + (dragY - e.position.y) / range));
+        dragKnob->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, dragFrom + ((dragY - e.position.y) + (e.position.x - dragX)) / range));   // (up or to the right)
         if (onActivity) onActivity();
     }
 
@@ -723,60 +701,33 @@ private:
     // the filling gumball
     void drawGumball (juce::Graphics& g, juce::Point<float> c, float r, int hue, const Knob& kn, float alpha, bool hot) const
     {
+        // (the faltung twins: each control is the suite's slider, a thin rule with a slanted fill and an edge
+        //  mark; a switch is the suite's toggle mark; the name and the value underneath, in mono)
         using namespace juce;
         if (kn.param == nullptr || r < 1.0f) return;
-        const auto& col = balloonColours (hue);
+        const auto col = bal::hue (hue).withMultipliedAlpha (alpha);
+        const auto inkC = bal::paperInk().withAlpha (alpha);
         const float v = jlimit (0.0f, 1.0f, kn.param->getValue());
-        const auto ball = Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (c);
-        g.setColour (Colours::black.withAlpha (0.28f * alpha));
-        g.fillEllipse (ball.translated (0.0f, r * 0.2f).expanded (r * 0.08f));
-        g.setColour (Colours::white.withAlpha ((hot ? 0.16f : 0.08f) * alpha));
-        g.fillEllipse (ball);
+        const float w = (knobPitch - 14.0f) * jlimit (0.0f, 1.0f, r / R);
+        const auto track = Rectangle<float> (w, 14.0f).withCentre (c.translated (0.0f, -4.0f));
+        if (kn.toggle)
         {
-            Graphics::ScopedSaveState ss (g);
-            Path clip;
-            clip.addEllipse (ball);
-            g.reduceClipRegion (clip);
-            const float level = c.y + r - 2.0f * r * v;
-            Path fill;
-            fill.startNewSubPath (c.x - r, c.y + r);
-            const bool wavy = v > 0.01f && v < 0.99f;
-            for (int i = 0; i <= 12; ++i)
-                fill.lineTo (c.x - r + 2.0f * r * (float) i / 12.0f, level + (wavy ? std::sin ((float) i * 1.7f + c.x + t * 2.0f) * r * 0.045f : 0.0f));
-            fill.lineTo (c.x + r, c.y + r);
-            fill.closeSubPath();
-            g.setGradientFill (ColourGradient (col.fill.withAlpha (alpha), c.x, c.y - r, col.line.withAlpha (alpha), c.x, c.y + r, false));
-            g.fillPath (fill);
+            const auto p = fal::ui::skewRect (Rectangle<float> (22.0f, 11.0f).withCentre (track.getCentre()));
+            if (v > 0.5f) { g.setColour (col); g.fillPath (p); }
+            g.setColour (inkC.withMultipliedAlpha (hot ? 1.0f : 0.8f));
+            g.strokePath (p, PathStrokeType (hot ? 1.5f : 1.0f));
         }
-        g.setColour ((hot ? col.shine : col.fill).withAlpha (alpha));
-        g.drawEllipse (ball.reduced (0.9f), jmax (1.5f, r * 0.09f));
-        g.setColour (Colours::white.withAlpha (0.78f * alpha));
-        g.fillEllipse (Rectangle<float> (r * 0.48f, r * 0.26f).withCentre ({ c.x - r * 0.38f, c.y - r * 0.46f }));
-
-        // the value inside, if it fits there; the name underneath
-        const String value = kn.param->getCurrentValueAsText();
-        const Font inside = SadLookAndFeel::uiFont (9.2f, true);
-        const bool fits = GlyphArrangement::getStringWidth (inside, value) <= 2.0f * R - 5.0f;
-        if (fits && r > R * 0.7f)
-        {
-            g.setFont (inside);
-            g.setColour (Colour (0xff0a101e).withAlpha (0.8f * alpha));
-            for (auto d : { Point<float> (1.0f, 0.0f), Point<float> (-1.0f, 0.0f), Point<float> (0.0f, 1.0f), Point<float> (0.0f, -1.0f) })
-                g.drawText (value, ball.translated (d.x, d.y + 1.0f), Justification::centred);
-            g.setColour (Colours::white.withAlpha (alpha));
-            g.drawText (value, ball.translated (0.0f, 1.0f), Justification::centred);
-        }
-        g.setFont (SadLookAndFeel::uiFont (9.6f, true));
-        g.setColour (palette::blush.withAlpha ((hot ? 1.0f : 0.85f) * alpha));
-        const auto under = Rectangle<float> (knobPitch - 2.0f, 22.0f).withCentre ({ c.x, c.y + R + 13.0f });
-        if (fits) g.drawFittedText (kn.label, under.toNearestInt(), Justification::centredTop, 2, 0.8f);
         else
-        {
-            g.drawFittedText (kn.label, under.withHeight (11.0f).toNearestInt(), Justification::centred, 1, 0.75f);
-            g.setFont (SadLookAndFeel::uiFont (8.6f));
-            g.setColour (palette::faded.withAlpha (alpha));
-            g.drawFittedText (value, under.withTrimmedTop (11.0f).toNearestInt(), Justification::centred, 1, 0.7f);
-        }
+            bal::bar (g, track, v, col, inkC.withMultipliedAlpha (hot ? 1.6f : 1.0f), inkC);
+
+        const String value = kn.param->getCurrentValueAsText();
+        const auto under = Rectangle<float> (knobPitch - 2.0f, 24.0f).withCentre ({ c.x, c.y + 16.0f });
+        g.setFont (bal::mono (9.0f, true));
+        g.setColour (inkC.withMultipliedAlpha (hot ? 1.0f : 0.85f));
+        g.drawFittedText (kn.label, under.withHeight (11.0f).toNearestInt(), Justification::centred, 1, 0.75f);
+        g.setFont (bal::mono (8.6f));
+        g.setColour (inkC.withMultipliedAlpha (0.6f));
+        g.drawFittedText (value, under.withTrimmedTop (11.0f).toNearestInt(), Justification::centred, 1, 0.7f);
     }
 
     std::vector<Shown> shown;
@@ -784,5 +735,5 @@ private:
     float anim = 0.0f, target = 0.0f, t = 0.0f, scroll = 0.0f, maxScroll = 0.0f, wheelAcc = 0.0f;
     int hoverKey = -1, hoverIndex = -1;
     juce::RangedAudioParameter* dragKnob = nullptr;
-    float dragFrom = 0.0f, dragY = 0.0f;
+    float dragFrom = 0.0f, dragY = 0.0f, dragX = 0.0f;
 };

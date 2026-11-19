@@ -10,7 +10,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 
 art() {   # artefact folder of a target (single- or multi-config generators)
     local tgt="$1"
-    for sub in "" partials/ cloudfin/ convosolution/ obliqsound/; do for d in "$B/${sub}${tgt}_artefacts/Release" "$B/${sub}${tgt}_artefacts"; do
+    for sub in "" partials/ cloudfin/ convosolution/ obliqsound/ ballon/; do for d in "$B/${sub}${tgt}_artefacts/Release" "$B/${sub}${tgt}_artefacts"; do
         [ -d "$d/VST3" ] && { echo "$d"; return; }
     done; done
     echo "missing artefacts for $tgt" >&2; exit 1
@@ -47,6 +47,8 @@ if [ "$SUITE" = "deep" ]; then
     for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 sb1; do
         product "faltung deep $p" "faltung_deep_$p" "faltung deep $p"
     done
+    product "ballonwinkel deep" ballonwinkel_deep "ballonwinkel deep"
+    product "ballonpaleis deep" ballonpaleis_deep "ballonpaleis deep"
     cp "$ROOT/docs/manual-deep/faltung deep Manual.pdf" "$OUT/"
 else
     for p in kt1 kt2 bd1 sd2 rm3 hh4 cp6 pc7 cl8 tm9 mc3 dl4 rv5 sw6 fl7 gl8 wb1 ms0; do
@@ -55,6 +57,8 @@ else
     product Partials Partials Partials
     product Cloudfin Cloudfin Cloudfin
     product ConvoSolution ConvoSolution ConvoSolution
+    product ballonwinkel ballonwinkel ballonwinkel
+    product ballonpaleis ballonpaleis ballonpaleis
     cp "$ROOT/convosolution/Resources/IR-CREDITS.txt" "$OUT/ConvoSolution/"
     if [ -d "$B/obliqsound/ObliqSound_artefacts" ]; then   # (needs SuperCollider's server: skipped when it was not built)
         product ObliqSound ObliqSound ObliqSound

@@ -172,6 +172,13 @@ add_subdirectory(obliqsound)
 if(TARGET ObliqSound)
     add_dependencies(faltung_all ObliqSound_All ObliqSonic_All)
 endif()
+# ballonwinkel and ballonpaleis (the faltung-series twins of Pinkie Pie's Balloon Shop and Pinkie Pie's Balloon
+# Palace, which stay where they are) live in ballon/ and build with the bundle
+add_subdirectory(ballon)
+add_dependencies(faltung_all ballonwinkel_All ballonpaleis_All)
+if(FALTUNG_BUILD_DEEP)
+    add_dependencies(faltung_deep_all ballonwinkel_deep_All ballonpaleis_deep_All)
+endif()
 
 if(FALTUNG_BUILD_TESTS)
     juce_add_console_app(faltungTest PRODUCT_NAME "faltungTest")
@@ -205,14 +212,16 @@ endif()
 # locals of main(), which grew past it in 1.1.0: every test program gets the same 8 MB everywhere.
 if(MSVC)
     foreach(T faltungTest faltungDeepTest faltungHostCheck PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
-              ObliqSoundTest ObliqSonicTest obliq_smoke)
+              ObliqSoundTest ObliqSonicTest obliq_smoke
+              ballonwinkelTest ballonwinkelDspTest ballonpaleisTest ballonpaleisDspTest ballonpaleisSphereTest)
         if(TARGET ${T})
             target_link_options(${T} PRIVATE /STACK:8388608)
         endif()
     endforeach()
 elseif(MINGW)
     foreach(T faltungTest faltungDeepTest faltungHostCheck PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
-              ObliqSoundTest ObliqSonicTest obliq_smoke)
+              ObliqSoundTest ObliqSonicTest obliq_smoke
+              ballonwinkelTest ballonwinkelDspTest ballonpaleisTest ballonpaleisDspTest ballonpaleisSphereTest)
         if(TARGET ${T})
             target_link_options(${T} PRIVATE -Wl,--stack,8388608)
         endif()

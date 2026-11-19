@@ -112,6 +112,7 @@ namespace ids
 class FreakiePieProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
+    friend struct BallonTestAccess;   // (the tests seed the private random generators: tests/BallonTest.cpp)
     FreakiePieProcessor();
     ~FreakiePieProcessor() override;
 
@@ -127,7 +128,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "Pinkie Pie's Balloon Palace"; }
+    const juce::String getName() const override { return "ballonpaleis"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -142,13 +143,7 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    // the last patch you had open: every new instance starts from it (a session's own state still
-    // wins, since the host restores that after). Saved by the editor as you play, and on close.
-    static inline bool rememberLastState = true;   // (the tests turn this off)
     static inline bool decorrelateCopies = true;   // (the tests turn this off once, to show what it prevents)
-    static inline juce::File lastStateOverride;     // (and point it somewhere else)
-    static juce::File lastStateFile();
-    void saveLastState();
 
     // the shelf: the order the effects run in (see fp::Engine::Slot). The editor sets it when you
     // rearrange the bows and boxes; it's saved with the session.
@@ -390,7 +385,6 @@ private:
     std::array<std::atomic<int>, fp::Engine::kSlots> shelf {};
     std::atomic<int> shelfVersion { 0 };
     int shelfSeen = -1;
-    juce::String lastSaved;
     void loadStateXml (const juce::XmlElement&);
     float bypassSm = 0.0f;
     juce::Random strikeRnd;

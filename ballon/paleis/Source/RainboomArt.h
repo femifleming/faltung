@@ -289,34 +289,37 @@ inline void sparkles (Graphics& g, Point<float> at, float t, int seed, float sca
     }
 }
 
-// Rainbow Dash flying it: where to draw her so her front hooves are at 'nose' and she flies along
-// 'dir' (flipped when she's heading right, so she's never upside down). tailOut: where her tail is,
-// for the rainbow to stream out of. In the picture she flies down to the left, her front hooves at
-// (1 %, 86 %) of it and her tail's tip at (97 %, 6 %).
-inline juce::AffineTransform dashPlace (const juce::Image& img, Point<float> nose, Point<float> dir, float width, Point<float>* tailOut = nullptr)
+// The flyer (in the faltung twins): a dart, a thin white faceted arrowhead with a lit face, nose at 'nose',
+// pointing along 'dir'; its tail is where the seven lines stream out of.
+inline Point<float> dartTail (Point<float> nose, Point<float> dir, float width)
 {
-    const float W = (float) juce::jmax (1, img.getWidth()), H = (float) juce::jmax (1, img.getHeight());
-    const bool flip = dir.x > 0.0f;
-    Point<float> front (0.01f * W, 0.86f * H), tail (0.97f * W, 0.06f * H);
-    auto T = flip ? juce::AffineTransform::scale (-1.0f, 1.0f).translated (W, 0.0f) : juce::AffineTransform();
-    auto f = front, tl = tail;
-    if (flip) { f.x = W - f.x; tl.x = W - tl.x; }
-    const auto axis = f - tl;
-    const float turn = std::atan2 (dir.y, dir.x) - std::atan2 (axis.y, axis.x);
-    T = T.translated (-f.x, -f.y).scaled (width / W).rotated (turn).translated (nose.x, nose.y);
-    if (tailOut != nullptr) { float x = tail.x, y = tail.y; T.transformPoint (x, y); *tailOut = { x, y }; }
-    return T;
+    const float d = juce::jmax (1.0e-4f, dir.getDistanceFromOrigin());
+    return nose - dir * (width / d);
 }
 
-inline void dash (Graphics& g, const juce::Image& img, const juce::AffineTransform& T, float alpha = 1.0f)
+inline void dart (Graphics& g, Point<float> nose, Point<float> dir, float width, float alpha = 1.0f)
 {
-    if (! img.isValid() || alpha <= 0.01f) return;
-    g.setOpacity (alpha);
-    g.drawImageTransformed (img, T, false);
-    g.setOpacity (1.0f);
+    if (alpha <= 0.01f) return;
+    const float d = juce::jmax (1.0e-4f, dir.getDistanceFromOrigin());
+    const auto u = dir / d;
+    const Point<float> s (-u.y, u.x);
+    const auto tail = nose - u * width, mid = nose - u * (width * 0.62f);
+    const auto wingA = tail + s * (width * 0.34f), wingB = tail - s * (width * 0.34f);
+    const auto keel = mid - s * (width * 0.06f) + Point<float> (0.0f, width * 0.10f);
+    juce::Path lit;
+    lit.startNewSubPath (nose); lit.lineTo (wingA); lit.lineTo (mid); lit.closeSubPath();
+    g.setColour (juce::Colours::white.withAlpha (0.35f * alpha));
+    g.fillPath (lit);
+    g.setColour (juce::Colours::white.withAlpha (alpha));
+    juce::Path wire;
+    wire.startNewSubPath (nose); wire.lineTo (wingA); wire.lineTo (mid); wire.lineTo (wingB); wire.closeSubPath();
+    wire.startNewSubPath (nose); wire.lineTo (mid);
+    wire.startNewSubPath (nose); wire.lineTo (keel); wire.lineTo (wingB);
+    wire.startNewSubPath (keel); wire.lineTo (mid);
+    g.strokePath (wire, juce::PathStrokeType (juce::jmax (1.0f, width / 40.0f)));
 }
 
-// the trail up to her tail: drop the points she's covering, end at the tail
+// the trail up to the dart's tail: drop the points it is covering, end at the tail
 inline std::vector<Point<float>> trailToTail (std::vector<Point<float>> pts, Point<float> nose, Point<float> tail, float covered)
 {
     while (pts.size() > 2 && pts.back().getDistanceFrom (nose) < covered) pts.pop_back();
