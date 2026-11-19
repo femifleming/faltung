@@ -2236,6 +2236,70 @@ int main (int argc, char** argv)
         check (drift, "the faster part is ahead by 1% of a bar more on every bar");
     }
 
+    // ---- 31. note entry: typed patterns, additive / subtractive figures --------------------------------------------
+    std::cout << "== typed patterns, additive and subtractive process\n";
+    {
+        juce::String err; Pattern p;
+        check (tools::typed (p, "0 . 2 _ 4! . 7? . 0' . 4~ 2*3 -3 0, x", 7, &err), "a typed pattern reads: " + err);
+        check (p.length == 15 && p.s[0].on && p.s[0].pitch == 0 && ! p.s[1].on && p.s[2].pitch == 2 && std::abs (p.s[2].len - 1.9f) < 1.0e-4f && ! p.s[3].on, "notes, rests and a held note");
+        check (p.s[4].vel == 1.0f && p.s[6].prob == 0.5f && p.s[8].pitch == 7 && p.s[10].vel < 0.5f && p.s[11].ratchet == 3 && p.s[12].pitch == -3, "accent, chance, an octave of seven degrees, soft, ratchet, below the root");
+        check (p.s[13].on && p.s[13].pitch == -7 && p.s[14].on && p.s[14].pitch == 0, "an octave down, and x for the root");
+        check (! tools::typed (p, "0 2 banana", 12, &err) && err.contains ("banana"), "a word it cannot read is named");
+        // additive: a cell of three notes (lengths 2, 1, 3 steps)
+        Pattern cell; cell.length = 6; cell.s[0].on = true; cell.s[0].pitch = 0; cell.s[2].on = true; cell.s[2].pitch = 4; cell.s[3].on = true; cell.s[3].pitch = 7;
+        auto add = tools::process (cell, 0), sub = tools::process (cell, 1), both = tools::process (cell, 2);
+        auto lens = [] (const std::vector<Pattern>& v) { juce::StringArray a; for (auto& x : v) a.add (juce::String (x.length)); return a.joinIntoString (" "); };
+        std::cout << "  cell 2+1+3 steps: additive " << lens (add) << ", subtractive " << lens (sub) << ", both " << lens (both) << "\n";
+        check (lens (add) == "2 3 6" && lens (sub) == "6 3 2" && lens (both) == "2 3 6 3 2", "figures grow and shrink by whole notes");
+        check (add[1].s[2].on && add[1].s[2].pitch == 4 && ! add[0].s[1].on, "a figure holds the cell's own notes");
+        // as a chain on a track: the figures play one after another, each repeated
+        StudioProcessor pr; auto& s = pr.session; s.newFromTemplate (0); s.setTempo (120.0f);
+        auto* t = s.addTrack ("cell"); s.setInstrument (*t, s.createDevice ("fal:bd1")); shortHit (*t);
+        s.setPattern (*t, 0, std::make_shared<const Pattern> (cell)); t->pattern.store (0);
+        const int made = SeqPage::applyProcess (s, *t, 0, 2);
+        check (made == 3 && t->chainOn.load() && t->chain->size() == 6, "three figures, each twice, chained");
+        auto r = render (pr, 2.0);
+        const auto on = onsets (r.out, 0, 0.05f, 1500);
+        const double step = spb (120.0) / 4.0;
+        // figures 2, 2, 3, 3, 6, 6 steps: hits at 0 2 | 4 6 7 ... 
+        std::vector<double> expect; double at = 0;
+        for (int f : { 0, 0, 1, 1, 2, 2 }) { const auto& fig = add[(size_t) f]; for (int i = 0; i < fig.length; ++i) if (fig.s[(size_t) i].on) expect.push_back ((at + i) * step); at += fig.length; }
+        bool ok = on.size() >= 8;
+        for (size_t k = 0; ok && k < 8; ++k) ok = std::abs (on[k] - expect[k]) < 64.0;
+        std::cout << "  the chain plays at steps"; for (size_t k = 0; k < std::min<size_t> (on.size(), 10); ++k) std::cout << " " << juce::String (on[k] / step, 2); std::cout << "\n";
+        check (ok, "the chain plays the figures in order");
+    }
+
+    // ---- 32. micro-loops in the sampler --------------------------------------------------------------------------------
+    std::cout << "== sampler micro-loops\n";
+    {
+        // a second of noise as the sample: a micro-loop turns it into a pitched buzz that repeats exactly
+        juce::AudioBuffer<float> noise (2, 48000); Rng rr; rr.seed (5); for (int i = 0; i < 48000; ++i) { const float v = rr.bi() * 0.5f; noise.setSample (0, i, v); noise.setSample (1, i, v); }
+        const auto nf = tmp.getChildFile ("noise.wav"); writeWav (nf, noise);
+        StudioProcessor pr; auto& s = pr.session; s.newFromTemplate (0); s.setTempo (120.0f);
+        auto* t = s.addTrack ("micro"); s.setInstrument (*t, s.createDevice ("st:sampler"));
+        auto* d = t->instrument.get();
+        check (dynamic_cast<SampleHolder*> (d->processor())->setSampleFile (nf), "the sample loads");
+        auto setPlain = [&] (const char* id, float plain) { const int i = d->paramIndexForId (id); auto* rp = dynamic_cast<juce::RangedAudioParameter*> (d->processor()->getParameters()[i]); d->setBase (i, rp->convertTo0to1 (plain)); };
+        setPlain ("microloop", 12.5f); setPlain ("attack", 0.0f); setPlain ("vel", 0.0f);
+        s.editPattern (*t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].len = 8.0f; }); s.launch (*t, 0);
+        auto period = [&] (int lag)
+        {
+            auto r = render (pr, 0.5);
+            double num = 0, den = 0; for (int i = 2000; i < 12000; ++i) { const double a = r.out.getSample (0, i), b = r.out.getSample (0, i + lag); num += (a - b) * (a - b); den += a * a; }
+            return den > 0 ? num / den : 1.0;
+        };
+        const double at12 = period (600), off = period (611);
+        std::cout << "  micro-loop 12.5 ms: the output against itself 12.5 ms later differs by " << at12 << " (at 12.73 ms: " << off << ")\n";
+        check (at12 < 1.0e-3 && off > 0.1, "a 12.5 ms micro-loop repeats every 12.5 ms");
+        setPlain ("microgrid", 3.0f);   // 1/64 note at 120 bpm = a 16th of a beat = 31.25 ms = 1500 samples
+        const double g = period (1500), g2 = period (600);
+        std::cout << "  on the grid, 1/64 note at 120 bpm: " << g << " at 1500 samples, " << g2 << " at 600\n";
+        check (g < 1.0e-3 && g2 > 0.1, "a micro-loop of a 64th note follows the tempo");
+        setPlain ("microloop", 0.0f); setPlain ("microgrid", 0.0f);
+        check (period (600) > 0.1, "off: the sample plays on");
+    }
+
     // ---- 27. hosting the user's own plug-ins: a crash-safe scan, instruments and effects, state, automation, latency ----
     std::cout << "== hosting: scan in child processes, instruments, effects, state, automation, latency\n";
     {

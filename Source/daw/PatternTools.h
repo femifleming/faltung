@@ -157,4 +157,81 @@ inline void stochastic (Pattern& p, Rng& r, float density, int range)
         s.pitch = juce::jlimit (-36, 36, pitch); s.len = std::min (1.0f, s.dur * 0.8f); s.micro = 0.0f; s.ratchet = 1;
     }
 }
+
+// ---- additive and subtractive process (Philip Glass): a cell grows note by note, or shrinks ------------------------
+/** the cell's units: each note with the rests after it, from the first note on (start step, length in steps) */
+inline std::vector<std::pair<int, int>> units (const Pattern& p)
+{
+    std::vector<std::pair<int, int>> u;
+    const int len = juce::jlimit (1, kMaxSteps, p.length);
+    for (int i = 0; i < len; ++i)
+        if (p.s[(size_t) i].on) { if (! u.empty()) u.back().second = i - u.back().first; u.push_back ({ i, len - i }); }
+    return u;
+}
+/** the figures of the process: additive 1, 1 2, 1 2 3 … (the whole cell last); subtractive the whole cell, then one
+    unit fewer each time; both: up and down again. Each figure is a pattern of its own (at most 64 steps) */
+inline std::vector<Pattern> process (const Pattern& cell, int kind)   // kind 0 additive, 1 subtractive, 2 both
+{
+    const auto u = units (cell);
+    std::vector<Pattern> out;
+    auto figure = [&] (int n)
+    {
+        Pattern f; f.length = 0;
+        for (int k = 0; k < n; ++k)
+            for (int j = 0; j < u[(size_t) k].second && f.length < kMaxSteps; ++j) f.s[(size_t) f.length++] = cell.s[(size_t) (u[(size_t) k].first + j)];
+        f.length = std::max (1, f.length);
+        out.push_back (f);
+    };
+    const int n = (int) u.size();
+    if (kind == 0 || kind == 2) for (int k = 1; k <= n; ++k) figure (k);
+    if (kind == 1) for (int k = n; k >= 1; --k) figure (k);
+    if (kind == 2) for (int k = n - 1; k >= 1; --k) figure (k);
+    return out;
+}
+
+// ---- a pattern typed as text -----------------------------------------------------------------------------------------
+/** one word per step: a number is a note (semitones, or degrees on a track with a scale), "x" the root; "." or "-" a
+    rest; "_" holds the note before one step longer. After a note: "!" accent, "~" soft, "?" half the chance, "*3" a
+    ratchet of three, "'" an octave up, "," an octave down (of the scale's degrees: its size). e.g. "0 . 2 _ 4! . 7? *2" */
+inline bool typed (Pattern& p, const juce::String& text, int degreesPerOctave, juce::String* error = nullptr)
+{
+    auto words = juce::StringArray::fromTokens (text, " \t\n", "");
+    words.removeEmptyStrings();
+    if (words.isEmpty()) { if (error) *error = "nothing typed"; return false; }
+    if (words.size() > kMaxSteps) { if (error) *error = "at most 64 steps"; return false; }
+    Pattern out; out.length = words.size();
+    int last = -1;
+    for (int i = 0; i < words.size(); ++i)
+    {
+        auto w = words[i];
+        auto& st = out.s[(size_t) i];
+        if (w == "." || w == "-") continue;
+        if (w == "_") { if (last >= 0) out.s[(size_t) last].len += 1.0f; continue; }
+        int k = 0; int pitch = 0;
+        if (w[0] == 'x') k = 1;
+        else
+        {
+            if (w[0] == '-' || w[0] == '+') ++k;
+            while (k < w.length() && juce::CharacterFunctions::isDigit (w[k])) ++k;
+            if (k == 0 || (k == 1 && (w[0] == '-' || w[0] == '+'))) { if (error) *error = "cannot read \"" + w + "\" (step " + juce::String (i + 1) + ")"; return false; }
+            pitch = w.substring (0, k).getIntValue();
+        }
+        st = Step(); st.on = true; st.vel = 0.8f; st.len = 0.9f; st.pitch = pitch;
+        for (; k < w.length(); ++k)
+        {
+            const auto c = w[k];
+            if (c == '!') st.vel = 1.0f;
+            else if (c == '~') st.vel = 0.45f;
+            else if (c == '?') st.prob = 0.5f;
+            else if (c == '\'') st.pitch += degreesPerOctave;
+            else if (c == ',') st.pitch -= degreesPerOctave;
+            else if (c == '*' && k + 1 < w.length() && juce::CharacterFunctions::isDigit (w[k + 1])) { st.ratchet = juce::jlimit (1, 8, w.substring (k + 1, k + 2).getIntValue()); ++k; }
+            else { if (error) *error = "cannot read \"" + w + "\" (step " + juce::String (i + 1) + ")"; return false; }
+        }
+        st.pitch = juce::jlimit (-36, 36, st.pitch);
+        last = i;
+    }
+    p = out;
+    return true;
+}
 } // namespace fal::daw::tools

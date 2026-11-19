@@ -704,6 +704,10 @@ public:
         link (tSievePitch, "sieve pitch", [this] { ask ("sieve: the pitches of the hits", "the sieve as a scale in semitones, e.g. 3@0 | 4@1 (add \"random\" to draw from it)", "3@0 | 4@1", [this] (juce::String t) { const bool rand = t.containsIgnoreCase ("random"); const auto e = t.replace ("random", "", true).trim(); tool ([this, e, rand] (Pattern& p) { tools::sievePitch (p, e, rand ? &rng : nullptr); }); }); });
         link (tCloud, "cloud", [this] { ask ("stochastic cloud", "events a step (the times between them are exponential), then the pitch range in semitones", "1 12", [this] (juce::String t) { auto a = juce::StringArray::fromTokens (t, " ,", ""); const float d = a[0].getFloatValue(); const int r = a.size() > 1 ? a[1].getIntValue() : 12; tool ([this, d, r] (Pattern& p) { tools::stochastic (p, rng, d > 0 ? d : 1.0f, r); }); }); });
         link (tFreeze, "freeze", [this] { if (auto* t = ctx.selected()) { ctx.s.freezeEvolution (*t); refresh(); } });
+        link (tAdditive, "additive", [this] { processMenu(); });
+        tAdditive->setTooltip ("the pattern as a cell that grows note by note (1, 1 2, 1 2 3 …), shrinks, or both: the figures go into the next patterns and play as a chain");
+        link (tType, "type", [this] { typeDialog(); });
+        tType->setTooltip ("type the pattern: one word per step. a number is a note (a degree with a scale), x the root, . a rest, _ holds; ! accent, ~ soft, ? half chance, *3 ratchet, ' and , an octave up / down");
         tFreeze->setTooltip ("write what the evolving pattern has drifted to into the pattern");
         link (tCopy, "copy", [this] { if (auto* t = ctx.selected()) if (auto p = t->patternAt (t->pattern.load())) clip = *p; });
         link (tPaste, "paste", [this] { tool ([this] (Pattern& p) { p = clip; }); });
@@ -824,6 +828,54 @@ public:
         repaint();
     }
     void tool (std::function<void (Pattern&)> fn) { auto* t = ctx.selected(); if (! t) return; ctx.s.editPattern (*t, t->pattern.load(), fn); refresh(); }
+    /** additive / subtractive: the figures of the cell (the pattern shown) into the patterns after it, as a chain */
+    void processMenu()
+    {
+        juce::PopupMenu m; m.addSectionHeader ("the pattern shown is the cell; its figures go into the next patterns");
+        m.addItem (1, "additive: 1, 1 2, 1 2 3 ..."); m.addItem (2, "subtractive: the whole cell, then one note fewer each time"); m.addItem (3, "both: up, then down again");
+        juce::PopupMenu rep; for (int r : { 1, 2, 3, 4, 8 }) rep.addItem (10 + r, "each figure " + juce::String (r) + (r == 1 ? " time" : " times"), true, repeats == r);
+        m.addSubMenu ("repeats", rep);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (tAdditive), [this] (int r)
+        {
+            if (r > 10) { repeats = r - 10; return; }
+            if (r < 1 || r > 3) return;
+            auto* t = ctx.selected(); if (! t) return;
+            const int made = applyProcess (ctx.s, *t, r - 1, repeats);
+            ctx.status (made > 0 ? juce::String (made) + " figures in patterns " + juce::String (t->pattern.load() + 2) + " - " + juce::String (t->pattern.load() + 1 + made) + ", chained" : juce::String ("additive: the pattern has no notes (or no room for the figures)"));
+            refresh();
+        });
+    }
+    /** (the page's additive / subtractive, as a function the tests use too) */
+    static int applyProcess (Session& s, Track& t, int kind, int repeats)
+    {
+        const int cur = t.pattern.load();
+        auto cell = t.patternAt (cur);
+        if (! cell) return 0;
+        const auto figs = tools::process (*cell, kind);
+        if (figs.empty() || cur + (int) figs.size() >= kPatterns) return 0;
+        std::vector<int> chain;
+        for (size_t k = 0; k < figs.size(); ++k)
+        {
+            s.setPattern (t, cur + 1 + (int) k, std::make_shared<const Pattern> (figs[k]));
+            for (int r = 0; r < std::max (1, repeats); ++r) chain.push_back (cur + 1 + (int) k);
+        }
+        s.setChain (t, chain); t.chainOn.store (true);
+        s.launch (t, cur + 1);
+        return (int) figs.size();
+    }
+    void typeDialog()
+    {
+        auto* t = ctx.selected(); if (! t) return;
+        const int n = t->scale ? t->scale->size() : 12;
+        ask ("type a pattern", "one word per step: 0 2 4 numbers are notes (" + juce::String (t->scale ? "degrees of " + t->scale->name : juce::String ("semitones")) + "), x the root, . rest, _ hold; ! accent, ~ soft, ? half chance, *3 ratchet, ' , octave", lastTyped, [this, n] (juce::String text)
+        {
+            juce::String err; Pattern p;
+            if (! tools::typed (p, text, n, &err)) { ctx.status ("type: " + err); return; }
+            lastTyped = text;
+            tool ([p] (Pattern& x) { x = p; });
+        });
+    }
+    int repeats = 2; juce::String lastTyped { "0 . 2 _ 4! . 7? . 0' . 4~ 2*3 . . ." };
     void euclid()
     {
         auto* w = new juce::AlertWindow ("euclid", "hits over the pattern length, rotated", juce::MessageBoxIconType::NoIcon);
@@ -935,7 +987,7 @@ public:
         int x = gx;
         for (auto* l : { tEuclid, tRotL, tRotR, tRev, tMutate, tHuman, tRandom, tMarkov, tRules, tDouble, tClear, tCopy, tPaste }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 196, lw, 18); x += lw + 2; }
         x = gx;
-        for (auto* l : { tRatios, tAccel, tEven, tStrict, tSieve, tSievePitch, tCloud, tFreeze }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 214, lw, 18); x += lw + 2; }
+        for (auto* l : { tRatios, tAccel, tEven, tStrict, tSieve, tSievePitch, tCloud, tFreeze, tAdditive, tType }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 214, lw, 18); x += lw + 2; }
         tAddLock->setBounds (gx + 540, 240, 60, 18);
         int sy = 240;
         ValueRow* steps[] = { sVel, sPitch, sProb, sRatchet, sMicro, sRCurve, sLen, sDur, sCond, sSlice, sChord, sSlide };
@@ -1084,7 +1136,7 @@ public:
 private:
     juce::OwnedArray<ui::TextLink> links; juce::OwnedArray<ValueRow> rows; juce::OwnedArray<DevicePanel> panels;
     ui::TextLink *tEuclid, *tRotL, *tRotR, *tRev, *tMutate, *tHuman, *tRandom, *tMarkov, *tRules, *tDouble, *tClear, *tCopy, *tPaste, *tAddDevice, *tAddLock;
-    ui::TextLink *tRatios, *tAccel, *tEven, *tStrict, *tSieve, *tSievePitch, *tCloud, *tFreeze;
+    ui::TextLink *tRatios, *tAccel, *tEven, *tStrict, *tSieve, *tSievePitch, *tCloud, *tFreeze, *tAdditive, *tType;
     juce::Component chain; juce::Viewport viewport;
     Pattern clip; Rng rng;
     enum Mode { None, Pending, Vertical, Paint, Micro, Lane } mode = None;

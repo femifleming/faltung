@@ -623,14 +623,18 @@ public:
 class SamplerFx : public StudioFx, public SampleHolder
 {
 public:
-    enum { MODE, ROOT, PITCH, START, END, SLICES, SLICEMODE, CUTOFF, RES, ATT, DEC, SUS, REL, GAIN, CHOKE, REVERSE, VEL, LOOP };
+    enum { MODE, ROOT, PITCH, START, END, SLICES, SLICEMODE, CUTOFF, RES, ATT, DEC, SUS, REL, GAIN, CHOKE, REVERSE, VEL, LOOP, MICRO, MICROGRID };
     SamplerFx() : StudioFx ("st:sampler", "sampler", 0, 2, true, { C ("mode", "mode", { "one-shot", "loop", "slices" }, 0), F ("root", "root note", 0, 127, 60, [] (float v) { return juce::MidiMessage::getMidiNoteName (juce::roundToInt (v), true, true, 3); }, 1.0f, 127),
         F ("pitch", "pitch", -24, 24, 0, stText), F ("start", "start", 0, 1, 0, pctText), F ("end", "end", 0, 1, 1, pctText),
         F ("slices", "slices", 1, 64, 16, [] (float v) { return juce::String (juce::roundToInt (v)); }, 1.0f, 63), C ("slicemode", "slice mode", { "grid", "onsets" }, 0),
         F ("cutoff", "cutoff", 20, 20000, 20000, hzText, 0.25f), F ("res", "resonance", 0, 1, 0.1f, pctText),
         F ("attack", "attack", 0, 2000, 1, msText, 0.3f), F ("decay", "decay", 1, 4000, 400, msText, 0.3f), F ("sustain", "sustain", 0, 1, 1, pctText), F ("release", "release", 1, 4000, 30, msText, 0.3f),
-        F ("gain", "gain", -24, 12, 0, dbText), B ("choke", "choke (mono)", false), B ("reverse", "reverse", false), F ("vel", "velocity", 0, 1, 0.5f, pctText), B ("loopnote", "loop while held", false) }) {}
-    struct Voice { bool on = false; double pos = 0; double rate = 1; int note = 60; float vel = 1; int start = 0, end = 0; Adsr env; Svf fL, fR; bool rev = false; int age = 0; };
+        F ("gain", "gain", -24, 12, 0, dbText), B ("choke", "choke (mono)", false), B ("reverse", "reverse", false), F ("vel", "velocity", 0, 1, 0.5f, pctText), B ("loopnote", "loop while held", false),
+        // micro-loops: a sliver of the sample from where the note starts, repeated while the note lasts (clicks, crackle,
+        // a fragment of a record turned into a tone or a pulse)
+        F ("microloop", "micro-loop", 0, 1000, 0, [] (float v) { return v < 0.05f ? juce::String ("off") : juce::String (v, v < 10 ? 2 : 1) + " ms"; }, 0.3f),
+        C ("microgrid", "micro-loop length", { "in ms", "1/16 note", "1/32 note", "1/64 note", "1/128 note", "1/256 note" }, 0) }) {}
+    struct Voice { bool on = false; double pos = 0; double rate = 1; int note = 60; float vel = 1; int start = 0, end = 0; Adsr env; Svf fL, fR; bool rev = false, micro = false; int age = 0; };
     void prepareToPlay (double s, int b) override { sr = s; bs = b; for (auto& v : voices) v.on = false; }
     bool setSampleFile (const juce::File& f) override
     {
@@ -661,6 +665,14 @@ public:
         const float cutoff = P (CUTOFF), res = P (RES); const float a = P (ATT), d = P (DEC), su = P (SUS), re = P (REL); const float g = dbToGain (P (GAIN)); const bool choke = Pb (CHOKE), rev = Pb (REVERSE); const float vs = P (VEL); const bool loopNote = Pb (LOOP) || mode == 1;
         const int total = s->data.getNumSamples();
         const int s0 = (int) (st * total), s1 = std::max (s0 + 16, (int) (en * total));
+        // the micro-loop's length in the file's samples: in ms, or a fraction of the beat at the tempo playing
+        int microLen = 0;
+        {
+            double secs = 0.0; const int grid = Pi (MICROGRID);
+            if (grid == 0) secs = P (MICRO) / 1000.0;
+            else { double bpm = 120.0; if (auto* ph = getPlayHead()) if (auto pos = ph->getPosition()) if (auto b = pos->getBpm()) bpm = *b; secs = 60.0 / bpm / (double) (4 << (grid - 1)); }
+            if (secs > 0.00005) microLen = std::max (2, (int) std::lround (secs * s->rate));
+        }
         auto sliceBounds = [&] (int k, int& from, int& to)
         {
             k = juce::jlimit (0, slices - 1, k);
@@ -682,13 +694,13 @@ public:
                     const float e = v.env.tick();
                     if (v.env.st == Adsr::Idle) { v.on = false; continue; }
                     double rp = v.rev ? (v.end - 1 - (v.pos - v.start)) : v.pos;
-                    if (rp < 0 || rp >= total - 2) { if (loopNote) { v.pos = v.start; rp = v.rev ? v.end - 1 : v.start; } else { v.on = false; continue; } }
+                    if (rp < 0 || rp >= total - 2) { if (loopNote || v.micro) { v.pos = v.start; rp = v.rev ? v.end - 1 : v.start; } else { v.on = false; continue; } }
                     float l = hermiteAt (s->data.getReadPointer (0), total, rp), r = hermiteAt (s->data.getReadPointer (1), total, rp);
                     if (cutoff < 19000.0f) { l = v.fL.tickLP (l); r = v.fR.tickLP (r); }
                     const float gg = e * v.vel * g;
                     L[pos] += l * gg; if (R != L) R[pos] += r * gg;
                     v.pos += v.rate;
-                    if (v.pos >= v.end) { if (loopNote) v.pos = v.start + (v.pos - v.end); else v.env.off(); }
+                    if (v.pos >= v.end) { if (loopNote || v.micro) v.pos = v.start + std::fmod (v.pos - v.end, (double) std::max (1, v.end - v.start)); else v.env.off(); }
                 }
         };
         for (const auto m : midi)
@@ -708,10 +720,12 @@ public:
                 const double fileRate = s->rate / sr;
                 if (mode == 2) { int from, to; sliceBounds (v.note - 36, from, to); v.start = from; v.end = std::max (from + 16, to); v.rate = fileRate * std::exp2 (pitch / 12.0); }
                 else { v.start = s0; v.end = s1; v.rate = fileRate * std::exp2 ((pitch + bendSemis + (v.note - root)) / 12.0); }
+                v.micro = microLen > 0;
+                if (v.micro) v.end = std::min (total - 2, v.start + microLen);
                 v.rev = rev; v.pos = v.start;
                 for (auto& o : voices) ++o.age;
             }
-            else if (msg.isNoteOff()) { for (auto& v : voices) if (v.on && v.note == msg.getNoteNumber() && (loopNote || mode != 0)) v.env.off(); }
+            else if (msg.isNoteOff()) { for (auto& v : voices) if (v.on && v.note == msg.getNoteNumber() && (loopNote || mode != 0 || v.micro)) v.env.off(); }
             else if (msg.isPitchWheel()) bendSemis = (float) (msg.getPitchWheelValue() - 8192) / 8192.0f * 2.0f;
             else if (msg.isAllNotesOff() || msg.isAllSoundOff()) for (auto& v : voices) v.on = false;
         }
@@ -753,7 +767,7 @@ static const std::vector<Entry>& registry()
         { "st:tone", "tone", "precision sine / pulse / click / impulse / noise generator", true, [] { return std::make_unique<ToneGen>(); } },
         { "st:data", "data", "byte-to-pulse bursts", true, [] { return std::make_unique<DataGen>(); } },
         { "st:fm", "fm perc", "four-operator fm percussion", true, [] { return std::make_unique<FmPerc>(); } },
-        { "st:sampler", "sampler", "one-shots, loops and slices to steps", true, [] { return std::make_unique<SamplerFx>(); } },
+        { "st:sampler", "sampler", "one-shots, loops, slices to steps, micro-loops shorter than a beat", true, [] { return std::make_unique<SamplerFx>(); } },
     };
     return r;
 }
