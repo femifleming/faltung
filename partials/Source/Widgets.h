@@ -147,7 +147,8 @@ struct Row : juce::Component
     float norm (float v) const { return toNorm ? toNorm (v) : (hi > lo ? clamp01 ((v - lo) / (hi - lo)) : 0.0f); }
     float denorm (float n) const { return fromNorm ? fromNorm (clamp01 (n)) : lo + clamp01 (n) * (hi - lo); }
     juce::String text (float v) const { return fmt ? fmt (v) : juce::String (v, 2); }
-    void refresh() { const float v = value(); const bool l = lit && lit(); if (v != shown || l != shownLit) repaint(); }
+    float asked = -1.0e9f;      // the value the next paint will draw (set when a repaint is asked for)
+    void refresh() { const float v = value(); const bool l = lit && lit(); if (v != shown || l != shownLit) { asked = v; repaint(); } }
     void sendHint() { if (onHint) { const float v = value(); onHint ((hintName.isNotEmpty() ? hintName : label) + "   " + text (v) + (hintExtra ? hintExtra (v) : juce::String())); } }
 
     void bar (juce::Graphics& g, float bx, float cy, float bw, float n, float thick)

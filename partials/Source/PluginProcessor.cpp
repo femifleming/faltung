@@ -47,7 +47,7 @@ PartialsProcessor::PartialsProcessor()
         editData[p] = std::make_unique<PartData>();
     }
     for (int i = 0; i < XP::Count; ++i) rawExtra[i] = apvts.getRawParameterValue (extraDefs[i].id);
-    startTimerHz (30);
+    startTimerHz (60);      // MIDI CC -> the X / Y / Z parameters (and so the pad and bars): at most one 60 Hz frame behind the sound
     for (int i = 0; i < FXU::Count; ++i) { fxOrder[i] = i; fxOrderRT[i].store (i); }
     commit (0); commit (1);
 }

@@ -6,13 +6,15 @@
 #include "Widgets.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <set>
+#include <thread>
 #include <iostream>
 
 using namespace pt;
 using namespace pt::ui;
 
 //==================================================================================================
-class PartialsEditor : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, public juce::Timer
+class PartialsEditor : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, public juce::Timer,
+                       public juce::AudioProcessorParameter::Listener, public juce::AsyncUpdater
 {
 public:
     // laid out on this canvas (the proportions of the reference window) and scaled to the window's size
@@ -281,7 +283,12 @@ public:
     {
         PartialsEditor& ed; bool dragging = false, zDrag = false; float zStart = 0;
         explicit XYPad (PartialsEditor& e) : ed (e) {}
-        float val (int k) const { return ed.proc.globalValue (GP::modX + k); }
+        // read from the parameter itself, so the puck and the bars always show the same value at the same moment
+        float val (int k) const { return ed.modValue (k); }
+        float asked[3] = { -1, -1, -1 };      // what the next paint will draw
+        void sync() { for (int k = 0; k < 3; ++k) asked[k] = val (k); repaint(); }
+        // the parameter moves at once (no smoothing here: the engine smooths what it hears, briefly);
+        // the parameter's listener then brings the x / y / z bars along in the same frame
         void setVal (int k, float v) { if (auto* p = ed.proc.globalParam (GP::modX + k)) p->setValueNotifyingHost (clamp01 (v)); }
         void gesture (int k, bool begin) { if (auto* p = ed.proc.globalParam (GP::modX + k)) { if (begin) p->beginChangeGesture(); else p->endChangeGesture(); } }
         juce::Rectangle<float> area() const { return getLocalBounds().toFloat().reduced (1.0f); }
@@ -311,12 +318,10 @@ public:
             g.drawLine (o.getX(), o.getBottom(), in.getX(), in.getBottom(), 1.0f); g.drawLine (o.getRight(), o.getBottom(), in.getRight(), in.getBottom(), 1.0f);
             g.drawRect (in, 1.0f);
             g.setColour (cFg); g.drawRect (o, 1.0f);
-            // where the sound is now (after smoothing), then the puck itself
-            const float nx = ed.proc.modNow[0].load(), ny = ed.proc.modNow[1].load();
+            // the puck (no second, trailing dot: what you see is the value)
             const auto pt_ = [&o] (float a, float b) { return juce::Point<float> (o.getX() + 6.0f + a * (o.getWidth() - 12.0f), o.getBottom() - 6.0f - b * (o.getHeight() - 12.0f)); };
-            const auto p = pt_ (x, y), q = pt_ (nx, ny);
+            const auto p = pt_ (x, y);
             g.setColour (cFill.withAlpha (0.6f)); g.fillRect (p.x, o.getY(), 1.0f, o.getHeight()); g.fillRect (o.getX(), p.y, o.getWidth(), 1.0f);
-            if (q.getDistanceFrom (p) > 1.5f) { g.setColour (cHot); g.fillEllipse (q.x - 2.5f, q.y - 2.5f, 5.0f, 5.0f); }
             const float rr = 6.0f + 3.0f * z;
             g.setColour (cBg); g.fillEllipse (p.x - rr, p.y - rr, rr * 2, rr * 2);
             g.setColour (dragging ? cFill : cFg); g.drawEllipse (p.x - rr, p.y - rr, rr * 2, rr * 2, 1.6f);
@@ -989,8 +994,27 @@ public:
         setResizable (true, true);
         applySize (0.75f);
         startTimerHz (30);
+        for (int k = 0; k < 3; ++k) if (auto* q = proc.globalParam (GP::modX + k)) q->addListener (this);
     }
-    ~PartialsEditor() override { stopTimer(); setLookAndFeel (nullptr); }
+    ~PartialsEditor() override
+    {
+        for (int k = 0; k < 3; ++k) if (auto* q = proc.globalParam (GP::modX + k)) q->removeListener (this);
+        cancelPendingUpdate(); stopTimer(); setLookAndFeel (nullptr);
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // X / Y / Z: the pad and the three bars follow the parameter the moment it moves, whoever moves it
+    // (the pad, a bar, host automation, a MIDI controller), instead of waiting for the 30 Hz timer.
+    Row* modRows[3] = { nullptr, nullptr, nullptr };
+    float modValue (int k) const { auto* q = proc.globalParam (GP::modX + k); return q != nullptr ? q->convertFrom0to1 (q->getValue()) : 0.0f; }
+    void syncMod() { for (auto* r : modRows) if (r != nullptr) r->refresh(); pad.sync(); }
+    void parameterValueChanged (int, float) override
+    {
+        if (juce::MessageManager::getInstanceWithoutCreating() != nullptr && juce::MessageManager::getInstance()->isThisTheMessageThread()) syncMod();
+        else triggerAsyncUpdate();      // automation played on the audio thread: next pass of the message loop
+    }
+    void parameterGestureChanged (int, bool) override {}
+    void handleAsyncUpdate() override { syncMod(); }
 
     void applySize (float scale)
     {
@@ -1248,6 +1272,8 @@ public:
         {
             static const char* nm[3] = { "x", "y", "z" };
             auto* r = paramRow (0, GP::modX + k, nm[k]);
+            r->get = [this, k] { return modValue (k); };
+            modRows[k] = r;
             r->menuExtra = [this, k] (juce::PopupMenu& m)
             {
                 const int cc = proc.modCC[k].load();
@@ -1999,6 +2025,49 @@ juce::StringArray partialsEditorSelfTest (juce::AudioProcessorEditor* e)
         juce::MouseWheelDetails wh; wh.deltaX = 0; wh.deltaY = 0.2f; wh.isReversed = false; wh.isSmooth = false; wh.isInertial = false;
         pad.mouseWheelMove (ev (pad, b, b), wh);
         if (! (proc.globalValue (GP::modZ) > z0 + 0.01f)) bad.add ("pad: the wheel did not raise z");
+    }
+    // the pad dragged by hand: the parameter and every x / y / z bar follow the puck at once, with the window's
+    // timer stopped (nothing may wait for it), and a bar or the host moving the parameter moves the puck at once
+    {
+        ed->stopTimer();
+        auto& pad = ed->pad; const auto o = pad.getLocalBounds().toFloat().reduced (1.0f);
+        auto at = [&o] (float x, float y) { return juce::Point<float> (o.getX() + 6.0f + x * (o.getWidth() - 12.0f), o.getBottom() - 6.0f - y * (o.getHeight() - 12.0f)); };
+        auto same = [&] (const juce::String& when)
+        {
+            for (int k = 0; k < 3; ++k)
+            {
+                const float pv = proc.globalParam (GP::modX + k)->getValue(), raw = proc.globalValue (GP::modX + k), puck = pad.val (k);
+                auto* r = ed->modRows[k];
+                if (r == nullptr) { bad.add ("pad sync: no bar for mod " + juce::String (k)); continue; }
+                const float bar = r->value(), drawn = std::abs (r->shown - bar) < 1.0e-6f ? r->shown : r->asked;      // painted already, or asked to be
+                if (std::abs (pv - puck) > 1.0e-6f || std::abs (raw - puck) > 1.0e-6f || std::abs (bar - puck) > 1.0e-6f || std::abs (drawn - puck) > 1.0e-6f || std::abs (pad.asked[k] - puck) > 1.0e-6f)
+                    bad.add ("pad sync (" + when + ") mod " + juce::String (k) + ": puck " + juce::String (puck, 4) + " param " + juce::String (pv, 4) + " raw " + juce::String (raw, 4)
+                             + " bar " + juce::String (bar, 4) + " bar to draw " + juce::String (drawn, 4) + " pad to draw " + juce::String (pad.asked[k], 4));
+            }
+        };
+        const juce::Point<float> start = at (0.1f, 0.9f);
+        pad.mouseDown (ev (pad, start, start)); same ("mouse down");
+        for (int i = 1; i <= 24; ++i)
+        {
+            const float t = (float) i / 24.0f;
+            pad.mouseDrag (ev (pad, at (0.1f + 0.8f * t, 0.9f - 0.7f * t * t), start));
+            same ("drag step " + juce::String (i));
+        }
+        pad.mouseUp (ev (pad, at (0.9f, 0.2f), start)); same ("mouse up");
+        if (std::abs (pad.val (0) - 0.9f) > 0.01f || std::abs (pad.val (1) - 0.2f) > 0.01f) bad.add ("pad sync: the drag ended at x " + juce::String (pad.val (0), 3) + " y " + juce::String (pad.val (1), 3));
+        // a bar moved by hand
+        ed->modRows[1]->change (0.37f); same ("y bar");
+        if (std::abs (pad.val (1) - 0.37f) > 1.0e-4f) bad.add ("pad sync: the y bar did not move the puck");
+        // the host (automation, a state load) on the message thread
+        proc.globalParam (GP::modZ)->setValueNotifyingHost (0.61f); same ("host z");
+        // automation from another thread arrives through the message loop, without the timer
+        {
+            std::thread t ([&proc] { proc.globalParam (GP::modX)->setValueNotifyingHost (0.42f); }); t.join();
+            if (! ed->isUpdatePending()) bad.add ("pad sync: automation from another thread did not ask the message thread to redraw");
+            ed->handleUpdateNowIfNeeded();      // what the message loop does on its next pass
+            same ("automation from another thread");
+        }
+        ed->startTimerHz (30);
     }
     // quick map to X, then the mapping is the thing on show and is on
     ed->quickMap (TG::F1Freq, MAP::ModX);

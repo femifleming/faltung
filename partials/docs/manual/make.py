@@ -191,7 +191,7 @@ table([('from vol', 'Prism moves loud partials more (on) or quiet ones more (inv
 h1('Global, and the X / Y / Z pad')
 shot('global', 'Global. The square is the X / Y pad; mod x, y, z are under it.')
 p('<b>X, Y and Z are three hand controls that do nothing until you point them at something.</b> Then one move of the pad can change as many things as you like, each in its own way.')
-out.append('<div class="grid c2"><figure><div class="im"><img src="img/pad.png"></div><figcaption><b>The pad.</b> A room seen from the front. Left to right is X, bottom to top is Y. Z brings the far wall nearer. The small orange dot is where the sound is right now when smoothing is still catching up.</figcaption></figure>'
+out.append('<div class="grid c2"><figure><div class="im"><img src="img/pad.png"></div><figcaption><b>The pad.</b> A room seen from the front. Left to right is X, bottom to top is Y. Z brings the far wall nearer. The puck and the mod x, y, z bars under the pad move together, in the same frame, whether you drag the pad, a bar, automate them or play a MIDI controller.</figcaption></figure>'
            '<figure><div class="im"><img src="img/page_modx.png"></div><figcaption><b>A mapping.</b> Filter 1 frequency, Modulation X mapping. Left to right is the pad going from 0 to 100%; the line says where that puts the filter. The orange line is the pad\'s position now.</figcaption></figure></div>')
 table([
  ('Move it', 'Drag in the pad for X and Y. Z: the mouse wheel over the pad, or drag up and down with the middle button (or with Alt held). The three small bars x, y, z do the same one at a time.'),
@@ -199,7 +199,7 @@ table([
  ('Point it at something, by hand', 'In the editor choose the target, then the part "Modulation X mapping" (or Y, Z), and draw. Editing the line switches the mapping on. Every target has its own three mappings, so X can open a filter, slow an LFO and pan the sound at once.'),
  ('Automate it', 'Modulation X, Y and Z are host parameters: draw them in your DAW or record the pad.'),
  ('MIDI', 'X follows controller 1 (the mod wheel), Y controller 74, Z controller 71. Right-click the pad or one of x, y, z for MIDI learn (then move the controller you want), to forget a controller, or to go back to these three. The choice is saved with the sound.'),
- ('Smoothing', 'Pad moves are smoothed (about 30 ms) so they never click. For hard, percussive jumps switch "smooth mod" off (right-click the pad, or the ADV tab).'),
+ ('Smoothing', 'Only the sound is smoothed (about 30 ms) so pad moves never click; the parameters and the window follow the pad at once. For hard, percussive jumps switch "smooth mod" off (right-click the pad, or the ADV tab).'),
  ('Mod X speed', 'One more mapping: how fast X is moving. A quick stroke across the pad can open something that a slow move leaves alone.'),
 ])
 table([

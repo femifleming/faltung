@@ -40,3 +40,7 @@ Every request typed while this was being designed and built with Claude Code, in
 > this is the layout
 
 (The window rebuilt on Harmor's layout, section for section, in the Partials look; the X / Y pad with mod x, y, z, MIDI controllers and smoothing; the editor with a target menu and a part menu, on / off under the graph, att / dec / sus / rel as automatable modifiers, D / S / L markers, LFO handle, step drawing and zoom. In the engine: the filter envelope is heard with the filter fully open, the unison index mapping works for every target, the predelay mappings and the phaser offset's lower half work, a legato limit and a global pitch were added. Earlier sounds load and sound as before.)
+
+> the xyz param sliders seem to lag slightly when i move the xyx node manually
+
+(The pad always wrote straight into the X / Y / Z parameters; the three bars below it only redrew on the window's 30 Hz timer, and a second dot trailed the puck while the audio caught up. The window now listens to the three parameters: the bars and the puck redraw in the same frame whoever moves them (the pad, a bar, host automation, a MIDI controller), the trailing dot is gone, and MIDI controllers reach the parameters at 60 Hz instead of 30. Smoothing stays in the engine only, 30 ms, switchable with "smooth mod". The window self-test drags the pad with the timer stopped and checks every bar against the puck at each step.)
