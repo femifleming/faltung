@@ -138,9 +138,85 @@ juce::File Session::audioDir() const
     d.createDirectory();
     return d;
 }
-juce::File Session::knownFile() const { return dataDir().getChildFile ("plugins.xml"); }
+juce::File Session::knownFile() const { return knownOverride != juce::File() ? knownOverride : dataDir().getChildFile ("plugins.xml"); }
 void Session::loadKnown() { if (auto x = juce::XmlDocument::parse (knownFile())) known.recreateFromXml (*x); }
 void Session::saveKnown() { if (auto x = known.createXml()) x->writeTo (knownFile()); }
+
+namespace
+{
+/** opens each plug-in file in a child process: a crash or a hang there is a failed file, not a crashed studio */
+struct ChildScanner : juce::KnownPluginList::CustomScanner
+{
+    explicit ChildScanner (int ms) : timeoutMs (ms) {}
+    bool findPluginTypesFor (juce::AudioPluginFormat& format, juce::OwnedArray<juce::PluginDescription>& result, const juce::String& fileOrId) override
+    {
+        const auto out = juce::File::createTempFile ("scan.xml"); out.deleteFile();
+        juce::ChildProcess cp;
+        if (! cp.start (juce::StringArray { Session::scannerExecutable().getFullPathName(), "--scan-plugin", format.getName(), fileOrId, out.getFullPathName() }, 0))
+            return false;
+        const auto until = juce::Time::getMillisecondCounter() + (juce::uint32) timeoutMs;
+        while (cp.isRunning())
+        {
+            if (shouldExit() || juce::Time::getMillisecondCounter() > until) { cp.kill(); out.deleteFile(); return false; }
+            juce::Thread::sleep (20);
+        }
+        // (a child killed by a signal can report 0: only a written list counts as a scan that worked)
+        const bool ok = cp.getExitCode() == 0 && out.existsAsFile() && out.getSize() > 0;
+        if (ok)
+            if (auto x = juce::XmlDocument::parse (out))
+                for (auto* e : x->getChildIterator())
+                {
+                    auto d = std::make_unique<juce::PluginDescription>();
+                    if (d->loadFromXml (*e)) result.add (d.release());
+                }
+        out.deleteFile();
+        return ok;
+    }
+    int timeoutMs;
+};
+} // namespace
+
+int Session::scanOneFile (const juce::String& formatName, const juce::String& fileOrId, const juce::File& out)
+{
+    // (tests: a scan that crashes on purpose, to check that the studio survives it)
+    const auto crashOn = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SCAN_CRASH_ON", {});
+    if (crashOn.isNotEmpty() && fileOrId.contains (crashOn)) std::abort();
+    juce::AudioPluginFormatManager fm;
+    fm.addFormat (std::make_unique<juce::VST3PluginFormat>());
+   #if JUCE_MAC
+    fm.addFormat (std::make_unique<juce::AudioUnitPluginFormat>());
+   #endif
+    for (auto* f : fm.getFormats())
+    {
+        if (f->getName() != formatName) continue;
+        juce::OwnedArray<juce::PluginDescription> found;
+        f->findAllTypesForFile (found, fileOrId);
+        juce::XmlElement x ("scan");
+        for (auto* d : found) x.addChildElement (d->createXml().release());
+        return x.writeTo (out) && ! found.isEmpty() ? 0 : 2;
+    }
+    return 3;
+}
+
+int Session::scanPlugins (const juce::FileSearchPath* only, const std::function<bool (const juce::String&)>& progress, int timeoutMs)
+{
+    if (scannerExecutable().existsAsFile()) known.setCustomScanner (std::make_unique<ChildScanner> (timeoutMs));
+    const int failedBefore = known.getBlacklistedFiles().size();
+    for (auto* f : formats.getFormats())
+    {
+        const juce::FileSearchPath paths = only ? *only : f->getDefaultLocationsToSearch();
+        if (only && f->getName() != "VST3") continue;   // (a folder of files: AU components are found by the system, not in folders)
+        juce::PluginDirectoryScanner sc (known, *f, paths, true, dataDir().getChildFile ("scan-deadmans.txt"), false);
+        juce::String name;
+        for (;;)
+        {
+            if (progress && ! progress (f->getName() + ": " + sc.getNextPluginFileThatWillBeScanned())) break;
+            if (! sc.scanNextFile (true, name)) break;
+        }
+    }
+    saveKnown();
+    return known.getBlacklistedFiles().size() - failedBefore;
+}
 
 juce::uint32 Session::trackColour (int i)
 {

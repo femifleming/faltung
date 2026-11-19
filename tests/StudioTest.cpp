@@ -118,6 +118,8 @@ struct WideProc : juce::AudioProcessor
 
 int main (int argc, char** argv)
 {
+    // the child side of a plug-in scan (Session::scanPlugins starts this program again with these arguments)
+    if (argc >= 5 && juce::String (argv[1]) == "--scan-plugin") return fal::daw::Session::scanOneFile (argv[2], argv[3], juce::File (juce::String (argv[4])));
     juce::ScopedJuceInitialiser_GUI gui;
     juce::File shotDir, wavDir, vst3;
     for (int i = 1; i < argc; ++i)
@@ -1987,6 +1989,204 @@ int main (int argc, char** argv)
         }
         s.stop();
         std::cout << "  " << pages << " + 8 screenshots in " << shotDir.getFullPathName() << "\n";
+    }
+
+    // ---- 26. undo / redo, autosave and recovery, the cpu meter ---------------------------------------------------
+    std::cout << "== undo / redo, autosave, recovery, cpu meter\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& h = p.history; h.reset();
+        check (! h.canUndo() && ! h.canRedo(), "a new project has no history");
+        const int before = (int) s.tracks.size();
+        auto* t = s.tracks[0].get();
+        s.editPattern (*t, 3, [] (Pattern& pt) { pt.s[5].on = true; pt.s[5].pitch = 7; });
+        check (! h.poll (true), "no step while a mouse button is held (a drag is one step)");
+        check (h.poll (false) && h.undoSteps() == 1, "an edit is one step");
+        check (! h.poll (false), "nothing new: no step");
+        s.addTrack ("extra"); h.poll (false);
+        t->mixer->setBase (MP_LEVEL, 0.2f); s.dirty = true; h.poll (false);   // a fader moved (its gesture ended)
+        check (h.undoSteps() == 3, "three steps");
+        s.play();
+        check (h.undo(), "undo");
+        check (std::abs (s.tracks[0]->mixer->baseValue (MP_LEVEL) - 0.2f) > 1.0e-3f, "undo: the fader is back");
+        check (s.running.load(), "undo leaves the transport running");
+        s.stop();
+        h.undo();
+        check ((int) s.tracks.size() == before, "undo: the added track is gone");
+        h.undo();
+        check (! s.tracks[0]->patternAt (3) || ! s.tracks[0]->patternAt (3)->s[5].on, "undo: the step is off again");
+        check (! h.canUndo() && h.redoSteps() == 3, "at the start of the history, three steps to redo");
+        h.redo(); h.redo();
+        check (s.tracks[0]->patternAt (3) && s.tracks[0]->patternAt (3)->s[5].on && s.tracks[0]->patternAt (3)->s[5].pitch == 7 && (int) s.tracks.size() == before + 1, "redo twice: the step and the track are back");
+        s.editPattern (*s.tracks[1], 0, [] (Pattern& pt) { pt.length = 7; pt.s[0].on = true; });
+        h.poll (false);
+        check (! h.canRedo(), "a new edit clears redo");
+        h.redo(); h.undo();
+        check (! s.tracks[1]->patternAt (0) || s.tracks[1]->patternAt (0)->length != 7, "undo of the newest edit");
+        s.newFromTemplate (1); h.poll (false);
+        check (! h.canUndo(), "a new project starts a new history");
+
+        // autosave → a crash → recovery (into a scratch autosave, never the user's own)
+        p.autosaveOverride = tmp.getChildFile ("autosave test.fstudio");
+        s.projectFile = tmp.getChildFile ("my song.fstudio"); s.projectName = "my song";
+        s.tracks[2]->mixer->setBase (MP_PAN, 0.11f);
+        p.autosave();
+        check (p.autosaveFile().existsAsFile() && ! p.autosaveFile().getSiblingFile ("autosave.tmp").existsAsFile(), "autosave written whole");
+        StudioProcessor q; q.autosaveOverride = p.autosaveFile();
+        juce::String err;
+        check (q.recoverAutosave (err), "recover: " + err);
+        check (q.session.projectFile == s.projectFile && q.session.projectName == "my song", "the recovered project knows its file");
+        check (q.session.dirty.load() && q.session.tracks.size() == s.tracks.size() && std::abs (q.session.tracks[2]->mixer->baseValue (MP_PAN) - 0.11f) < 1.0e-5f, "recovered, unsaved, with the last values");
+
+        // the cpu meter: a known load reads as that load
+        s.simulateLoad = 0.5f; s.resetCpuMeter();
+        s.cpu.store (0.0f);
+        render (p, 2.0);
+        std::cout << "  simulated load 50%: the meter reads " << juce::roundToInt (s.cpu.load() * 100) << "%, peak " << juce::roundToInt (s.cpuPeak.load() * 100) << "%, overruns " << s.overruns.load() << "\n";
+        check (s.cpu.load() > 0.48f && s.cpu.load() < 0.95f && s.cpuPeak.load() >= s.cpu.load(), "the meter reads the simulated load");
+        s.simulateLoad = 0.0f;
+        s.resetCpuMeter();   // (a busy machine may have pushed a block or two over: counted, but not what is checked here)
+        s.noteLoad (2.0 * kBs / kSr, kBs);
+        check (s.overruns.load() == 1 && s.cpuPeak.load() >= 1.99f, "a block that took twice its time counts as an overrun");
+        s.resetCpuMeter();
+        check (s.overruns.load() == 0 && s.cpuPeak.load() == 0.0f, "reset");
+        if (shotDir != juce::File())
+        {
+            StudioEditor ed (p); ed.setSize (1440, 900);
+            s.simulateLoad = 0.35f; s.newFromTemplate (1); s.launchScene (4); render (p, 1.0); s.simulateLoad = 0.0f; s.noteLoad (1.3 * kBs / kSr, kBs);
+            ed.tickForTest();
+            auto img = ed.createComponentSnapshot ({ 1440 - 420, 900 - 60, 420, 60 }, true, 2.0f);
+            juce::FileOutputStream os (shotDir.getChildFile ("sndstudio-cpu.png")); os.truncate(); juce::PNGImageFormat().writeImageToStream (img, os);
+        }
+    }
+
+    // ---- 28. export options: file types, word lengths, rates, normalising, stems of chosen tracks, a time selection, multichannel
+    std::cout << "== export options\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (1); s.launchScene (4);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        juce::AudioFormatManager fm; fm.registerBasicFormats();
+        auto info = [&] (const juce::File& f, int& ch, double& rate, int& bits, juce::int64& len, float& peak)
+        {
+            std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (f));
+            if (! r) { ch = 0; return; }
+            ch = (int) r->numChannels; rate = r->sampleRate; bits = (int) r->bitsPerSample; len = r->lengthInSamples;
+            juce::AudioBuffer<float> b (ch, (int) len); r->read (&b, 0, (int) len, 0, true, true); peak = b.getMagnitude (0, (int) len);
+        };
+        juce::String err; int ch = 0, bits = 0; double rate = 0; juce::int64 len = 0; float peak = 0;
+        ExportOptions o; o.format = 1; o.bits = 16; o.sampleRate = 44100; o.normalise = true; o.normaliseDb = -1.0f; o.tail = false;
+        const auto aif = tmp.getChildFile ("mix.aif");
+        check (s.renderMaster (aif, 0.0, 2.0, nullptr, err, o), "aiff export: " + err);
+        info (aif, ch, rate, bits, len, peak);
+        const double bars2 = 2.0 * 4.0 * 60.0 / s.tempo();
+        std::cout << "  aiff: " << ch << " ch, " << rate << " hz, " << bits << " bit, " << len << " samples (" << len / rate << " s for " << bars2 << " s), peak " << db (peak) << "\n";
+        check (ch == 2 && std::abs (rate - 44100.0) < 1 && bits == 16 && std::abs ((double) len / rate - bars2) < 0.01, "aiff, 16 bit, resampled to 44.1 khz, two bars long");
+        check (std::abs (juce::Decibels::gainToDecibels (peak) + 1.0f) < 0.3f, "normalised to -1 dbfs");
+        check (! aif.getSiblingFile ("mix.render.wav").exists(), "the float render is cleaned up");
+        o = ExportOptions(); o.format = 2; o.bits = 24; o.tail = false;
+        const auto flac = tmp.getChildFile ("mix.flac");
+        check (s.renderMaster (flac, 0.0, 1.0, nullptr, err, o), "flac export: " + err);
+        info (flac, ch, rate, bits, len, peak);
+        check (ch == 2 && bits == 24 && std::abs (rate - kSr) < 1 && peak > 0.05f, "flac, 24 bit, the project's rate");
+        o = ExportOptions(); o.bits = 32; o.tail = false;
+        const auto wf = tmp.getChildFile ("mix32.wav");
+        s.renderMaster (wf, 0.0, 1.0, nullptr, err, o); info (wf, ch, rate, bits, len, peak);
+        check (bits == 32 && peak > 0.05f, "wav, 32-bit float");
+        // a time selection: bars 3 to 4 only
+        const auto sel = tmp.getChildFile ("selection.wav");
+        s.renderMaster (sel, 2.0, 3.0, nullptr, err, o); info (sel, ch, rate, bits, len, peak);
+        check (std::abs ((double) len - 4.0 * 60.0 / s.tempo() * kSr) < 2.0, "a time selection of one bar is one bar long");
+        // stems of two chosen tracks
+        const auto dir = tmp.getChildFile ("chosen stems");
+        o.only = { s.tracks[0]->uid, s.tracks[2]->uid }; o.format = 0; o.bits = 24;
+        check (s.renderStems (dir, 0.0, 1.0, nullptr, err, o), "stems of chosen tracks: " + err);
+        const auto files = dir.findChildFiles (juce::File::findFiles, false, "*.wav");
+        std::cout << "  stems of tracks 1 and 3: "; for (auto& f : files) std::cout << "\"" << f.getFileName() << "\" "; std::cout << "\n";
+        check (files.size() == 2, "exactly the two chosen tracks");
+        // multichannel: the spatial template's 24-channel master as one file
+        s.newFromTemplate (7); s.launchScene (0); s.setWidth (*s.master, 24); p.prepareToPlay (kSr, kBs);
+        const auto mc = tmp.getChildFile ("spatial.wav");
+        o = ExportOptions(); o.tail = false;
+        check (s.renderMaster (mc, 0.0, 1.0, nullptr, err, o), "multichannel export: " + err);
+        info (mc, ch, rate, bits, len, peak);
+        std::cout << "  the spatial master: " << ch << " channels in one file\n";
+        check (ch == 24, "a 24-channel master is one 24-channel file");
+    }
+
+    // ---- 27. hosting the user's own plug-ins: a crash-safe scan, instruments and effects, state, automation, latency ----
+    std::cout << "== hosting: scan in child processes, instruments, effects, state, automation, latency\n";
+    {
+        juce::VST3PluginFormat vf; const auto sp = vf.getDefaultLocationsToSearch();
+        auto find = [&] (const juce::String& n) { for (int i = 0; i < sp.getNumPaths(); ++i) { auto f = sp[i].getChildFile (n); if (f.exists()) return f; } return juce::File(); };
+        const auto quell = find ("Quell.vst3"), convo = find ("ConvoSolution.vst3"), ms0 = find ("faltung ms0.vst3"), fm = find ("EX Poly FM.vst3");
+        if (! quell.exists() || ! ms0.exists() || ! fm.exists()) std::cout << "  (Quell, faltung ms0 or EX Poly FM not installed here: skipped)\n";
+        else
+        {
+            const auto folder = tmp.getChildFile ("plug-ins"); folder.createDirectory();
+            for (auto& f : { quell, convo, ms0, fm }) if (f.exists()) f.createSymbolicLink (folder.getChildFile (f.getFileName()), true);
+            quell.copyDirectoryTo (folder.getChildFile ("crash me.vst3"));   // (a copy: a link would be followed to Quell itself)
+            setenv ("SNDSTUDIO_SCAN_CRASH_ON", "crash me", 1);
+            Session::scannerExecutable() = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+            StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+            s.knownOverride = tmp.getChildFile ("known plug-ins.xml"); s.known.clear(); s.known.clearBlacklistedFiles();
+            const juce::FileSearchPath path (folder.getFullPathName());
+            int files = 0;
+            const int failed = s.scanPlugins (&path, [&] (const juce::String&) { ++files; return true; });
+            unsetenv ("SNDSTUDIO_SCAN_CRASH_ON");
+            juce::StringArray names; for (auto& d : s.known.getTypes()) names.add (d.name + (d.isInstrument ? " (instrument)" : ""));
+            std::cout << "  scanned " << files << " files in child processes: " << names.joinIntoString (", ") << "; blacklisted: " << s.blacklisted().joinIntoString (", ") << "\n";
+            check (failed == 1 && s.blacklisted().size() == 1 && s.blacklisted()[0].contains ("crash me"), "the plug-in that crashed its scan is blacklisted, the studio carried on");
+            auto typeOf = [&] (const juce::String& n) { for (auto& e : s.deviceTypes()) if (e.name.startsWith (n + " (")) return e; return Session::TypeEntry(); };
+            check (typeOf ("Quell").typeId.isNotEmpty() && typeOf ("EX Poly FM").typeId.isNotEmpty() && typeOf ("faltung ms0").typeId.isNotEmpty(), "the scanned plug-ins are in the device list");
+            check (typeOf ("EX Poly FM").instrument && ! typeOf ("Quell").instrument, "instruments and effects told apart");
+            check (s.known.getTypes().size() >= 3 && s.knownOverride.existsAsFile(), "the known list is saved");
+            // an instrument and two effects on a track, an effect on a return and on the master
+            auto& t = *s.tracks[0];
+            juce::String err;
+            auto inst = s.createDevice (typeOf ("EX Poly FM").typeId, &err); check (inst != nullptr, "EX Poly FM loads: " + err);
+            if (inst)
+            {
+                s.setInstrument (t, std::move (inst));
+                s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); for (int k = 0; k < 16; k += 4) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].len = 2.0f; } }); s.launch (t, 0);
+                auto* q = s.addInsert (t, s.createDevice (typeOf ("Quell").typeId, &err));
+                check (q != nullptr, "Quell loads on the track");
+                const int lat0 = s.totalLatency();
+                auto* m = s.addInsert (*s.returns[0], s.createDevice (typeOf ("faltung ms0").typeId, &err));
+                check (m != nullptr, "ms0 loads on a return");
+                auto r = render (p, 2.0);
+                const int devLat = m ? m->processor()->getLatencySamples() : 0;
+                std::cout << "  hosted EX Poly FM + Quell: peak " << db (r.peak[0]) << "; ms0 on a return reports " << devLat << " samples, the studio's latency " << lat0 << " -> " << s.totalLatency() << "\n";
+                check (r.peak[0] > 0.01f, "the hosted instrument plays through the hosted effect");
+                check (devLat > 0 && s.totalLatency() >= lat0 + devLat, "the hosted plug-in's latency is compensated");
+                // automation of a hosted parameter
+                if (q && q->numParams() > 0)
+                {
+                    int pi = 0; for (int i = 0; i < q->numParams(); ++i) if (q->paramName (i).containsIgnoreCase ("mix")) { pi = i; break; }
+                    const Target tg = s.targetFor (t, *q, pi);
+                    s.editLane (tg, [] (AutoLane& l) { l.pts = { { 0.0, 0.0f, 0.0f }, { 4.0, 1.0f, 0.0f } }; });
+                    float seen = 0; render (p, 1.0, [&] (int, double ppq) { if (ppq > 3.0) seen = std::max (seen, q->baseValue (pi)); });
+                    std::cout << "  automation of Quell's \"" << q->paramName (pi) << "\": " << seen << " near the end of the ramp\n";
+                    check (seen > 0.7f, "a hosted parameter follows its automation lane");
+                    s.removeLane (tg);
+                    q->setBase (pi, 0.37f);
+                }
+                // state with the project
+                const auto f = tmp.getChildFile ("hosted.fstudio");
+                check (p.saveProject (f, err), "save with hosted plug-ins");
+                StudioProcessor p2; p2.session.knownOverride = s.knownOverride; p2.session.loadKnown();
+                check (p2.loadProject (f, err), "reopen: " + err);
+                auto& t2 = *p2.session.tracks[0];
+                check (t2.instrument && t2.instrument->kind == Device::Kind::Hosted && t2.inserts.size() == t.inserts.size(), "the hosted instrument and effects come back");
+                if (q && t2.inserts.size() == t.inserts.size())
+                {
+                    Device* q2 = nullptr; for (auto& d : t2.inserts) if (d->name == q->name) q2 = d.get();
+                    int pi = 0; for (int i = 0; i < q->numParams(); ++i) if (q->paramName (i).containsIgnoreCase ("mix")) { pi = i; break; }
+                    check (q2 && std::abs (q2->baseValue (pi) - 0.37f) < 0.01f, "a hosted plug-in's value survives save / reopen");
+                }
+                check (p2.session.returns[0]->inserts.size() == 1, "the return's hosted plug-in comes back");
+            }
+            Session::scannerExecutable() = juce::File();
+        }
     }
 
     tmp.deleteRecursively();

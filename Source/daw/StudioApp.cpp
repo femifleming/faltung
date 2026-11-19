@@ -15,14 +15,22 @@ public:
     const juce::String getApplicationVersion() override { return JucePlugin_VersionString; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
-    void initialise (const juce::String&) override
+    void initialise (const juce::String& commandLine) override
     {
+        // the child side of a plug-in scan: one file, then quit (no window, no audio)
+        const auto args = juce::StringArray::fromTokens (commandLine, true);
+        if (args.size() >= 4 && args[0] == "--scan-plugin")
+        {
+            setApplicationReturnValue (Session::scanOneFile (args[1].unquoted(), args[2].unquoted(), juce::File (args[3].unquoted())));
+            scanning = true; quit(); return;
+        }
+        Session::scannerExecutable() = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
         juce::PropertiesFile::Options o;
         o.applicationName = "standalone"; o.filenameSuffix = "settings"; o.folderName = Session::dataDir().getFullPathName(); o.storageFormat = juce::PropertiesFile::storeAsXML;
         settings = std::make_unique<juce::PropertiesFile> (Session::dataDir().getChildFile ("standalone.settings"), o);
         processor.reset (dynamic_cast<StudioProcessor*> (createPluginFilter()));
         processor->midiClockOut = [this] (const juce::MidiMessage& m) { if (clockOut) clockOut->sendMessageNow (m); };
-        processor->openAudioSettings = [this] { menuItemSelected (10, 1); };
+        processor->openAudioSettings = [this] { menuItemSelected (10, 2); };
         std::unique_ptr<juce::XmlElement> saved (settings->getXmlValue ("audio"));
         const auto self = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SELFTEST", {});
         if (self.isNotEmpty())
@@ -54,10 +62,23 @@ public:
         else processor->session.newFromTemplate (1);
         // SNDSTUDIO_SELFTEST=<folder>: the app drives itself once (pages, playback, the outputs, recording) and writes
         // pictures and a log there, then quits. For checking a build on a real audio device without hands (and without sound).
-        if (self.isNotEmpty()) { selfTest = std::make_unique<SelfTest> (*this, juce::File (self)); }
+        if (self.isNotEmpty()) { selfTest = std::make_unique<SelfTest> (*this, juce::File (self)); return; }
+        processor->history.reset();
+        // the last run did not close properly (a crash, a forced quit): offer the autosave
+        const auto marker = StudioProcessor::runningMarker();
+        if (marker.existsAsFile() && processor->autosaveFile().existsAsFile())
+        {
+            const auto when = processor->autosaveFile().getLastModificationTime();
+            juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, getApplicationName(),
+                "sndstudio did not close properly last time. Open the autosave from " + when.formatted ("%d %b %Y, %H:%M") + "?\n(It opens unsaved: save it to keep it.)",
+                "open the autosave", "no, start as usual", nullptr,
+                juce::ModalCallbackFunction::create ([this] (int r) { if (r == 1) { juce::String err; processor->recoverAutosave (err); if (auto* e = studioEditor()) e->selectTrack (nullptr); } }));
+        }
+        marker.replaceWithText (juce::Time::getCurrentTime().toISO8601 (true));
     }
     void shutdown() override
     {
+        if (scanning) return;
         selfTest.reset();
        #if JUCE_MAC
         juce::MenuBarModel::setMacMainMenu (nullptr);
@@ -68,6 +89,7 @@ public:
         deviceManager.removeMidiInputDeviceCallback ({}, &collector);
         if (! selfTesting)   // a self-test leaves the user's settings alone
         {
+            StudioProcessor::runningMarker().deleteFile();   // closed properly
             if (auto x = deviceManager.createStateXml()) settings->setValue ("audio", x.get());
             if (processor->session.projectFile.existsAsFile()) settings->setValue ("lastProject", processor->session.projectFile.getFullPathName());
             settings->saveIfNeeded();
@@ -75,7 +97,22 @@ public:
         window.reset();
         processor.reset();
     }
-    void systemRequestedQuit() override { if (processor && processor->session.dirty.load() && ! selfTesting) processor->autosave(); quit(); }
+    void systemRequestedQuit() override
+    {
+        if (! processor || selfTesting || ! processor->session.dirty.load()) { quit(); return; }
+        processor->autosave();
+        auto& se = processor->session;
+        juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, getApplicationName(),
+            "Save the changes to \"" + se.projectName + "\" before quitting?", "save", "don't save", "cancel", nullptr,
+            juce::ModalCallbackFunction::create ([this] (int r)
+            {
+                if (r == 0) return;   // cancel
+                if (r == 2) { quit(); return; }
+                auto& s2 = processor->session; juce::String err;
+                if (s2.projectFile != juce::File() && processor->saveProject (s2.projectFile, err)) { quit(); return; }
+                if (auto* e = studioEditor()) e->fileAction (3);   // no file yet: save as, then quit again
+            }));
+    }
 
     void setClockOut (const juce::String& identifier)
     {
@@ -123,12 +160,13 @@ public:
     }
 
     // ---- menu -------------------------------------------------------------------------------------
-    juce::StringArray getMenuBarNames() override { return { "file", "audio" }; }
+    juce::StringArray getMenuBarNames() override { return { "file", "edit", "audio" }; }
     StudioEditor* studioEditor() const { return window ? window->studio() : nullptr; }
     juce::PopupMenu getMenuForIndex (int i, const juce::String&) override
     {
         juce::PopupMenu m;
         if (i == 0) { if (auto* e = studioEditor()) m = e->fileMenu(); }
+        else if (i == 1) { if (auto* e = studioEditor()) m = e->editMenu(); }
         else
         {
             m.addItem (10, "audio and midi settings...");
@@ -140,7 +178,7 @@ public:
     }
     void menuItemSelected (int id, int menu) override
     {
-        if (menu == 0) { if (auto* e = studioEditor()) e->fileAction (id); return; }
+        if (menu == 0 || menu == 1) { if (auto* e = studioEditor()) e->fileAction (id); return; }
         if (id >= 21) { int k = 21; for (auto& d : juce::MidiOutput::getAvailableDevices()) { if (k++ == id) setClockOut (d.identifier); } return; }
         if (id == 20) { setClockOut ({}); return; }
         if (id == 10)
@@ -272,7 +310,7 @@ private:
         }
         StudioApp& app; juce::File dir, log; int step = 0, recUid = 0;
     };
-    std::unique_ptr<SelfTest> selfTest; bool selfTesting = false; juce::String selfDeviceError;
+    std::unique_ptr<SelfTest> selfTest; bool selfTesting = false, scanning = false; juce::String selfDeviceError;
     std::array<std::atomic<float>, kOutChannels> outPeak {}, inPeak {}; std::atomic<int> callbacks { 0 };
 
     std::unique_ptr<StudioProcessor> processor;

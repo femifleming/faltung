@@ -16,6 +16,7 @@ StudioProcessor::StudioProcessor()
     // a new window opens on the starter project so there is sound at once
     session.newFromTemplate (1);
     session.launchScene (4);
+    history.reset();
     startTimerHz (10);
 }
 StudioProcessor::~StudioProcessor() { stopTimer(); }
@@ -27,7 +28,8 @@ void StudioProcessor::timerCallback()
     if (lat != lastLatency) { lastLatency = lat; setLatencySamples (lat); }
     session.midiLearnPoll();
     const auto now = juce::Time::currentTimeMillis();
-    if (session.dirty.load() && now - lastAutosave > 120000) { autosave(); lastAutosave = now; }
+    if (session.dirty.load() && now - lastAutosave > 60000) { autosave(); lastAutosave = now; }
+    history.poll();
 }
 
 void StudioProcessor::prepareToPlay (double sr, int bs)
@@ -118,6 +120,20 @@ bool StudioProcessor::loadProject (const juce::File& f, juce::String& error)
 void StudioProcessor::autosave()
 {
     auto x = session.save();
-    x->writeTo (autosaveFile());
+    if (session.projectFile != juce::File()) x->setAttribute ("autosaveOf", session.projectFile.getFullPathName());
+    const auto tmp = autosaveFile().getSiblingFile ("autosave.tmp");
+    if (x->writeTo (tmp)) tmp.moveFileTo (autosaveFile());   // never half a file where the autosave was
+}
+bool StudioProcessor::recoverAutosave (juce::String& error)
+{
+    auto x = juce::XmlDocument::parse (autosaveFile());
+    if (! x) { error = "no autosave"; return false; }
+    const juce::File of (x->getStringAttribute ("autosaveOf"));
+    session.load (*x, &error);
+    session.projectFile = of.getFullPathName().isNotEmpty() ? of : juce::File();
+    session.projectName = of.getFullPathName().isNotEmpty() ? of.getFileNameWithoutExtension() : x->getStringAttribute ("name", "recovered");
+    session.dirty = true;
+    history.reset();
+    return true;
 }
 } // namespace fal::daw

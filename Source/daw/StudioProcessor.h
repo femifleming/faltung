@@ -3,6 +3,7 @@
 // the device inputs first and then up to 128 device outputs; project files, autosave and crash recovery.
 // sndstudio is a standalone application only (no plug-in formats): there are no host parameters and no host transport.
 #include "Session.h"
+#include "Undo.h"
 
 namespace fal::daw
 {
@@ -12,6 +13,7 @@ public:
     StudioProcessor();
     ~StudioProcessor() override;
     Session session;
+    UndoHistory history { session };
 
     void prepareToPlay (double, int) override;
     void releaseResources() override;
@@ -36,7 +38,12 @@ public:
     bool saveProject (const juce::File&, juce::String& error);
     bool loadProject (const juce::File&, juce::String& error);
     void autosave();
-    juce::File autosaveFile() const { return Session::dataDir().getChildFile ("autosave.fstudio"); }
+    /** after a crash: the autosave as the project (it keeps the file it was an autosave of, and stays unsaved) */
+    bool recoverAutosave (juce::String& error);
+    /** a marker that lives while the app runs: found at start, the last run did not close properly */
+    static juce::File runningMarker() { return Session::dataDir().getChildFile ("running.marker"); }
+    juce::File autosaveFile() const { return autosaveOverride != juce::File() ? autosaveOverride : Session::dataDir().getChildFile ("autosave.fstudio"); }
+    juce::File autosaveOverride;   // (tests: somewhere other than the user's own autosave)
     static juce::File projectsDir();
     /** the standalone's midi clock output (set by the app) */
     std::function<void (const juce::MidiMessage&)> midiClockOut;

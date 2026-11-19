@@ -1619,19 +1619,9 @@ public:
     void list() { files.clear(); for (auto& f : dir.findChildFiles (juce::File::findFilesAndDirectories, false)) if (! f.getFileName().startsWith (".")) files.add (f); files.sort(); fileScroll = 0; repaint(); }
     void run() override
     {
-        auto& s = ctx.s;
-        for (auto* f : s.formats.getFormats())
-        {
-            juce::FileSearchPath paths = f->getDefaultLocationsToSearch();
-            juce::PluginDirectoryScanner sc (s.known, *f, paths, true, Session::dataDir().getChildFile ("scan-deadmans.txt"), true);
-            juce::String name;
-            while (! threadShouldExit())
-            {
-                progress = f->getName() + ": " + sc.getNextPluginFileThatWillBeScanned();
-                if (! sc.scanNextFile (true, name)) break;
-            }
-        }
-        juce::MessageManager::callAsync ([this] { ctx.s.saveKnown(); progress = juce::String (ctx.s.known.getNumTypes()) + " plug-ins known"; repaint(); });
+        // every file in a child process: a plug-in that crashes is put on the blacklist, the studio carries on
+        const int failed = ctx.s.scanPlugins (nullptr, [this] (const juce::String& now) { progress = now; return ! threadShouldExit(); });
+        juce::MessageManager::callAsync ([this, failed] { progress = juce::String (ctx.s.known.getNumTypes()) + " plug-ins known" + (failed > 0 ? ", " + juce::String (failed) + " failed (blacklisted)" : juce::String()); repaint(); });
     }
     juce::Rectangle<int> devArea() const { return { 0, 0, getWidth() / 2 - 4, getHeight() }; }
     juce::Rectangle<int> fileArea() const { return { getWidth() / 2 + 4, 0, getWidth() / 2 - 4, getHeight() }; }

@@ -193,9 +193,12 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         }
         internalPpq.store (p);
     }
-    const double secs = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0);
-    const float load = (float) (secs / (n / sr));
-    cpu.store (cpu.load() * 0.9f + load * 0.1f);
+    if (const float sim = simulateLoad.load (std::memory_order_relaxed); sim > 0.0f)
+    {
+        const auto until = t0 + (juce::int64) (sim * n / sr * (double) juce::Time::getHighResolutionTicksPerSecond());
+        while (juce::Time::getHighResolutionTicks() < until) {}
+    }
+    noteLoad (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0), n);
 }
 
 void Session::automate (double ppq)
@@ -977,7 +980,59 @@ void Session::resetForOffline()
 
 namespace
 {
-struct Dither { Rng r; float tick() { return (r.uni() - r.uni()) / 8388608.0f; } };   // tpdf, ±1 lsb at 24 bit
+struct Dither { Rng r; float tick (float lsb) { return (r.uni() - r.uni()) * lsb; } };   // tpdf, ±1 lsb
+
+/** the second pass of an export: the 32-bit float render into the file the options ask for (type, word length, rate,
+    normalised, dithered). `peak` is the render's loudest sample. The float render is deleted afterwards. */
+static bool finishExport (const juce::File& render, const juce::File& dest, const ExportOptions& opt, float peak, juce::String& error)
+{
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatReader> rd (wav.createReaderFor (new juce::FileInputStream (render), true));
+    if (! rd) { error = "cannot read the render " + render.getFullPathName(); return false; }
+    const int ch = (int) rd->numChannels; const double srcRate = rd->sampleRate;
+    const double dstRate = opt.sampleRate > 0 ? opt.sampleRate : srcRate;
+    std::unique_ptr<juce::AudioFormat> fmt;
+    if (opt.format == 1) fmt = std::make_unique<juce::AiffAudioFormat>();
+    else if (opt.format == 2) fmt = std::make_unique<juce::FlacAudioFormat>();
+    else fmt = std::make_unique<juce::WavAudioFormat>();
+    int bits = opt.bits <= 16 ? 16 : opt.bits >= 32 && opt.format == 0 ? 32 : 24;
+    dest.deleteFile();
+    auto os = std::make_unique<juce::FileOutputStream> (dest);
+    if (os->failedToOpen()) { error = "cannot write " + dest.getFullPathName(); return false; }
+    std::unique_ptr<juce::AudioFormatWriter> w (fmt->createWriterFor (os.get(), dstRate, (unsigned) ch, bits, {}, 0));
+    if (! w) { error = juce::String (fmt->getFormatName()) + " cannot be written with " + juce::String (ch) + " channels, " + juce::String (bits) + " bit at " + juce::String (dstRate, 0) + " hz"; return false; }
+    os.release();
+    const float gain = opt.normalise && peak > 1.0e-9f ? juce::Decibels::decibelsToGain (opt.normaliseDb) / peak : 1.0f;
+    const float lsb = bits >= 32 || ! opt.dither ? 0.0f : 1.0f / (float) (1 << (bits - 1));
+    juce::AudioFormatReaderSource src (rd.get(), false);
+    juce::ResamplingAudioSource rs (&src, false, ch);
+    rs.setResamplingRatio (srcRate / dstRate);
+    const int block = 4096;
+    rs.prepareToPlay (block, dstRate);
+    juce::AudioBuffer<float> b (ch, block);
+    Dither dither;
+    juce::int64 left = (juce::int64) std::ceil ((double) rd->lengthInSamples * dstRate / srcRate);
+    bool ok = true;
+    while (left > 0 && ok)
+    {
+        const int n = (int) std::min<juce::int64> (block, left);
+        juce::AudioSourceChannelInfo info (&b, 0, n);
+        if (std::abs (dstRate - srcRate) < 1.0e-6) src.getNextAudioBlock (info); else rs.getNextAudioBlock (info);
+        for (int c = 0; c < ch; ++c)
+        {
+            auto* d = b.getWritePointer (c);
+            for (int i = 0; i < n; ++i) { float v = d[i] * gain; if (lsb > 0.0f) v += dither.tick (lsb); d[i] = v; }
+        }
+        ok = w->writeFromAudioSampleBuffer (b, 0, n);
+        left -= n;
+    }
+    w.reset(); rs.releaseResources();
+    src.setLooping (false);
+    rd.reset();
+    render.deleteFile();
+    if (! ok) error = "writing " + dest.getFileName() + " failed";
+    return ok;
+}
 }
 
 bool Session::renderStems (const juce::File& dir, double fromBar, double toBar, const std::function<bool (float)>& progress, juce::String& error, ExportOptions opt)
@@ -990,24 +1045,26 @@ bool Session::renderStems (const juce::File& dir, double fromBar, double toBar, 
     const bool wasRunning = running.load(); const double savedPpq = internalPpq.load();
     running.store (false);
     juce::WavAudioFormat wav;
-    struct Stem { Track* t; std::unique_ptr<juce::AudioFormatWriter> w; int ch; };
+    struct Stem { Track* t; std::unique_ptr<juce::AudioFormatWriter> w; int ch; juce::File render, dest; float peak = 0; };
     std::vector<Stem> stems;
+    auto wanted = [&] (const Track* t) { return opt.only.empty() || std::find (opt.only.begin(), opt.only.end(), t->uid) != opt.only.end(); };
     auto open = [&] (Track* t, const juce::String& name)
     {
-        auto f = dir.getChildFile (juce::File::createLegalFileName (name) + ".wav"); f.deleteFile();
+        if (! wanted (t)) return;
+        const auto legal = juce::File::createLegalFileName (name);
+        auto f = dir.getChildFile (legal + ".render.wav"); f.deleteFile();
         const int ch = t->width.load();
-        std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, (unsigned) ch, opt.bits == 32 ? 32 : 24, {}, 0));
-        if (w) stems.push_back ({ t, std::move (w), ch });
+        std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, (unsigned) ch, 32, {}, 0));
+        if (w) stems.push_back ({ t, std::move (w), ch, f, dir.getChildFile (legal + ExportOptions::extension (opt.format)) });
     };
     for (int i = 0; i < (int) tracks.size(); ++i) open (tracks[(size_t) i].get(), juce::String (i + 1).paddedLeft ('0', 2) + " " + tracks[(size_t) i]->name);
-    for (size_t r = 0; r < returns.size(); ++r) if (returns[r]->inserts.size() > 0) open (returns[r].get(), "return " + juce::String (r + 1) + " " + returns[r]->name);
+    for (size_t r = 0; r < returns.size(); ++r) if (returns[r]->inserts.size() > 0 || ! opt.only.empty()) open (returns[r].get(), "return " + juce::String (r + 1) + " " + returns[r]->name);
     open (master.get(), "master");
     resetForOffline();
     std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
     Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
     double p = fromBar * 4.0; const double end = (toBar + (opt.tail ? 1.0 : 0.0)) * 4.0;
     juce::MidiBuffer none; HostInfo h;
-    Dither dither;
     juce::AudioBuffer<float> tmp (kMaxWidth, bs);
     bool ok = true;
     while (p < end && ok)
@@ -1020,26 +1077,25 @@ bool Session::renderStems (const juce::File& dir, double fromBar, double toBar, 
         std::fill (outMem.begin(), outMem.end(), 0.0f);
         headPpq = p;
         renderSpan (len, p, bpm, outs, none, p < toBar * 4.0, h);
-        for (auto& s : stems)
+        for (auto& st : stems)
         {
-            if (opt.bits == 24 && opt.dither)
-            {
-                for (int c = 0; c < s.ch; ++c) { auto* d = tmp.getWritePointer (c); const auto* src = s.t->post.getReadPointer (c); for (int i = 0; i < len; ++i) d[i] = src[i] + dither.tick(); }
-                s.w->writeFromAudioSampleBuffer (tmp, 0, len);
-            }
-            else s.w->writeFromAudioSampleBuffer (s.t->post, 0, len);
+            for (int c = 0; c < st.ch; ++c) st.peak = std::max (st.peak, st.t->post.getMagnitude (c, 0, len));
+            st.w->writeFromAudioSampleBuffer (st.t->post, 0, len);
         }
         p += len / spb;
         if (std::abs (p - limit) < 1.0e-6) p = limit;
         if (progress && ! progress ((float) ((p - fromBar * 4.0) / (end - fromBar * 4.0)))) ok = false;
     }
+    for (auto& st : stems) st.w.reset();
+    if (ok) for (auto& st : stems) if (! finishExport (st.render, st.dest, opt, st.peak, error)) ok = false;
+    if (! ok) for (auto& st : stems) st.render.deleteFile();
     stems.clear();
     for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
     internalPpq.store (savedPpq); running.store (wasRunning);
     for (auto* t : order) t->forEachDevice ([] (Device& d) { d.setOffline (false); });
     master->forEachDevice ([] (Device& d) { d.setOffline (false); });
     rendering.store (false);
-    if (! ok) error = "cancelled";
+    if (! ok && error.isEmpty()) error = "cancelled";
     return ok;
 }
 
@@ -1053,16 +1109,16 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
     running.store (false);
     if (preMaster) masterBypass.store (true);
     juce::WavAudioFormat wav;
-    file.deleteFile();
-    const int ch = master->width.load();
-    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (file), sr, (unsigned) ch, opt.bits == 32 ? 32 : 24, {}, 0));
-    if (! w) { error = "cannot write " + file.getFullPathName(); rendering.store (false); return false; }
+    const auto render = file.getSiblingFile (file.getFileNameWithoutExtension() + ".render.wav"); render.deleteFile();
+    const int ch = master->width.load();   // a 16 / 24 / 64-channel master is one file with that many channels
+    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (render), sr, (unsigned) ch, 32, {}, 0));
+    if (! w) { error = "cannot write " + render.getFullPathName(); rendering.store (false); return false; }
     resetForOffline();
     std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
     Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
     double p = fromBar * 4.0; const double end = (toBar + (opt.tail ? 1.0 : 0.0)) * 4.0;
     juce::MidiBuffer none; HostInfo h;
-    Dither dither;
+    float peak = 0.0f;
     PeakLimiter limiter; const int look = (int) (0.003 * sr);
     if (opt.limit) limiter.prepare (look, true);
     juce::AudioBuffer<float> tmp (kMaxWidth, bs);
@@ -1080,13 +1136,15 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
         for (int c = 0; c < ch; ++c) tmp.copyFrom (c, 0, master->post, c, 0, len);
         if (opt.limit && ch >= 2)
             limiter.process (tmp.getWritePointer (0), tmp.getWritePointer (1), len, true, dbToGain (opt.ceilingDb), look, tcoef (60.0f, (float) sr), tcoef (400.0f, (float) sr), true, 1.0f);
-        if (opt.bits == 24 && opt.dither) for (int c = 0; c < ch; ++c) { auto* d = tmp.getWritePointer (c); for (int i = 0; i < len; ++i) d[i] += dither.tick(); }
+        for (int c = 0; c < ch; ++c) peak = std::max (peak, tmp.getMagnitude (c, 0, len));
         w->writeFromAudioSampleBuffer (tmp, 0, len);
         p += len / spb;
         if (std::abs (p - limit) < 1.0e-6) p = limit;
         if (progress && ! progress ((float) ((p - fromBar * 4.0) / (end - fromBar * 4.0)))) ok = false;
     }
     w.reset();
+    if (ok) ok = finishExport (render, file, opt, peak, error);
+    render.deleteFile();
     for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
     master->forEachDevice ([] (Device& d) { d.reset(); });
     masterBypass.store (savedBypass);
@@ -1094,7 +1152,7 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
     for (auto* t : order) t->forEachDevice ([] (Device& d) { d.setOffline (false); });
     master->forEachDevice ([] (Device& d) { d.setOffline (false); });
     rendering.store (false);
-    if (! ok) error = "cancelled";
+    if (! ok && error.isEmpty()) error = "cancelled";
     return ok;
 }
 

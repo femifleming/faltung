@@ -118,7 +118,21 @@ struct HostInfo
     int inputLatency = 0;                                 // samples, for placing recordings
 };
 
-struct ExportOptions { int bits = 24; bool dither = true; bool limit = false; float ceilingDb = -1.0f; bool tail = true; };
+/** how a render is written: the file type, word length, rate, normalising and dither (applied in a second pass over a
+    32-bit float render, so every option is exact), the true-peak limiter for the mix, and which tracks a stem export
+    takes (empty: every track, the returns that have devices, and the master) */
+struct ExportOptions
+{
+    int bits = 24;                 // 16, 24 or 32 (32: float in wav; aiff / flac take 24 instead)
+    bool dither = true;            // tpdf dither below 32 bits
+    bool limit = false; float ceilingDb = -1.0f;
+    bool tail = true;              // one bar more, for the reverbs and echoes to ring out
+    int format = 0;                // 0 wav, 1 aiff, 2 flac
+    double sampleRate = 0;         // 0: the project's rate
+    bool normalise = false; float normaliseDb = -1.0f;   // the loudest sample of each file to this level
+    std::vector<int> only;         // stems: just these track uids (returns: negative uids, master: 0)
+    static const char* extension (int format) { return format == 1 ? ".aif" : format == 2 ? ".flac" : ".wav"; }
+};
 
 /** where the 128 output channels go this block: channel pointers (null = not available: folds into the master) */
 struct Outs { std::array<float*, kOutChannels> ch {}; };
@@ -145,7 +159,14 @@ public:
     juce::File browseDir;                           // the browser's folder (the music folder when empty)
     juce::String projectName { "untitled" };
     juce::File projectFile;
-    std::atomic<bool> dirty { false };
+    /** unsaved changes; every `dirty = true` also counts an edit (the undo history takes a snapshot when the count moves) */
+    struct DirtyFlag
+    {
+        std::atomic<bool> v { false }; std::atomic<int> edits { 0 };
+        DirtyFlag& operator= (bool b) { v.store (b); if (b) edits.fetch_add (1); return *this; }
+        bool load() const { return v.load(); }
+        void markClean() { v.store (false); }
+    } dirty;
     std::atomic<int> epoch { 0 };   // counts clear() (new / open / a host's state): the editor rebuilds on a change
 
     std::atomic<int> mode { (int) PlayMode::Session };
@@ -170,7 +191,21 @@ public:
     std::atomic<double> playPpq { -1.0 };       // < 0 when stopped
     std::atomic<double> internalPpq { 0.0 };
     std::atomic<float> bpmShown { 124.0f };
-    std::atomic<float> cpu { 0 };
+    // the engine's load: time spent in a block / the block's duration (smoothed), the highest since the meter was
+    // last reset, and how many blocks took longer than their own duration (an overrun: the interface would drop out)
+    std::atomic<float> cpu { 0 }, cpuPeak { 0 }, cpuLast { 0 };
+    std::atomic<int> overruns { 0 };
+    std::atomic<float> simulateLoad { 0 };      // the self-check and the tests: busy-wait this share of every block
+    void resetCpuMeter() { cpuPeak.store (0.0f); overruns.store (0); }
+    /** one block's measurement into the meter (the engine calls it; public so the tests can feed known loads) */
+    void noteLoad (double secondsSpent, int numSamples)
+    {
+        const float load = (float) (secondsSpent / std::max (1.0e-9, numSamples / sr));
+        cpuLast.store (load);
+        cpu.store (cpu.load() * 0.9f + load * 0.1f);
+        if (load > cpuPeak.load()) cpuPeak.store (load);
+        if (load > 1.0f) overruns.fetch_add (1);
+    }
     std::atomic<bool> rendering { false };
     std::atomic<int> inputChannels { 0 };       // what the device offers (standalone)
 
@@ -178,8 +213,20 @@ public:
     juce::AudioPluginFormatManager formats;
     juce::KnownPluginList known;
     juce::File knownFile() const;
+    juce::File knownOverride;   // (tests: a list of their own instead of the user's)
     void loadKnown();
     void saveKnown();
+    /** scan for VST3 / AU plug-ins (the standard folders, or only `paths`). Every file is opened in a child process (the
+        app itself with --scan-plugin), so a plug-in that crashes or hangs cannot take the studio down: it goes on the
+        known list's blacklist instead and is skipped from then on. Returns how many files failed this time.
+        `progress` gets the file being scanned; returning false stops the scan. */
+    int scanPlugins (const juce::FileSearchPath* paths, const std::function<bool (const juce::String&)>& progress = {}, int timeoutMs = 60000);
+    /** the program that scans one file (the app; the tests point it at themselves). Empty: scanned in-process */
+    static juce::File& scannerExecutable() { static juce::File f; return f; }
+    /** the child's side of a scan: one file of one format into an xml list of descriptions; the exit code is 0 on success */
+    static int scanOneFile (const juce::String& formatName, const juce::String& fileOrId, const juce::File& out);
+    juce::StringArray blacklisted() const { return known.getBlacklistedFiles(); }
+    void clearBlacklist() { known.clearBlacklistedFiles(); saveKnown(); }
     static juce::File dataDir();
     juce::File projectDir() const;              // where the project's audio folder lives
     juce::File audioDir() const;

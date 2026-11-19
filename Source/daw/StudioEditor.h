@@ -20,6 +20,7 @@ public:
     StudioView& view() { return *root; }
     /** the file menu and what its entries do (the app's menu bar shows the same menu) */
     juce::PopupMenu fileMenu();
+    juce::PopupMenu editMenu();
     void fileAction (int id);
     Track* renderProject (bool preMaster);
     bool autoMaster();
