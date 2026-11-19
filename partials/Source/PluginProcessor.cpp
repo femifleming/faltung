@@ -21,6 +21,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout PartialsProcessor::layout()
     for (int p = 0; p < 2; ++p)
         for (int i = 0; i < PP::Count; ++i)
             l.add (makeParam (partId (p, i), juce::String (p == 0 ? "A " : "B ") + partDefs[i].name, partDefs[i]));
+    // everything below was added after the first release and stays at the end of the list
+    for (int i = 0; i < XP::Count; ++i) l.add (makeParam (extraDefs[i].id, extraDefs[i].name, extraDefs[i]));
+    for (int p = 0; p < 2; ++p)
+        for (int t = 0; t < TG::FirstMapping; ++t)
+            for (int m = 0; m < EM::Count; ++m)
+            {
+                const juce::String name = juce::String (p == 0 ? "A " : "B ") + targetInfo[t].name + " envelope " + envModNames[m];
+                juce::NormalisableRange<float> r (kEnvModMin, kEnvModMax);
+                if (m == EM::Sus) r = juce::NormalisableRange<float> (0.0f, 2.0f); else r.setSkewForCentre (1.0f);
+                l.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID (envModId (p, t, m), 2), name, r, 1.0f));
+            }
     return l;
 }
 
@@ -32,8 +43,11 @@ PartialsProcessor::PartialsProcessor()
     for (int p = 0; p < 2; ++p)
     {
         for (int i = 0; i < PP::Count; ++i) rawPart[p][i] = apvts.getRawParameterValue (partId (p, i));
+        for (int t = 0; t < TG::FirstMapping; ++t) for (int m = 0; m < EM::Count; ++m) rawEnvMod[p][t][m] = apvts.getRawParameterValue (envModId (p, t, m));
         editData[p] = std::make_unique<PartData>();
     }
+    for (int i = 0; i < XP::Count; ++i) rawExtra[i] = apvts.getRawParameterValue (extraDefs[i].id);
+    startTimerHz (30);
     for (int i = 0; i < FXU::Count; ++i) { fxOrder[i] = i; fxOrderRT[i].store (i); }
     commit (0); commit (1);
 }
@@ -76,12 +90,39 @@ void PartialsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     float g[GP::Count], a[PP::Count], b[PP::Count];
     for (int i = 0; i < GP::Count; ++i) g[i] = rawGlobal[i]->load (std::memory_order_relaxed);
     for (int i = 0; i < PP::Count; ++i) { a[i] = rawPart[0][i]->load (std::memory_order_relaxed); b[i] = rawPart[1][i]->load (std::memory_order_relaxed); }
+    float x[XP::Count], mods[2][TG::FirstMapping][EM::Count];
+    for (int i = 0; i < XP::Count; ++i) x[i] = rawExtra[i]->load (std::memory_order_relaxed);
+    for (int p = 0; p < 2; ++p) for (int t = 0; t < TG::FirstMapping; ++t) for (int m = 0; m < EM::Count; ++m) mods[p][t][m] = rawEnvMod[p][t][m]->load (std::memory_order_relaxed);
     double bpm = 120.0;
     if (auto* ph = getPlayHead()) if (auto pos = ph->getPosition()) if (auto bp = pos->getBpm()) bpm = *bp;
     hostBpm.store (bpm);
-    engine.setParams (g, a, b, bpm, isNonRealtime());
 
     keyboard.processNextMidiBuffer (midi, 0, n, true);
+    // X / Y / Z from controllers. The value is used straight away; the host parameter follows from the message thread.
+    // When the parameter itself moves (the pad, automation), it takes over again.
+    for (int k = 0; k < 3; ++k)
+    {
+        const float pv = g[GP::modX + k];
+        if (ccLastParam[k] >= 0.0f && std::abs (pv - ccLastParam[k]) > 1.0e-6f && std::abs (pv - ccEcho[k].load (std::memory_order_relaxed)) > 2.0e-3f) ccActive[k] = false;
+        ccLastParam[k] = pv;
+    }
+    for (const auto meta : midi)
+    {
+        const auto m = meta.getMessage();
+        if (! m.isController()) continue;
+        const int learn = learnMod.load (std::memory_order_relaxed);
+        if (learn >= 0 && learn < 3 && m.getControllerNumber() != 64 && m.getControllerNumber() < 120)
+        {
+            for (int k = 0; k < 3; ++k) if (k != learn && modCC[k].load() == m.getControllerNumber()) modCC[k].store (-1);
+            modCC[learn].store (m.getControllerNumber()); learnMod.store (-1);
+        }
+        for (int k = 0; k < 3; ++k)
+            if (modCC[k].load (std::memory_order_relaxed) == m.getControllerNumber())
+            { ccValue[k] = (float) m.getControllerValue() / 127.0f; ccActive[k] = true; ccPending[k].store (ccValue[k], std::memory_order_relaxed); }
+    }
+    for (int k = 0; k < 3; ++k) { if (ccActive[k]) g[GP::modX + k] = ccValue[k]; modNow[k].store (g[GP::modX + k], std::memory_order_relaxed); }
+    engine.setParams (g, a, b, bpm, isNonRealtime(), x, &mods[0][0][0]);
+
     for (const auto meta : midi)
     {
         const auto m = meta.getMessage();
@@ -121,6 +162,16 @@ void PartialsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     cpu.store (cpu.load() + ((float) used - cpu.load()) * 0.1f);
 }
 
+void PartialsProcessor::timerCallback()
+{
+    for (int k = 0; k < 3; ++k)
+    {
+        const float v = ccPending[k].exchange (-1.0f);
+        if (v < 0.0f) continue;
+        if (auto* p = globalParam (GP::modX + k)) { ccEcho[k].store (v); p->setValueNotifyingHost (v); }
+    }
+}
+
 //==================================================================================================
 // state
 static juce::ValueTree targetToTree (const TargetDef& t, int index)
@@ -128,7 +179,7 @@ static juce::ValueTree targetToTree (const TargetDef& t, int index)
     juce::ValueTree v ("T");
     v.setProperty ("i", index, nullptr); v.setProperty ("smooth", t.smooth, nullptr);
     v.setProperty ("envOn", t.env.on, nullptr); v.setProperty ("envTempo", t.env.tempo, nullptr); v.setProperty ("envGlobal", t.env.global, nullptr);
-    v.setProperty ("env", t.env.c.toString(), nullptr); v.setProperty ("sus", t.env.sustain, nullptr); v.setProperty ("loop", t.env.loopStart, nullptr);
+    v.setProperty ("env", t.env.c.toString(), nullptr); v.setProperty ("sus", t.env.sustain, nullptr); v.setProperty ("loop", t.env.loopStart, nullptr); v.setProperty ("dec", t.env.decay, nullptr);
     v.setProperty ("lfoOn", t.lfo.on, nullptr); v.setProperty ("lfoTempo", t.lfo.tempo, nullptr); v.setProperty ("lfoGlobal", t.lfo.global, nullptr);
     v.setProperty ("lfoAmt", t.lfo.amt, nullptr); v.setProperty ("lfoSpeed", t.lfo.speed, nullptr); v.setProperty ("lfoTension", t.lfo.tension, nullptr);
     v.setProperty ("lfoSkew", t.lfo.skew, nullptr); v.setProperty ("lfoPw", t.lfo.pw, nullptr); v.setProperty ("lfoPhase", t.lfo.phase, nullptr);
@@ -146,7 +197,7 @@ static void treeToTarget (const juce::ValueTree& v, TargetDef& t)
     t = TargetDef();
     t.smooth = v.getProperty ("smooth", 0.0f);
     t.env.on = v.getProperty ("envOn", false); t.env.tempo = v.getProperty ("envTempo", false); t.env.global = v.getProperty ("envGlobal", false);
-    t.env.c.fromString (v.getProperty ("env").toString()); t.env.sustain = v.getProperty ("sus", -1); t.env.loopStart = v.getProperty ("loop", -1);
+    t.env.c.fromString (v.getProperty ("env").toString()); t.env.sustain = v.getProperty ("sus", -1); t.env.loopStart = v.getProperty ("loop", -1); t.env.decay = v.getProperty ("dec", -1);
     t.lfo.on = v.getProperty ("lfoOn", false); t.lfo.tempo = v.getProperty ("lfoTempo", false); t.lfo.global = v.getProperty ("lfoGlobal", false);
     t.lfo.amt = v.getProperty ("lfoAmt", 1.0f); t.lfo.speed = v.getProperty ("lfoSpeed", 0.5f); t.lfo.tension = v.getProperty ("lfoTension", 0.32f);
     t.lfo.skew = v.getProperty ("lfoSkew", 0.0f); t.lfo.pw = v.getProperty ("lfoPw", 0.0f); t.lfo.phase = v.getProperty ("lfoPhase", 0.0f);
@@ -170,6 +221,12 @@ juce::ValueTree PartialsProcessor::makePartState (int part)
     v.addChild (shapes, -1, nullptr);
     juce::String uo; for (int u : d.unitOrder) uo << u << ' ';
     v.setProperty ("unitOrder", uo.trim(), nullptr);
+    v.setProperty ("fenv", d.filtEnvAdd ? 1 : 2, nullptr);      // 1: filter envelope added above the control (old sounds), 2: below it
+    juce::ValueTree mods ("EnvMods");
+    for (int t = 0; t < TG::FirstMapping; ++t)
+        for (int m = 0; m < EM::Count; ++m)
+            if (std::abs (envModValue (part, t, m) - 1.0f) > 1.0e-6f) mods.setProperty ("t" + juce::String (t) + "_" + envModIds[m], envModValue (part, t, m), nullptr);
+    if (mods.getNumProperties() > 0) v.addChild (mods, -1, nullptr);
     PartData def;
     for (int t = 0; t < TG::Count; ++t)
         if (d.tg[t].active() || ! d.tg[t].env.c.pts.empty() || t == TG::Volume) v.addChild (targetToTree (d.tg[t], t), -1, nullptr);
@@ -181,6 +238,12 @@ void PartialsProcessor::applyPartState (int part, const juce::ValueTree& v)
 {
     PartData& d = *editData[part];
     d.reset();
+    d.filtEnvAdd = (int) v.getProperty ("fenv", 1) != 2;       // sounds from before the property existed keep their filter sweeps
+    auto mods = v.getChildWithName ("EnvMods");
+    for (int t = 0; t < TG::FirstMapping; ++t)
+        for (int m = 0; m < EM::Count; ++m)
+            if (auto* p = envModParam (part, t, m))
+                p->setValueNotifyingHost (p->convertTo0to1 ((float) mods.getProperty ("t" + juce::String (t) + "_" + envModIds[m], 1.0f)));
     auto params = v.getChildWithName ("Params");
     for (int i = 0; i < PP::Count; ++i)
         if (auto* p = partParam (part, i))
@@ -206,9 +269,11 @@ void PartialsProcessor::applyPartState (int part, const juce::ValueTree& v)
 juce::ValueTree PartialsProcessor::makeState (bool)
 {
     juce::ValueTree v ("Partials");
-    v.setProperty ("version", 1, nullptr); v.setProperty ("name", presetName, nullptr);
+    v.setProperty ("version", 2, nullptr); v.setProperty ("name", presetName, nullptr); v.setProperty ("info", presetInfo, nullptr);
     juce::ValueTree g ("Global");
     for (int i = 0; i < GP::Count; ++i) g.setProperty (globalDefs[i].id, rawGlobal[i]->load(), nullptr);
+    for (int i = 0; i < XP::Count; ++i) g.setProperty (extraDefs[i].id, rawExtra[i]->load(), nullptr);
+    g.setProperty ("modCC", juce::String (modCC[0].load()) + " " + juce::String (modCC[1].load()) + " " + juce::String (modCC[2].load()), nullptr);
     juce::String fo; for (int f : fxOrder) fo << f << ' ';
     g.setProperty ("fxOrder", fo.trim(), nullptr);
     v.addChild (g, -1, nullptr);
@@ -220,9 +285,25 @@ void PartialsProcessor::applyState (const juce::ValueTree& v)
 {
     if (! v.hasType ("Partials")) return;
     presetName = v.getProperty ("name", "Default").toString();
+    presetInfo = v.getProperty ("info", "").toString();
     auto g = v.getChildWithName ("Global");
     for (int i = 0; i < GP::Count; ++i)
         if (auto* p = globalParam (i)) p->setValueNotifyingHost (p->convertTo0to1 ((float) g.getProperty (globalDefs[i].id, globalDefs[i].def)));
+    for (int i = 0; i < XP::Count; ++i)
+    {
+        float val = (float) g.getProperty (extraDefs[i].id, extraDefs[i].def);
+        if (i == XP::legLimit && ! g.hasProperty (extraDefs[i].id))
+        {
+            // older sounds had one limit for legato and portamento, kept with the part
+            const bool aOn = (float) g.getProperty (globalDefs[GP::partAOn].id, 1.0f) > 0.5f;
+            for (auto c : v) if (c.hasType ("Part") && (int) c.getProperty ("index", 0) == (aOn ? 0 : 1)) val = (float) c.getChildWithName ("Params").getProperty (partDefs[PP::glideLimit].id, 0.0f);
+        }
+        if (auto* p = extraParam (i)) p->setValueNotifyingHost (p->convertTo0to1 (val));
+    }
+    {
+        auto cc = juce::StringArray::fromTokens (g.getProperty ("modCC", "1 74 71").toString(), " ", "");
+        for (int k = 0; k < 3; ++k) modCC[k].store (k < cc.size() ? juce::jlimit (-1, 119, cc[k].getIntValue()) : -1);
+    }
     auto fo = juce::StringArray::fromTokens (g.getProperty ("fxOrder").toString(), " ", "");
     int o[FXU::Count]; for (int i = 0; i < FXU::Count; ++i) o[i] = i;
     if (fo.size() == FXU::Count)
@@ -257,7 +338,7 @@ void PartialsProcessor::initPreset()
     juce::ValueTree v ("Partials");
     v.setProperty ("name", "Default", nullptr);
     v.addChild (juce::ValueTree ("Global"), -1, nullptr);
-    for (int p = 0; p < 2; ++p) { juce::ValueTree pv ("Part"); pv.setProperty ("index", p, nullptr); v.addChild (pv, -1, nullptr); }
+    for (int p = 0; p < 2; ++p) { juce::ValueTree pv ("Part"); pv.setProperty ("index", p, nullptr); pv.setProperty ("fenv", 2, nullptr); v.addChild (pv, -1, nullptr); }
     applyState (v);
 }
 

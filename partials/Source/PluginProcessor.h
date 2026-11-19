@@ -4,7 +4,7 @@
 #include "Engine.h"
 #include "FX.h"
 
-class PartialsProcessor : public juce::AudioProcessor
+class PartialsProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
     PartialsProcessor();
@@ -33,6 +33,12 @@ public:
     static juce::String partId (int part, int pp) { return juce::String (part == 0 ? "a_" : "b_") + pt::partDefs[pp].id; }
     juce::RangedAudioParameter* partParam (int part, int pp) { return apvts.getParameter (partId (part, pp)); }
     juce::RangedAudioParameter* globalParam (int gp) { return apvts.getParameter (pt::globalDefs[gp].id); }
+    // parameters added later (appended to the host's list): the extra globals and the four modifiers of every envelope
+    juce::RangedAudioParameter* extraParam (int xp) { return apvts.getParameter (pt::extraDefs[xp].id); }
+    float extraValue (int xp) const { return rawExtra[xp]->load(); }
+    static juce::String envModId (int part, int target, int mod) { return juce::String (part == 0 ? "a_env" : "b_env") + juce::String (target) + "_" + pt::envModIds[mod]; }
+    juce::RangedAudioParameter* envModParam (int part, int target, int mod) { return apvts.getParameter (envModId (part, target, mod)); }
+    float envModValue (int part, int target, int mod) const { return rawEnvMod[part][target][mod]->load(); }
     float partValue (int part, int pp) const { return rawPart[part][pp]->load(); }
     float globalValue (int gp) const { return rawGlobal[gp]->load(); }
     void setParam (juce::RangedAudioParameter* p, float plainValue)
@@ -59,6 +65,12 @@ public:
     void initPreset();
     static juce::File presetFolder();
     juce::String presetName { "Default" };
+    juce::String presetInfo;                 // the free text in the info box, saved with the sound
+
+    // X / Y / Z from MIDI: the controller numbers (-1: none), MIDI learn, and what the engine is using right now
+    std::atomic<int> modCC[3] { { 1 }, { 74 }, { 71 } };
+    std::atomic<int> learnMod { -1 };        // 0..2 while waiting for a controller to be moved
+    std::atomic<float> modNow[3] { { 0.0f }, { 0.0f }, { 0.0f } };
 
     juce::AudioProcessorValueTreeState apvts;
     pt::Engine engine;
@@ -74,6 +86,12 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout layout();
     std::atomic<float>* rawPart[2][pt::PP::Count];
     std::atomic<float>* rawGlobal[pt::GP::Count];
+    std::atomic<float>* rawExtra[pt::XP::Count];
+    std::atomic<float>* rawEnvMod[2][pt::TG::FirstMapping][pt::EM::Count];
+    // a controller value is used at once by the engine and handed to the host parameter from the message thread
+    float ccValue[3] = { 0, 0, 0 }, ccLastParam[3] = { -1, -1, -1 }; bool ccActive[3] = { false, false, false };
+    std::atomic<float> ccPending[3] { { -1.0f }, { -1.0f }, { -1.0f } }, ccEcho[3] { { -1.0f }, { -1.0f }, { -1.0f } };
+    void timerCallback() override;
     std::unique_ptr<pt::PartData> editData[2];
     juce::SpinLock swapLock;
     std::shared_ptr<const pt::PartData> pending[2];
@@ -84,3 +102,9 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PartialsProcessor)
 };
+
+// for the test tool and the manual's pictures: put the window in a given state (tab 0..3; a shape, or a target and one of its parts)
+void partialsEditorShow (juce::AudioProcessorEditor*, int tab, int shape = -1, int target = -1, int art = 0, int part = 0);
+#if PARTIALS_TEST
+juce::StringArray partialsEditorSelfTest (juce::AudioProcessorEditor*);
+#endif

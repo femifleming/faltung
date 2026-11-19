@@ -31,5 +31,12 @@ Every request typed while this was being designed and built with Claude Code, in
 
 1. "make it dark mode" (Partials editor in the dark mode of the faltung stdio line: deep blue-slate field, light ink, brighter blues and partial colours.)
 
-1. "can you check partiels and make sure its all working, it sounds like its not polyphonic and the adsr section doesnt seem to work" + "update manual after" (Polyphony tested: chords, 8-note clusters and overlapping notes all sound, up to 16 voices; added these as permanent tests. The amp envelope was off in new sounds and the ADSR knobs were relative and sprang back to x1.00: the volume envelope is now on by default, attack / decay / sustain / release are absolute values (1 ms – 10 s, sustain 
 1. "can you check partiels and make sure its all working, it sounds like its not polyphonic and the adsr section doesnt seem to work" + "update manual after" (Polyphony tested: chords, 8-note clusters and overlapping notes all sound, up to 16 voices; added as permanent tests. The amp envelope was off in new sounds and the ADSR knobs were relative and sprang back to x1.00: the volume envelope is now on by default; attack / decay / sustain / release are absolute values (1 ms to 10 s, sustain in percent) that switch the envelope on when touched; manual updated.)
+
+## 2026-11-19
+
+> give partials the same exact layout as harmour, but keep the partiels aesthetic, and make sure the xyz [screenshot] mod is implemented. make sure it functions the same as the origitnal harmour, right now the envelopes arent working or are not mappable.
+
+> this is the layout
+
+(The window rebuilt on Harmor's layout, section for section, in the Partials look; the X / Y pad with mod x, y, z, MIDI controllers and smoothing; the editor with a target menu and a part menu, on / off under the graph, att / dec / sus / rel as automatable modifiers, D / S / L markers, LFO handle, step drawing and zoom. In the engine: the filter envelope is heard with the filter fully open, the unison index mapping works for every target, the predelay mappings and the phaser offset's lower half work, a legato limit and a global pitch were added. Earlier sounds load and sound as before.)

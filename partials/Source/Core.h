@@ -220,12 +220,25 @@ struct PDef { const char* id; const char* name; float lo, hi, def; Kind kind; co
     X(cpMid,      "Compression mid band", 0, 1, 0.5f, F, "") \
     X(cpHigh,     "Compression high band", 0, 1, 0.5f, F, "")
 
+// Parameters added after the first release. They are appended to the end of the host's parameter list,
+// so every older parameter keeps its place and its id.
+#define PT_EXTRA_PARAMS(X) \
+    X(gPitch,     "Global pitch",     -2400, 2400, 0, F, "") \
+    X(legLimit,   "Legato limit",      0, 2400, 0,    F, "")
+
 #define PT_ENUM(id, name, lo, hi, def, kind, ch) id,
 #define PT_DEF(id, name, lo, hi, def, kind, ch) { #id, name, (float) (lo), (float) (hi), (float) (def), kind, ch },
 namespace PP { enum : int { PT_PART_PARAMS (PT_ENUM) Count }; }
 namespace GP { enum : int { PT_GLOBAL_PARAMS (PT_ENUM) Count }; }
 inline const PDef partDefs[] = { PT_PART_PARAMS (PT_DEF) };
 inline const PDef globalDefs[] = { PT_GLOBAL_PARAMS (PT_DEF) };
+namespace XP { enum : int { PT_EXTRA_PARAMS (PT_ENUM) Count }; }
+inline const PDef extraDefs[] = { PT_EXTRA_PARAMS (PT_DEF) };
+// the four modifiers under every envelope: attack, decay and release length, sustain level (all x1 by default)
+namespace EM { enum : int { Att, Dec, Sus, Rel, Count }; }
+inline const char* const envModIds[EM::Count] = { "att", "dec", "sus", "rel" };
+inline const char* const envModNames[EM::Count] = { "attack", "decay", "sustain", "release" };
+constexpr float kEnvModMin = 0.0625f, kEnvModMax = 16.0f;      // time modifiers, x1 in the middle of the travel
 constexpr int kFilterStride = PP::f2Type - PP::f1Type;
 
 //==================================================================================================
@@ -270,7 +283,8 @@ struct Curve
             default: return u;
         }
     }
-    float eval (float x) const
+    // ovr / ovrY: evaluate as if point number ovr sat at level ovrY (how the sustain modifier bends an envelope)
+    float eval (float x, int ovr = -1, float ovrY = 0.0f) const
     {
         if (! raw.empty())
         {
@@ -280,14 +294,15 @@ struct Curve
         }
         const int n = (int) pts.size();
         if (n == 0) return 0.0f;
-        if (x <= pts[0].x) return pts[0].y;
-        if (x >= pts[(size_t) n - 1].x) return pts[(size_t) n - 1].y;
+        if (x <= pts[0].x) return ovr == 0 ? ovrY : pts[0].y;
+        if (x >= pts[(size_t) n - 1].x) return ovr == n - 1 ? ovrY : pts[(size_t) n - 1].y;
         int lo = 0, hi = n - 1;
         while (hi - lo > 1) { const int m = (lo + hi) / 2; if (pts[(size_t) m].x <= x) lo = m; else hi = m; }
         const Pt& a = pts[(size_t) lo]; const Pt& b = pts[(size_t) hi];
         const float w = b.x - a.x;
         const float u = w > 1.0e-9f ? (x - a.x) / w : 1.0f;
-        return a.y + (b.y - a.y) * seg (b.type, u, b.t);
+        const float ay = lo == ovr ? ovrY : a.y, by = hi == ovr ? ovrY : b.y;
+        return ay + (by - ay) * seg (b.type, u, b.t);
     }
     bool empty() const { return pts.empty() && raw.empty(); }
     float endX() const { return pts.empty() ? 0.0f : pts.back().x; }
@@ -391,6 +406,8 @@ struct EnvDef
     bool on = false, tempo = false, global = false;
     Curve c;                    // x in seconds (or beats when tempo is on), y 0..1
     int sustain = -1, loopStart = -1;
+    int decay = -1;             // the D marker: where the attack ends and the decay starts (-1: the second point)
+    int decayIndex() const { const int n = (int) c.pts.size(); return (decay > 0 && decay < n) ? decay : (n > 1 ? 1 : 0); }
     void adsr (float a, float d, float s, float r)
     {
         c.pts.clear();
@@ -398,14 +415,22 @@ struct EnvDef
         c.pts.push_back ({ a, 1, 0, Single, 0 });
         c.pts.push_back ({ a + d, s, -0.4f, Single, 0 });
         c.pts.push_back ({ a + d + r, 0, -0.4f, Single, 0 });
-        sustain = 2; loopStart = -1;
+        sustain = 2; loopStart = -1; decay = 1;
     }
 };
 struct LfoDef
 {
     bool on = false, tempo = false, global = false;
     float amt = 1.0f, speed = 0.5f, tension = 0.32f, skew = 0.0f, pw = 0.0f, phase = 0.0f;
-    Curve amp;                  // optional amplitude over time (x seconds, y 0..1)
+    // Amplitude over time, drawn in the LFO editor: x in seconds (beats with tempo on), y 0.5 is no LFO, 1 is full,
+    // below 0.5 the wave is upside down. The LFO is silent before the first point (its start time). Empty: full from the start.
+    Curve amp;
+    float ampAt (float t) const
+    {
+        if (amp.pts.empty()) return 1.0f;
+        if (t < amp.pts[0].x) return 0.0f;
+        return 2.0f * amp.eval (t) - 1.0f;
+    }
 };
 struct TargetDef
 {
@@ -436,12 +461,16 @@ struct PartData
     TargetDef tg[TG::Count];
     int unitOrder[UNIT::Count];
     std::shared_ptr<const ImageData> image;
+    // Sounds saved before the Harmor-style filter envelope keep the old rule (the envelope is added on top of the
+    // frequency control); new sounds use the envelope below the control, so it is heard with the filter fully open.
+    bool filtEnvAdd = false;
 
     PartData() { reset(); }
     void reset()
     {
         for (int i = 0; i < UNIT::Count; ++i) unitOrder[i] = i;
         for (auto& t : tg) t = TargetDef();
+        filtEnvAdd = false;
         tg[TG::Volume].env.adsr (0.002f, 0.3f, 1.0f, 0.15f);
         tg[TG::Volume].env.on = true;   // the amp envelope plays from the start, so attack / decay / sustain / release always do something
         image.reset();

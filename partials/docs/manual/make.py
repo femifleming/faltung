@@ -1,7 +1,44 @@
 #!/usr/bin/env python3
 # Builds manual.html from the pictures in fig/ and img/, then prints manual.pdf with Chrome.
-import os, subprocess
+#   python3 make.py                          the manual from the pictures that are there
+#   python3 make.py --shots <PartialsTest>   first take the window pictures again with the test tool
+import os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# the numbered map of the window: (number, name, x, y, w, h) on the 1857-wide picture
+REGIONS = [
+ (1, 'timbre', 34, 6, 770, 152), (2, 'blur', 34, 162, 314, 98), (3, 'trem', 352, 162, 222, 98), (4, 'prism', 62, 264, 176, 134),
+ (5, 'harmonizer', 242, 264, 332, 134), (6, 'unison', 578, 218, 232, 180), (7, 'pitch', 62, 402, 348, 92), (8, 'vibrato', 414, 402, 190, 92),
+ (9, 'legato', 608, 402, 202, 92), (10, 'filter 1 and 2', 832, 6, 654, 320), (11, 'pluck', 840, 332, 152, 162), (12, 'phaser', 996, 332, 358, 162),
+ (13, 'eq', 1358, 332, 128, 162), (14, 'global', 14, 500, 380, 300), (15, 'parts a / b', 396, 500, 186, 116), (16, 'x / y pad, mod x y z', 396, 620, 186, 206),
+ (17, 'info', 22, 806, 560, 102), (18, 'editor: target, part, tabs', 588, 500, 940, 46), (19, 'envelope / lfo / mapping graph', 588, 550, 940, 300),
+ (20, 'on, att dec sus rel, tempo, global, tools', 588, 852, 940, 56), (21, 'partial display', 1536, 6, 316, 1010), (22, 'keyboard', 50, 914, 1440, 104),
+ (23, 'about, sounds, keyboard', 2, 366, 40, 124), (24, 'display switches', 1490, 362, 40, 132),
+]
+def take_shots(tool):
+    from PIL import Image, ImageDraw, ImageFont
+    I = os.path.join(HERE, 'img'); os.makedirs(I, exist_ok=True)
+    def run(name, *args): subprocess.run([tool, '--shot', os.path.join(I, name + '.png'), *[str(a) for a in args]], check=True)
+    run('tab0', 0); run('tab1', 1); run('tab2', 2); run('tab3', 3)
+    run('lfo', 0, 4, 1); run('modx', 0, 4, 4); run('shape', 0, -4, 0)          # filter 1 frequency: LFO, mod X mapping; timbre 1 levels
+    full = Image.open(os.path.join(I, 'tab0.png')).convert('RGB')
+    full.crop((0, 0, 1534, 498)).save(os.path.join(I, 'main.png'))
+    full.crop((0, 498, 584, 912)).save(os.path.join(I, 'global.png'))
+    full.crop((396, 618, 584, 830)).resize((376, 424), Image.LANCZOS).save(os.path.join(I, 'pad.png'))
+    for n, src in (('page0', 'tab0'), ('page1', 'tab1'), ('page2', 'tab2'), ('page3', 'tab3'), ('page_lfo', 'lfo'), ('page_modx', 'modx'), ('page_shape', 'shape')):
+        Image.open(os.path.join(I, src + '.png')).convert('RGB').crop((584, 498, 1534, 912)).save(os.path.join(I, n + '.png'))
+    for n in ('lfo', 'modx', 'shape'): os.remove(os.path.join(I, n + '.png'))
+    # the map: the whole window, dimmed, with every section outlined and numbered
+    m = Image.blend(full, Image.new('RGB', full.size, (27, 39, 49)), 0.45)
+    d = ImageDraw.Draw(m)
+    font = ImageFont.truetype(os.path.join(HERE, '..', '..', 'Resources', 'fonts', 'IBMPlexMono-Medium.ttf'), 22)
+    for num, name, x, y, w, h in REGIONS:
+        d.rectangle((x, y, x + w, y + h), outline=(239, 122, 60), width=2)
+        tw = d.textlength(str(num), font=font)
+        d.rectangle((x, y, x + tw + 12, y + 28), fill=(239, 122, 60)); d.text((x + 6, y + 1), str(num), font=font, fill=(27, 39, 49))
+    m.save(os.path.join(I, 'map.png'))
+if len(sys.argv) > 2 and sys.argv[1] == '--shots': take_shots(sys.argv[2])
+
 out = []
 def h1(t): out.append(f'<h1>{t}</h1>')
 def h2(t): out.append(f'<h2>{t}</h2>')
@@ -19,23 +56,45 @@ def table(rows):
 out.append('<header><div class="t">Partials</div><div class="s">An additive synthesizer you can see. Manual.</div></header>')
 p('Partials builds every note out of up to 516 sine waves, called partials. Almost everything in the top half of the window changes those partials before they are turned into sound: how loud each one is, where it sits in pitch, and how that changes over time. The display on the right shows them as you play.')
 p('<b>How to read the pictures in this manual.</b> Every dark picture was made by the synth itself. Time runs left to right, pitch runs bottom to top, and each horizontal line is one partial. In most of them one note is held while one control is moved from one end to the other, so you can see what that control does. Brightness is tilted a little towards the top so high partials stay visible.')
-shot('tab0', 'The whole window. Top: preset, parts A and B, mix, main LFO amount, volume. Middle: the controls in five columns and the partial display. Bottom: four pages (ENV, IMG, FX, ADV).')
+shot('tab0', 'The whole window. Top: the part on show (A or B), with its filters on the right. Bottom left: Global, with the X / Y pad. Bottom centre: the editor for envelopes, LFOs and mappings, with the ENV, IMG, FX and ADV tabs. Right: the partial display. Along the bottom: the keyboard.')
+
+h1('Where everything is')
+p('The window is laid out like Harmor\'s, section for section: if you know that synth, every control is where your hand expects it. The look is Partials\' own. Where Harmor has a knob there is a <b>bar</b> with its value above and its name below; where it has a fader there is a standing bar; where it has a switch with two or three positions the positions are written out and the one in use is filled.')
+shot('map', 'The sections, numbered. The table below names them.')
+table([
+ ('1 timbre', 'phase (start, rand) &middot; timbre 1 &middot; mix &middot; timbre 2 &middot; sub configuration &middot; blend menu &middot; sub 1-3 &middot; prot &middot; clip and its mode &middot; fx, vol, env &middot; auto (gain) &middot; pan &middot; the three velocity switches.'),
+ ('2 blur &middot; 3 trem', 'blur: mix, time (attack, decay), harm, top / bottom tension. trem: depth, speed, gap.'),
+ ('4 prism &middot; 5 harmonizer &middot; 6 unison', 'prism: amt, mode (+ / x), from vol. harmonizer: amt, width, str, shift and gap (ofs, step). unison: order, type, alt, pan / pitch / phase.'),
+ ('7 pitch &middot; 8 vibrato &middot; 9 legato', 'pitch: hz / oct, freq and detune ratios, pitch, env. vibrato: depth, speed. legato: lin / log, fix / var, time, limit.'),
+ ('10 filters', 'Filter 1 on top, filter 2 below it. Left half: adapt, oct / hz, type, env, kb track, width, freq. Middle: the 1 &gt; 2 mix. Right half: resonance type, oct / hz, res, width, adapt, ofs, osc.'),
+ ('11 pluck &middot; 12 phaser &middot; 13 eq', 'pluck: time, blur. phaser: type, oct / hz / harm, lfo, mix, width, ofs, speed, kb.t. eq: mix, and a button that opens its two curves.'),
+ ('14 global', 'options (sounds, copy and paste) &middot; vol and meter &middot; lfo &middot; limit, legato, porta, vel &middot; vel (velocity to volume) &middot; pre and post fx &middot; pitch &middot; strum.'),
+ ('15 parts', 'A and B, the two on switches with the mix between them, link.'),
+ ('16 pad', 'The X / Y pad and mod x, y, z.'),
+ ('17 info', 'The name of the sound (click it for the sounds menu) and a note you can write. While the mouse is over a control it shows that control\'s full name and value.'),
+ ('18-20 editor', 'What the graph moves (target), with what (part), smoothing, the four tabs; the graph; under it the on switch, att / dec / sus / rel, tempo, global, options, lock / step / snap / slide.'),
+ ('21 display &middot; 24', 'The partials of the newest note, scrolling by. The three buttons to its left: on / off, wide / narrow, oct / hz.'),
+ ('22 keyboard &middot; 23', 'Click to play. The buttons on the left edge: about (and window size), sounds, show / hide the keyboard.'),
+])
 
 h1('Getting around')
 table([
- ('A bar', 'Drag sideways or up and down. Hold Shift for fine steps. Double-click to reset. The mouse wheel also works.'),
+ ('A bar', 'Drag sideways or up and down. Hold Shift for fine steps. Double-click to reset. The mouse wheel also works. The value is the small number above it.'),
+ ('A standing bar', 'The same, upright. Its value shows while the mouse is on it.'),
+ ('A number in a slanted box', 'Drag up or down.'),
  ('A value with &#9662;', 'A menu. Click it.'),
- ('slanted box', 'A switch: filled = on. Click it.'),
- ('Right-click a bar', 'Reset, copy the value to the other part, open its articulator (envelope, LFO, mappings) in the ENV page, or quick-map it to X, Y or Z.'),
- ('Partial display', 'Shows the newest note of the part you are looking at. Click it to switch between an octave scale and a Hz scale. Hover to read a frequency.'),
- ('A and B', 'Two complete synths. The A / B buttons choose which one the controls show. "A on" / "B on" switch them on. "mix" balances them. "link" makes every edit apply to both.'),
- ('Preset menu', 'Built-in presets, your saved ones (in Music / Partials / Presets), save, open, and copy / paste of a whole preset or one part.'),
- ('Window size', 'Drag the bottom-right corner. Everything scales.'),
+ ('slanted box', 'A switch: filled = on. Click it. Where the choices are written out (oct / hz, lin / log), click the one you want.'),
+ ('Right-click a bar', 'Reset, copy the value to the other part, open its articulator (envelope, LFO, mappings) in the editor, or quick-map it to X, Y or Z.'),
+ ('Orange mark on a bar', 'Something is moving this control: an envelope, an LFO or a mapping is switched on for it.'),
+ ('Partial display', 'Shows the newest note of the part you are looking at. Hover to read a frequency.'),
+ ('A and B', 'Two complete synths. The big A / B buttons choose which one the controls show. The slanted boxes at the ends of the mix bar switch them on. "link" makes every edit apply to both.'),
+ ('Sounds', 'Built-in sounds, your saved ones (in Music / Partials / Presets), save, open, copy / paste of a whole sound or one part, chorus and reverb presets: the arrow next to "global", the list button on the left edge, or the name in the info box.'),
+ ('Window size', 'Drag the bottom-right corner; everything scales. The cube button on the left edge has fixed sizes.'),
 ])
 
 h1('Timbre')
-shot('main', 'The five columns of controls and the partial display.')
-p('The two small pictures at the top left are timbre 1 and timbre 2: the starting waveforms. Timbre 1 starts as a saw (every partial, each one quieter than the last), timbre 2 as a square (every other partial). Click a picture to draw its partials in the ENV page. Right-click it for saw, square, triangle, sine, random, or to analyze a single-cycle wave file. You can also drop a wave file on it.')
+shot('main', 'The part\'s panel: timbre along the top; blur and trem; prism, harmonizer and unison; pitch, vibrato and legato; the filtering section on the right with pluck, phaser and eq under it.')
+p('The two small pictures at the top left are timbre 1 and timbre 2: the starting waveforms. Timbre 1 starts as a saw (every partial, each one quieter than the last), timbre 2 as a square (every other partial). Click a picture to draw its partials in the editor. Right-click it for saw, square, triangle, sine, random, or to analyze a single-cycle wave file. You can also drop a wave file on it.')
 figs(('w_saw', 'Timbre 1.', 'The default saw.'), ('w_square', 'Timbre 2.', 'The default square.'), ('w_phase_rand', 'rand fully left.', 'Same partials, each with a random phase: same tone, different wave.'), cols=3, scope=True)
 figs(('timbre_mix', 'mix', '0% to 100%. Fades from timbre 1 to timbre 2: every second partial disappears.'),
      ('clip_high', 'clip, mode High threshold', '100% down to 10%. A ceiling comes down on the loudest partials, so the low ones are pushed down first.'),
@@ -44,13 +103,16 @@ figs(('timbre_mix', 'mix', '0% to 100%. Fades from timbre 1 to timbre 2: every s
      ('subs_around', 'sub 1, sub 2, sub 3 (Around)', 'Switched on one after another. Sub 1 is an octave below the note; 2 and 3 are its 3rd and 5th harmonics.'),
      ('subs_below', 'sub 1, sub 2, sub 3 (Below)', 'Switched on one after another: one, two and three octaves below the note.'))
 table([
- ('Blend menu', 'How the two timbres combine: Fade, Subtract, Multiply, Maximum, Minimum, or Pluck (timbre 2 appears as the pluck dies away).'),
- ('phase', 'Where in the wave each note starts, 0 to 360&deg;.'),
+ ('Blend menu (next to "timbre")', 'How the two timbres combine: Fade, Subtract, Multiply, Maximum, Minimum, or Pluck (timbre 2 appears as the pluck dies away).'),
+ ('start', 'Where in the wave each note starts, 0 to 360&deg;.'),
  ('rand', 'Left: each partial gets its own random phase. Right: the whole wave starts at a random point on each note.'),
+ ('The small button with three bars', 'Sub configuration: around the fundamental, or below it.'),
+ ('The button under clip', 'The clipping mode. The drawing on it is the curve in use.'),
  ('env / vol', 'Volume before the partials become sound (env) and after (vol).'),
- ('gain, gain mode', 'Auto-gain. Evens out the level when shaping removes or adds a lot. Absolute aims at a fixed level, Relative at the level before shaping.'),
- ('fx dry', 'How much of this part skips the effects. 0% is all through the effects, 100% all dry. Negative values flip the dry signal.'),
- ('VELOCITY', 'What key velocity does: volume, skipping part of the attack, attack speed, release length.'),
+ ('auto', 'Auto-gain. Evens out the level when shaping removes or adds a lot. Its mode (Absolute aims at a fixed level, Relative at the level before shaping) is on the ADV tab.'),
+ ('fx', 'How much of this part skips the effects. 0% is all through the effects, 100% all dry. Negative values flip the dry signal.'),
+ ('pan', 'Where the part sits between left and right.'),
+ ('vel: time, scale, rel', 'What key velocity does to the volume envelope: skip part of the attack, change the attack speed, change the release length. Velocity to volume is the "vel" switch in Global.'),
 ])
 
 h1('Pitch, glide, unison')
@@ -62,10 +124,10 @@ figs(('detune', 'detune x', '1.000 to 2.000. The fundamental stays put while eve
      ('legato', 'legato', 'One held note; two overlapping notes bend it up and it returns when they are released.'),
      ('strum', 'STRUM time', 'A five-note chord pressed at once. The notes start one after another.'))
 table([
- ('freq x, freq /', 'Multiply and divide the pitch. 1/2 is an octave down, 2/1 an octave up.'),
- ('pitch', 'Fine pitch, two octaves either way. "env" scales the pitch envelope.'),
- ('GLIDE time', 'Left of centre: milliseconds (up to 1.5 s). Right: steps of the host tempo. "limit": legato only bends within this distance; portamento never slides further than this.'),
- ('logarithmic / variable time / velocity', 'Curved slide; longer slides for bigger jumps; harder notes slide faster.'),
+ ('freq, detune', 'Two numbers each: multiply / divide. freq 1 / 2 is an octave down, 2 / 1 an octave up. detune spreads the partials (see the pictures).'),
+ ('pitch', 'This part\'s pitch, two octaves either way. "env" scales its pitch envelope. The pitch bar in Global moves both parts.'),
+ ('LEGATO time', 'Left of centre: milliseconds (up to 1.5 s). Right: steps of the host tempo. "limit": portamento never slides further than this. Legato and portamento themselves are switched on in Global.'),
+ ('lin / log, fix / var', 'Straight or curved slide; the same time for every slide, or longer for bigger jumps.'),
  ('UNISON order', '1 to 9 copies. "pan" spreads them left and right, "phase" at 100% (blur) gives each copy random phases, lower values space them evenly, "alt" flips every second copy in the right channel for extra width.'),
  ('Unison type', 'Classic (wide), Uniform (even), Blurred (drifting), Random, Hz (same spread in Hz for every partial).'),
  ('STRUM tension', 'Left: the notes speed up through the chord. Right: they slow down. The menu sets the direction: Up, Down, Alt, Random.'),
@@ -86,13 +148,13 @@ figs(('res_lowpass', 'Low pass', 'A peak, then a dip.'), ('res_classic', 'Classi
      ('res_sedge', 'Sedge hat', ''), ('res_wide', 'Wide bump', ''), ('res_double', 'Double cone', ''), ('res_well', 'Well', 'A cut with a peak either side.'),
      ('res_wormhole', 'Wormhole', 'The same, tighter.'), ('res_noise', 'Noise', 'Partials near the cutoff flicker.'), cols=4)
 table([
- ('env', 'How far the filter-frequency envelope moves the cutoff, either way. Nothing happens until that envelope is switched on (right-click freq, Edit articulator).'),
- ('r.width', 'Width of the resonance bump. "adaptive res" keeps it sounding the same up and down the keyboard.'),
- ('scale, res scale', 'Whether filter and resonance are measured in octaves or in Hz.'),
- ('adaptive env', 'Shortens the filter envelope for high notes.'),
- ('FILTERS 1 &amp; 2 mix', 'Right: filter 1 feeds filter 2 (series). Centre: filter 1 only. Left: both side by side, ending with filter 2 only.'),
- ('eq', 'How much of the Global EQ graph is applied. Draw it in the ENV page (Shaping, Global EQ).'),
- ('Custom shape 1 / 2', 'Draw your own filter or resonance curve in the ENV page.'),
+ ('env', 'How far the filter-frequency envelope reaches. Nothing happens until that envelope is switched on (right-click freq, Edit articulator, then the switch under the graph). The envelope works <b>below</b> the freq bar: at the top of the graph the filter sits where freq is, at the bottom it is lower by the env amount. So with freq fully open and env at 100% (how a new sound starts) the envelope is heard at once. A negative amount turns the graph upside down.'),
+ ('width (right half)', 'Width of the resonance bump. "adapt" under it keeps it sounding the same up and down the keyboard.'),
+ ('oct / hz', 'Whether the filter (left) and its resonance (right) are measured in octaves or in Hz.'),
+ ('adapt (left)', 'Shortens the filter envelope for high notes.'),
+ ('1 &gt; 2 mix', 'Right (ser): filter 1 feeds filter 2. Centre: filter 1 only. Left (par): both side by side, ending with filter 2 only.'),
+ ('eq mix', 'How much of the Global EQ graph is applied. The "curves" button opens the global EQ (fixed frequencies) or the local EQ (follows the note) in the editor.'),
+ ('Custom shape 1 / 2', 'Draw your own filter or resonance curve in the editor (target menu, Shaping).'),
 ])
 figs(('eq', 'eq', '0% to 100% with a dip and a peak drawn in Global EQ. The EQ stays at fixed pitches whatever note you play.'), cols=2)
 
@@ -103,7 +165,7 @@ figs(('blur_harm', 'BLUR harm', '0% to 100% on a square. Level spills from each 
      ('pluck_time', 'PLUCK time', 'The same note at 20%, 45% and 70%.'))
 table([('top, bottom', 'Top tension limits how far blur spreads upwards. Bottom sets how loud the blurred partials are.'),
        ('blur decay', 'Gives the pluck a slower, softer tail.'),
-       ('Pluck shape', 'In the ENV page: which partials die fastest.')])
+       ('Pluck shape', 'In the editor (Shaping): which partials die fastest.')])
 
 h1('Phaser')
 p('A moving pattern of notches. Each picture is one held note with the phaser sweeping.')
@@ -113,7 +175,7 @@ figs(('ph_width', 'width', '0% to 100%, not moving. The notches go from close to
      ('ph_offset', 'offset', '0% to 100%, not moving. Slides the pattern by hand.'))
 table([('speed', 'Centre is still. Right sweeps up, left sweeps down; further out is faster. Shown as the number of steps one sweep takes.'),
        ('kb', 'Shifts the pattern with the note.'), ('scale', 'Notches spaced in octaves, in Hz, or by harmonic number.'),
-       ('width lfo', 'Lets a slow LFO move the width.'), ('freq / custom', 'Freq bends the pitch of the partials with the Phaser shape graph; custom uses that graph as the notch shape.')])
+       ('lfo', 'Lets a slow LFO move the width.'), ('freq / custom', 'Freq bends the pitch of the partials with the Phaser shape graph; custom uses that graph as the notch shape.')])
 
 h1('Prism and harmonizer')
 figs(('prism_add', 'PRISM amount, Add', '-100% to +100%. Partials between the octaves are pushed off their places; the middle of the picture is 0%.'),
@@ -121,51 +183,89 @@ figs(('prism_add', 'PRISM amount, Add', '-100% to +100%. Partials between the oc
      ('hz_shift_plus', 'HARMONIZER shift step, +', 'Step 1 to 8. Copies of the sound are laid on at multiples of the step; watch which partials brighten.'),
      ('hz_shift_x', 'HARMONIZER shift step, x', 'Step 1 to 8 in multiply mode. The copies spread out faster.'),
      ('hz_gap', 'HARMONIZER gap step', 'Step 1 to 8. Only every n-th partial is copied and the ones between are turned down.'))
-table([('by level', 'Prism moves loud partials more (On) or quiet ones more (Inverted).'),
-       ('amount, width, strength', 'How much harmonizer, how high up it reaches, how strong the copies are.'),
-       ('offset', 'Moves the shift or gap pattern up in octaves.')])
+table([('from vol', 'Prism moves loud partials more (on) or quiet ones more (inv).'),
+       ('amt, width, str', 'How much harmonizer, how high up it reaches, how strong the copies are.'),
+       ('shift, gap: ofs', 'Moves the shift or gap pattern up in octaves.'),
+       ('shift, gap: step', 'One box for the step and how it counts: drag up for adding steps (+1 to +8), down for multiplying ones (x1 to x8).')])
 
-h1('The ENV page')
-shot('page0', 'Left: the list of targets. Middle: the line editor. Right: envelope and LFO settings for the chosen target.')
-p('This is where things move. Pick a target on the left, pick a <b>part</b> (Envelope, LFO, or one of the mappings), switch it <b>on</b>, and draw.')
+h1('Global, and the X / Y / Z pad')
+shot('global', 'Global. The square is the X / Y pad; mod x, y, z are under it.')
+p('<b>X, Y and Z are three hand controls that do nothing until you point them at something.</b> Then one move of the pad can change as many things as you like, each in its own way.')
+out.append('<div class="grid c2"><figure><div class="im"><img src="img/pad.png"></div><figcaption><b>The pad.</b> A room seen from the front. Left to right is X, bottom to top is Y. Z brings the far wall nearer. The small orange dot is where the sound is right now when smoothing is still catching up.</figcaption></figure>'
+           '<figure><div class="im"><img src="img/page_modx.png"></div><figcaption><b>A mapping.</b> Filter 1 frequency, Modulation X mapping. Left to right is the pad going from 0 to 100%; the line says where that puts the filter. The orange line is the pad\'s position now.</figcaption></figure></div>')
+table([
+ ('Move it', 'Drag in the pad for X and Y. Z: the mouse wheel over the pad, or drag up and down with the middle button (or with Alt held). The three small bars x, y, z do the same one at a time.'),
+ ('Point it at something, the quick way', 'Right-click any bar that can be articulated and choose Quick map to X (or Y, Z). The pad then sweeps that control over its travel, and the mapping opens in the editor so you can redraw it.'),
+ ('Point it at something, by hand', 'In the editor choose the target, then the part "Modulation X mapping" (or Y, Z), and draw. Editing the line switches the mapping on. Every target has its own three mappings, so X can open a filter, slow an LFO and pan the sound at once.'),
+ ('Automate it', 'Modulation X, Y and Z are host parameters: draw them in your DAW or record the pad.'),
+ ('MIDI', 'X follows controller 1 (the mod wheel), Y controller 74, Z controller 71. Right-click the pad or one of x, y, z for MIDI learn (then move the controller you want), to forget a controller, or to go back to these three. The choice is saved with the sound.'),
+ ('Smoothing', 'Pad moves are smoothed (about 30 ms) so they never click. For hard, percussive jumps switch "smooth mod" off (right-click the pad, or the ADV tab).'),
+ ('Mod X speed', 'One more mapping: how fast X is moving. A quick stroke across the pad can open something that a slow move leaves alone.'),
+])
+table([
+ ('vol', 'Master volume, with the output meter under it.'),
+ ('lfo', 'Scales every LFO of the part on show.'),
+ ('legato, porta', 'Legato: overlapping notes bend one voice instead of starting new ones. Porta: every new note slides in from the last. Their time and curve are in the part\'s LEGATO section.'),
+ ('limit', 'Legato only happens within this distance; a bigger jump starts a normal new note. Off: always legato.'),
+ ('vel (next to legato)', 'Harder notes slide faster.'), ('vel (under lfo)', 'Velocity changes the volume.'),
+ ('pre, post', 'Volume into and out of the effects.'), ('pitch', 'Pitch of the whole instrument, two octaves either way.'),
+ ('strum', 'A chord pressed at once is spread out: direction (Up, Down, Alt, Random), time, and tension (left: speeding up, right: slowing down).'),
+])
+
+h1('The editor: envelopes, LFOs, mappings')
+shot('page0', 'The volume envelope. D marks where the decay starts, S where the envelope waits while the key is held.')
+p('This is where things move. Choose <b>what</b> to move in the first menu (the target), and <b>with what</b> in the second (the part): an envelope, an LFO, or one of nine mappings. Each target can have all of them switched on at once. The slanted box at the bottom left of the graph switches the part on show on and off; touching the graph switches it on for you.')
 figs(('env_volume', 'Volume, Envelope', 'Slow attack, decay to a lower level, release after the key is let go.'),
-     ('env_filter', 'Filter 1 frequency, Envelope', 'Two notes. The cutoff jumps up and falls back each time.'),
+     ('env_filter', 'Filter 1 frequency, Envelope', 'Two notes. The cutoff starts at the freq bar and falls by the env amount each time.'),
      ('lfo_filter', 'Filter 1 frequency, LFO', 'The cutoff moves up and down on its own.'),
      ('lfo_pitch', 'Pitch, LFO with tension 100%', 'A square LFO: the pitch jumps between two notes.'),
      ('map_key', 'Filter 1 frequency, Keyboard mapping', 'Four notes. A rising line makes higher notes brighter.'),
      ('arp', 'Volume envelope with arpeggiator breaks', 'A held four-note chord. Each marked point passes the sound to the next note up.'))
-h2('The three kinds of target')
+h2('The target menu')
 table([
  ('Articulation', 'Things that can move during a note: volume, panning, filter frequency, pitch, phaser, prism and so on. Each has an envelope, an LFO and nine mappings.'),
  ('Mapping', 'Things set per note: envelope attack / decay / release scales, LFO speed and amount, unison phase, predelay. Mappings only.'),
  ('Shaping', 'One graph each: the partials of timbre 1 and 2, their phases, EQs, custom filter and resonance shapes, pluck shape, masks that keep an effect away from part of the range.'),
+ ('&#9666; on', 'In both menus, next to everything that is switched on.'),
+])
+h2('An envelope')
+table([
+ ('Add a point', 'Right-click or double-click the background.'), ('Move a point', 'Drag it. Shift keeps its height, Ctrl or Cmd keeps its time.'),
+ ('Delete a point', 'Alt-click it, or right-click it and choose Delete.'),
+ ('Bend a line', 'Drag the small circle in the middle of a segment. Ctrl- or Cmd-drag for fine steps. Right-click the circle to straighten.'),
+ ('Right-click a point', 'Segment type (hold, smooth, curves, stairs, pulse, wave...), decay start (D), sustain / loop end (S), loop start (L), arpeggiator break.'),
+ ('D, S, L', 'Up to D is the attack, D to S the decay, after S the release. While the key is held the envelope waits at S, or goes round between L and S if there is an L.'),
+ ('att, dec, sus, rel', 'Four modifiers under the graph. They leave your drawing alone and stretch or shrink its attack, decay and release (x0.06 to x16) and scale the level of the S point (x0 to x2). An orange line shows the envelope as it now plays, and the info box gives the resulting time. They are host parameters, one set for every envelope, so they can be automated.'),
+ ('tempo / global', 'Tempo: times are in beats. Global: all notes share one envelope, restarted by each new note.'),
+ ('smoothing (the bar next to the part menu)', 'Rounds off sudden jumps of the target.'),
+ ('lock / step / snap / slide', 'Lock against changes; draw freehand, one point per grid step (Shift for flat steps); snap to the grid; moving a point moves everything after it.'),
+ ('Zoom', 'The mouse wheel over the graph zooms the time axis; drag the strip under it to scroll, double-click the strip to see everything.'),
+ ('options', 'Reset, flip, normalize, decimate, smooth up, scale levels, copy to the other part, copy / paste, make all loop, follow an audio file, create a step sequence. For shapes: draw per harmonic (bars).'),
+ ('The white line', 'Where the newest note is in the envelope.'),
+ ('Volume envelope', 'On from the start in every new sound: 2 ms attack, 300 ms decay, 100 % sustain, 150 ms release. Switched off, a note simply starts and stops with the key.'),
+])
+h2('An LFO')
+shot('page_lfo', 'Filter 1 frequency, LFO. The small square at the top left is the handle.')
+table([
+ ('The handle', 'Drag it up and down for the amplitude; below the middle the wave is turned over. Drag it to the right to make the LFO start later. Right-click to add more points: the line then sets the amplitude over time (fade in, fade out).'),
+ ('amt, spd, tns, skew, pw, phase', 'Amount, speed, and the shape: tension 0 is a triangle, 32% a sine, 100% a square; skew leans it into a saw; pw makes the top wider or narrower than the bottom. Touching any of them switches the LFO on.'),
+ ('tempo / global', 'Speed in beats; one LFO shared by all notes.'),
+ ('lfo in Global', 'Scales all LFOs together. "Global LFO amount / speed / phase" in the Mapping column let a key, a velocity, the pad or the unison voice change every LFO at once.'),
 ])
 h2('The mappings')
 table([
  ('Keyboard, Velocity', 'Left to right is low to high note, or soft to hard.'),
- ('Modulation X, Y, Z', 'The three x / y / z bars in the MODULATION section. Automate them from your host.'),
+ ('Modulation X, Y, Z', 'The pad. See above.'),
  ('Random', 'A new random position along the graph for each note.'),
- ('Unison index', 'A value per unison copy (works for panning, volume and pitch).'),
+ ('Unison index', 'A value per unison voice: left is the first voice, right the last (the grid shows them). It works for every target: two voices an octave apart, one bright and one dark, each with its own LFO phase...'),
  ('Held index', 'First held note, second, third...'), ('Mod X speed', 'How fast X is moving.'),
 ])
-h2('How a knob and its graphs combine')
+h2('How a control and its graphs combine')
 table([
- ('Volume, mixes, widths, amounts', 'The knob is the maximum. The graphs scale it down: top of the graph is the knob value, bottom is zero.'),
- ('Pitch, panning, filter frequency, offsets', 'The knob is the centre. Graphs add to it: the middle line is no change. For pitch the top is +4 octaves and the bottom -4.'),
- ('Filter frequency envelope', 'The exception: bottom is no change, and the filter\'s "env" bar sets how far the top reaches, up or down.'),
-])
-h2('Drawing')
-table([
- ('Add a point', 'Right-click or double-click the background.'), ('Move a point', 'Drag it. Shift keeps its height, Alt keeps its time.'),
- ('Delete a point', 'Alt-click it, or right-click it and choose Delete.'),
- ('Bend a line', 'Drag the small circle in the middle of a segment. Cmd-drag for fine steps. Right-click the circle to straighten.'),
- ('Right-click a point', 'Segment type (hold, smooth, curves, stairs, pulse, wave...), sustain / loop end (S), loop start (L), arpeggiator break.'),
- ('snap / slide / lock', 'Snap to the grid; moving a point moves everything after it; lock against changes.'),
- ('attack, decay, sustain, release', 'The envelope of the chosen target as real values: attack, decay and release from 1 ms to 10 s (in beats when tempo is on), sustain 0 – 100 %. They move the points of the drawn curve, so the drawing and the values always agree. Touching one switches that envelope on.'),
- ('tempo / global', 'Tempo: times are in beats. Global: all notes share one envelope or LFO, restarted by each new note.'),
- ('smooth', 'Rounds off sudden jumps of the target.'),
- ('options', 'Reset, flip, normalize, decimate, smooth up, scale levels, draw per harmonic (bars), make all loop, follow an audio file, create a step sequence.'),
- ('Volume envelope', 'On from the start in every new sound: 2 ms attack, 300 ms decay, 100 % sustain, 150 ms release. Switched off, a note simply starts and stops with the key.'),
+ ('Volume, mixes, widths, amounts (unipolar product)', 'The control is the maximum. The graphs scale it down: top of the graph is the control\'s value, bottom is zero. So a control left at 0% gives nothing to scale: raise it first. The info box says so when that is the case.'),
+ ('Prism, fx, filter mix, LFO amount (bipolar product)', 'The same, but the middle of the graph is zero and the bottom is the control\'s value turned negative.'),
+ ('Pitch, panning, filter frequency, offsets (bipolar sum)', 'The control is the centre. Graphs add to it: the middle line is no change. For pitch the top is +4 octaves and the bottom -4.'),
+ ('Filter frequency envelope', 'The exception: the top of the graph is "no change" and the filter\'s env bar sets how far below the freq bar the bottom reaches (a negative amount: how far the top reaches, upside down). Sounds saved before this version keep the earlier rule, in which the envelope was added above the freq bar.'),
 ])
 
 h1('The IMG page')
@@ -204,22 +304,24 @@ table([
  ('Delay time', 'Right of centre: steps of the tempo. Left: milliseconds. Modes: Normal, Inverted (left and right swap each echo), Ping pong.'),
  ('Reverb', 'Presets, color, input low and high cut, predelay, room size, diffusion, decay, damping, wet.'),
  ('Compression', 'Limiting holds the peaks. Warming, Heating and Burning squeeze three bands and lift the low end more each time. low / mid / high set the band levels.'),
- ('LEVELS pre / post', 'Volume into and out of the effects.'),
+ ('pre / post', 'Volume into and out of the effects: the two standing bars in Global.'),
 ])
 
 h1('The ADV page')
-shot('page3', 'Settings for the current part, global settings, and the two orders.')
+shot('page3', 'The two orders, settings for the part on show, voices, quality, and the controllers of the pad.')
 figs(('ramp', 'ramp, right (relative)', 'The first half second of a note. Partials come in from the bottom up.'), ('ramp_abs', 'ramp, left (absolute)', 'All partials fade in together.'))
 table([
- ('predelay', 'Waits before the note starts. Left: milliseconds. Right: tempo steps.'),
+ ('delay', 'Predelay: waits before the note starts. Left: milliseconds. Right: tempo steps. Its mappings (target menu, Mapping, Predelay) can make it depend on the key, the velocity or the pad.'),
+ ('auto-gain', 'Relative or Absolute, for the "auto" bar of the part.'),
+ ('smooth mod', 'Smoothing of the pad (X, Y, Z).'), ('mod controllers', 'The MIDI controller of X, Y and Z. Click one for MIDI learn.'),
  ('poly rel', 'Below 100%, a new note shortens the release tails still sounding.'), ('declick', 'A very short fade at the start and end of notes.'),
  ('UNIT ORDER', 'The order the shaping stages run in. Click an entry to move it later, right-click to move it earlier. Example: put HARM PROT after HARM CLIP to keep the fundamental safe from clipping.'),
  ('EFFECTS ORDER', 'The same for the five effects.'),
  ('randomness', 'Whether random values are new per note, per part, per unison copy, or never change.'),
- ('A/B as stereo sides', 'Load the same stereo sound into A and B: A carries the middle, B the sides, and the A/B mix sets the width.'),
+ ('side (a/b as stereo)', 'Load the same stereo sound into A and B: A carries the middle, B the sides, and the A/B mix sets the width.'),
  ('partials', 'Fewer partials uses less processor and loses the top end.'),
  ('precision', 'How often the shaping is recalculated: Average about every 5 ms, High 2.7 ms, Perfect 1.3 ms. "HQ when rendering" uses Perfect for offline bounces.'),
- ('VOICES mono', 'Off (16-voice polyphony, the default); a repeated note cuts itself (Kill same); any new note cuts all (Kill all); or sends them into release (Release all). Glide legato also makes overlapping notes share one voice; leave it off for chords. The voice count is shown at the bottom right of the ENV page.'),
+ ('VOICES mono', 'Off (16-voice polyphony, the default); a repeated note cuts itself (Kill same); any new note cuts all (Kill all); or sends them into release (Release all). Glide legato also makes overlapping notes share one voice; leave it off for chords. The voice count is shown at the bottom of the partial display.'),
 ])
 
 h1('Good to know')
@@ -227,7 +329,8 @@ table([
  ('16 notes at once', 'Each with up to 9 unison copies of up to 516 partials. Low notes with high unison cost the most.'),
  ('It can get loud', 'High resonance with self-oscillation, or harmonizer and blur at full, add a lot of level. Auto-gain or the Limiting compressor help.'),
  ('Saved presets', 'Plain text files ending in .partials. Drop one on the window to load it.'),
- ('Not in this version', 'Copying pictures through the clipboard, copy / paste of line points, envelope state files, and the step-sequence editing window (there is a menu of ready-made sequences instead).'),
+ ('Older sessions', 'Every parameter that existed keeps its name, range and place; sounds saved with earlier versions load and sound as they did.'),
+ ('Not in this version', 'Copying pictures through the clipboard, selecting and copy / paste of single line points, envelope state files, the envelope filter tool, frozen and bipolar-tension LFOs, and the step-sequence editing window (there is a menu of ready-made sequences instead).'),
 ])
 
 css = '''

@@ -11,27 +11,30 @@ namespace pt
 struct EnvState { float t = 0; bool started = false, rel = false, done = false, arpSeen = false; float relGain = 1; int arp = 0; };
 struct LfoState { float ph = 0, t = 0; };
 
-inline float envAdvance (const EnvDef& e, EnvState& s, float dt, bool gate, float atkSc, float decSc, float relSc, float susOfs, bool invertArp)
+// atkSc / decSc / relSc stretch the three sections (attack: up to the D marker, decay: from there to the S marker,
+// release: after it). susMul and susOfs move the level of the S point; the lines into and out of it follow.
+inline float envAdvance (const EnvDef& e, EnvState& s, float dt, bool gate, float atkSc, float decSc, float relSc, float susMul, float susOfs, bool invertArp)
 {
     const auto& p = e.c.pts;
     const int n = (int) p.size();
     if (n == 0) { s.done = ! gate; return 1.0f; }
     const int sus = (e.sustain >= 0 && e.sustain < n) ? e.sustain : -1;
     const float tEnd = p[(size_t) n - 1].x, tSus = sus >= 0 ? p[(size_t) sus].x : tEnd;
+    const float susY = sus >= 0 ? clamp01 (p[(size_t) sus].y * susMul + susOfs) : 0.0f;
     if (! gate && ! s.rel)
     {
         s.rel = true;
         if (sus >= 0)
         {
-            const float cur = e.c.eval (s.t), sl = p[(size_t) sus].y;
-            s.relGain = sl > 1.0e-4f ? cur / sl : 0.0f;
+            const float cur = e.c.eval (s.t, sus, susY);
+            s.relGain = susY > 1.0e-4f ? cur / susY : 0.0f;
             if (s.t < tSus) s.t = tSus;
         }
     }
     const float prev = s.started ? s.t : -1.0f;
     if (s.started)
     {
-        const float sc = s.rel ? relSc : ((n > 1 && s.t < p[1].x) ? atkSc : decSc);
+        const float sc = s.rel ? relSc : ((n > 1 && s.t < p[(size_t) e.decayIndex()].x) ? atkSc : decSc);
         s.t += dt / juce::jmax (sc, 1.0e-3f);
     }
     s.started = true;
@@ -53,8 +56,7 @@ inline float envAdvance (const EnvDef& e, EnvState& s, float dt, bool gate, floa
             const bool hit = wrapped ? ((x > prev && x <= tSus) || (x >= l0 && x <= s.t)) : (x > prev && x <= s.t);
             if (hit) { const int st = (int) p[(size_t) i].arp - 2; s.arp += invertArp ? -st : st; s.arpSeen = true; }
         }
-    float v = e.c.eval (juce::jmin (s.t, tEnd));
-    if (! s.rel && sus >= 0 && s.t >= tSus) v += susOfs;
+    float v = e.c.eval (juce::jmin (s.t, tEnd), sus, susY);
     if (s.rel && sus >= 0) v *= s.relGain;
     s.done = s.t >= tEnd && (s.rel || sus < 0);
     return clamp01 (v);
@@ -77,18 +79,21 @@ inline float lfoShape (float ph, const LfoDef& d)
 struct VizFrame { int count = 0; float freq[NP]; float amp[NP]; };
 
 //==================================================================================================
+// Everything that can differ between the unison voices of a note has one slot per unison voice. Slot 0 is the only
+// one in use until a unison index mapping asks for the voices to be shaped apart (UE > 1).
+struct ImgState { double run = 0; float ofs = 0; int dir = 1, lastCol = -1; bool ended = false, init = false; };
 struct PartVoice
 {
     uint32_t ph[MAXU][NP];
-    float amp[NP], dAmp[NP], cyc[NP], dCyc[NP], us[NP];
-    float blur[NH], rnd[NH];
-    EnvState es[TG::Count]; LfoState ls[TG::Count];
-    float trnd[TG::Count], sm[TG::Count];
+    float amp[MAXU][NP], dAmp[MAXU][NP], cyc[MAXU][NP], dCyc[MAXU][NP], us[MAXU][NP];
+    float blur[MAXU][NH], rnd[NH];
+    EnvState es[MAXU][TG::Count]; LfoState ls[MAXU][TG::Count];
+    float trnd[TG::Count], sm[MAXU][TG::Count];
     float uGL[MAXU], uGR[MAXU], uDet[MAXU], uHz[MAXU], uRnd[MAXU], uJit[MAXU];
-    int U = 1, K = 0, Klast = 0;
-    bool active = false, started = false, smInit = false, volDone = false;
+    int U = 1, UE = 1, K[MAXU] = {}, Klast[MAXU] = {};
+    bool active = false, started = false, smInit = false, volDone = false, pdInit = false;
     float predelayLeft = 0, age = 0, gateGain = 0, tremPh = 0, vibPh = 0, f0 = 0;
-    double imgRun = 0; float imgOfs = 0; int imgDir = 1, imgLastCol = -1; bool imgEnded = false, imgInit = false;
+    ImgState im[MAXU];
     Rng rng;
 };
 
@@ -111,6 +116,8 @@ public:
         for (int i = 0; i < 4097; ++i) { sinT[i] = std::sin (kTwoPi * (float) i / 4096.0f); cosT[i] = std::cos (kTwoPi * (float) i / 4096.0f); }
         for (int p = 0; p < 2; ++p) { for (int i = 0; i < PP::Count; ++i) pp[p][i] = partDefs[i].def; data[p] = std::make_shared<PartData>(); }
         for (int i = 0; i < GP::Count; ++i) gp[i] = globalDefs[i].def;
+        for (int i = 0; i < XP::Count; ++i) xp[i] = extraDefs[i].def;
+        for (auto& part : em) for (auto& t : part) for (auto& m : t) m = 1.0f;
     }
 
     void prepare (double sampleRate)
@@ -171,9 +178,12 @@ public:
     }
 
     // called once per block, before events and render
-    void setParams (const float* g, const float* a, const float* b, double bpmIn, bool offline)
+    // x: the extra globals (XP), mods: the envelope modifiers, [part][target][EM], or null to leave them as they are
+    void setParams (const float* g, const float* a, const float* b, double bpmIn, bool offline, const float* x = nullptr, const float* mods = nullptr)
     {
         std::memcpy (gp, g, sizeof (gp)); std::memcpy (pp[0], a, sizeof (pp[0])); std::memcpy (pp[1], b, sizeof (pp[1]));
+        if (x != nullptr) std::memcpy (xp, x, sizeof (xp));
+        if (mods != nullptr) std::memcpy (em, mods, sizeof (em));
         bps = (float) juce::jlimit (20.0, 999.0, bpmIn) / 60.0f;
         const int prec = (offline && gp[GP::hq] > 0.5f) ? 2 : (int) gp[GP::precision];
         ctrlDiv = prec == 0 ? 4 : (prec == 1 ? 2 : 1);
@@ -215,6 +225,9 @@ public:
         return false;
     }
     std::atomic<int> vizPart { 0 };
+    // for the envelope editor: where the newest voice is in the envelope / LFO of the target on show
+    std::atomic<int> viewTarget { -1 };
+    std::atomic<float> viewEnvPos { -1.0f }, viewLfoT { -1.0f };
     std::atomic<float> playPos[2] { { -1.0f }, { -1.0f } };      // image position of the newest voice, 0..1
     std::atomic<int> lastKey { -1 };
 
@@ -357,20 +370,28 @@ private:
     int synth (PartVoice& pv, float* SL, float* SR)
     {
         int count = 0;
-        const int ranges[2][2] = { { 0, pv.K }, { NH, NH + NX } };
-        for (auto& rg : ranges) for (int n = rg[0]; n < rg[1]; ++n) { pv.amp[n] += pv.dAmp[n]; pv.cyc[n] += pv.dCyc[n]; }
+        const int UE = juce::jlimit (1, MAXU, pv.UE);
+        for (int e = 0; e < UE; ++e)
+        {
+            const int ranges[2][2] = { { 0, pv.K[e] }, { NH, NH + NX } };
+            float* am = pv.amp[e]; float* cy = pv.cyc[e]; const float* da = pv.dAmp[e]; const float* dc = pv.dCyc[e];
+            for (auto& rg : ranges) for (int n = rg[0]; n < rg[1]; ++n) { am[n] += da[n]; cy[n] += dc[n]; }
+        }
         const float maxCyc = 0.5f * (float) H - 1.3f;     // keeps the whole lobe below Nyquist
         for (int u = 0; u < pv.U; ++u)
         {
+            const int e = juce::jmin (u, UE - 1);
+            const int ranges[2][2] = { { 0, pv.K[e] }, { NH, NH + NX } };
+            const float* amps = pv.amp[e]; const float* cycs = pv.cyc[e]; const float* uss = pv.us[e];
             const float gL = pv.uGL[u], gR = pv.uGR[u], du = pv.uDet[u], dHz = pv.uHz[u];
             uint32_t* ph = pv.ph[u];
             for (auto& rg : ranges)
                 for (int n = rg[0]; n < rg[1]; ++n)
                 {
-                    const float cy = pv.cyc[n] * (1.0f + du * pv.us[n]) + dHz;
+                    const float cy = cycs[n] * (1.0f + du * uss[n]) + dHz;
                     const uint32_t p0 = ph[n];
                     ph[n] = p0 + (uint32_t) (int64_t) ((cy - std::floor (cy)) * 4294967296.0f);
-                    const float a = pv.amp[n];
+                    const float a = amps[n];
                     if (a < 1.0e-7f || cy > maxCyc || cy < 0.001f) continue;
                     addPartial (SL, SR, a, p0, cy, gL, gR);
                     ++count;
@@ -422,7 +443,7 @@ private:
         {
             Voice* cur = nullptr;
             for (int i = 0; i < MAXV; ++i) if (voices[i].on && voices[i].held && (cur == nullptr || voices[i].order > cur->order)) cur = &voices[i];
-            const float lim = P[PP::glideLimit];
+            const float lim = xp[XP::legLimit];
             if (cur != nullptr && (lim <= 0.0f || std::abs ((float) (note - cur->note)) * 100.0f <= lim) && cur->legCount < 16)
             {
                 cur->legStack[cur->legCount++] = note;
@@ -468,19 +489,22 @@ private:
         {
             PartVoice& pv = v->pv[p];
             pv.active = gp[p == 0 ? GP::partAOn : GP::partBOn] > 0.5f;
-            pv.started = false; pv.smInit = false; pv.volDone = false;
+            pv.started = false; pv.smInit = false; pv.volDone = false; pv.pdInit = false;
             pv.rng.s = (p == 0 ? seedA : seedB) | 1u;
-            pv.age = 0; pv.gateGain = 0; pv.K = pv.Klast = 0; pv.U = 1; pv.tremPh = 0; pv.vibPh = 0;
-            pv.imgInit = false; pv.imgEnded = false; pv.imgDir = 1; pv.imgLastCol = -1;
-            std::fill (pv.amp, pv.amp + NP, 0.0f); std::fill (pv.dAmp, pv.dAmp + NP, 0.0f);
-            std::fill (pv.cyc, pv.cyc + NP, 0.0f); std::fill (pv.dCyc, pv.dCyc + NP, 0.0f);
-            std::fill (pv.us, pv.us + NP, 1.0f); std::fill (pv.blur, pv.blur + NH, 0.0f);
+            pv.age = 0; pv.gateGain = 0; pv.U = 1; pv.UE = 1; pv.tremPh = 0; pv.vibPh = 0;
+            for (int e = 0; e < MAXU; ++e)
+            {
+                pv.K[e] = pv.Klast[e] = 0; pv.im[e] = ImgState();
+                std::fill (pv.amp[e], pv.amp[e] + NP, 0.0f); std::fill (pv.dAmp[e], pv.dAmp[e] + NP, 0.0f);
+                std::fill (pv.cyc[e], pv.cyc[e] + NP, 0.0f); std::fill (pv.dCyc[e], pv.dCyc[e] + NP, 0.0f);
+                std::fill (pv.us[e], pv.us[e] + NP, 1.0f); std::fill (pv.blur[e], pv.blur[e] + NH, 0.0f);
+                for (int t = 0; t < TG::Count; ++t) { pv.es[e][t] = EnvState(); pv.ls[e][t] = LfoState(); pv.sm[e][t] = 0; }
+            }
             for (int n = 0; n < NH; ++n) pv.rnd[n] = pv.rng.bi();
             const float shared = pv.rng.uni();
-            for (int t = 0; t < TG::Count; ++t) { pv.es[t] = EnvState(); pv.ls[t] = LfoState(); pv.trnd[t] = gp[GP::sameMaps] > 0.5f ? shared : pv.rng.uni(); pv.sm[t] = 0; }
+            for (int t = 0; t < TG::Count; ++t) pv.trnd[t] = gp[GP::sameMaps] > 0.5f ? shared : pv.rng.uni();
             for (int u = 0; u < MAXU; ++u) { pv.uRnd[u] = pv.rng.bi(); pv.uJit[u] = 0; pv.uGL[u] = pv.uGR[u] = 0; pv.uDet[u] = pv.uHz[u] = 0; }
-            const float pd = pp[p][PP::predelay];
-            pv.predelayLeft = v->strumDelay + (pd < 0 ? pd * pd : pd * 16.0f * 0.25f / bps);
+            pv.predelayLeft = v->strumDelay;          // the part's own predelay is added on its first control tick, once its mappings are known
             for (int t = 0; t < TG::Count; ++t) if (data[p]->tg[t].env.global) genv[p][t] = EnvState();
         }
     }
@@ -532,7 +556,10 @@ private:
         ++ctlTick;
     }
 
-    float evalTarget (Voice& v, int p, int t, float dt, const float* T)
+    // The value of one target for one unison slot: the control's own value combined with every active part.
+    // ux is the slot's place among the unison voices (0..1), or below zero when the voices share one value
+    // (panning, volume and pitch then get their unison index mapping where the unison voices are laid out).
+    float evalTarget (Voice& v, int p, int t, float dt, const float* T, int ue = 0, float ux = -1.0f)
     {
         const TargetInfo& ti = targetInfo[t];
         const TargetDef& td = data[p]->tg[t];
@@ -545,10 +572,11 @@ private:
         {
             if (td.env.on)
             {
-                EnvState* s = &pv.es[t];
+                EnvState* s = &pv.es[ue][t];
                 float edt = td.env.tempo ? dt * bps : dt;
                 if ((t == TG::F1Freq && P[PP::f1AdaptEnv] > 0.5f) || (t == TG::F2Freq && P[PP::f2AdaptEnv] > 0.5f)) edt *= std::sqrt (midiHz (v.pitchCur) / kC4);
-                float atk = T[TG::EnvAtkScale] * std::exp2 (2.0f * T[TG::EnvAtkTime]), rel = T[TG::EnvRelScale] * v.relScale;
+                const float* M = em[p][t];
+                float atk = T[TG::EnvAtkScale] * std::exp2 (2.0f * T[TG::EnvAtkTime]) * M[EM::Att], rel = T[TG::EnvRelScale] * v.relScale * M[EM::Rel];
                 if (P[PP::velAtkSpeed] > 0.5f) atk *= 1.6f - 1.3f * v.vel;
                 if (P[PP::velRel] > 0.5f) rel *= 0.5f + 2.5f * v.vel;
                 if (td.env.global)
@@ -557,37 +585,42 @@ private:
                     if (genvDone[p][t] == ctlTick) edt = 0.0f; else genvDone[p][t] = ctlTick;
                 }
                 const bool wasStarted = s->started;
-                if (t == TG::Volume && ! wasStarted && P[PP::velAtkSkip] > 0.5f && td.env.c.pts.size() > 1) s->t = td.env.c.pts[1].x * v.vel;
-                const float y = envAdvance (td.env, *s, edt, v.gate, atk, T[TG::EnvDecScale], rel, T[TG::EnvSusOfs], gp[GP::invertArp] > 0.5f);
+                if (t == TG::Volume && ! wasStarted && P[PP::velAtkSkip] > 0.5f && td.env.c.pts.size() > 1) s->t = td.env.c.pts[(size_t) td.env.decayIndex()].x * v.vel;
+                const float y = envAdvance (td.env, *s, edt, v.gate, atk, T[TG::EnvDecScale] * M[EM::Dec], rel, M[EM::Sus], T[TG::EnvSusOfs], gp[GP::invertArp] > 0.5f);
+                if (ue == 0 && t == viewTarget.load (std::memory_order_relaxed) && p == vizPart.load (std::memory_order_relaxed) && v.order == orderCounter) viewEnvPos.store (s->t, std::memory_order_relaxed);
                 if (ti.mode == BSum)
                 {
-                    if (t == TG::F1Freq) sum += y * T[TG::F1Env];
-                    else if (t == TG::F2Freq) sum += y * T[TG::F2Env];
+                    if (t == TG::F1Freq || t == TG::F2Freq)
+                    {
+                        // The envelope works below the frequency control: at the top of the graph the filter sits where the
+                        // control is, at the bottom it is the envelope amount lower. A negative amount turns the graph over.
+                        const float amt = T[t == TG::F1Freq ? TG::F1Env : TG::F2Env];
+                        sum += (data[p]->filtEnvAdd || amt < 0.0f) ? y * amt : (y - 1.0f) * amt;
+                    }
                     else sum += (2.0f * y - 1.0f) * (t == TG::Pitch ? P[PP::pitchEnv] : 1.0f);
                 }
                 else prod *= (ti.mode == BProd ? 2.0f * y - 1.0f : y);
             }
             if (td.lfo.on)
             {
-                LfoState& ls = pv.ls[t];
+                LfoState& ls = pv.ls[ue][t];
                 const float spd = clamp01 (td.lfo.speed);
                 float hz = td.lfo.tempo ? bps / (16.0f * std::exp2 (-8.0f * spd)) : 0.05f * std::pow (800.0f, spd);
                 hz *= T[TG::LfoSpeed];
                 float ph;
                 if (td.lfo.global) ph = (float) std::fmod (timeSec * (double) hz, 1.0);
                 else { ls.ph += hz * dt; ls.ph -= std::floor (ls.ph); ph = ls.ph; }
+                const float w = lfoShape (ph + td.lfo.phase + T[TG::LfoPhase], td.lfo);
+                const float depth = td.lfo.amt * T[TG::LfoAmt] * td.lfo.ampAt (td.lfo.tempo ? ls.t * bps : ls.t);
                 ls.t += dt;
-                float w = lfoShape (ph + td.lfo.phase + T[TG::LfoPhase], td.lfo);
-                float depth = td.lfo.amt * T[TG::LfoAmt];
-                if (! td.lfo.amp.empty()) depth *= td.lfo.amp.eval (ls.t);
+                if (ue == 0 && t == viewTarget.load (std::memory_order_relaxed) && p == vizPart.load (std::memory_order_relaxed) && v.order == orderCounter) viewLfoT.store (ls.t, std::memory_order_relaxed);
                 if (ti.mode == BSum) sum += w * depth;
-                else { const float a = std::abs (depth); prod *= 1.0f - a * (0.5f - 0.5f * (depth < 0 ? -w : w)); }
+                else { const float a = juce::jmin (1.0f, std::abs (depth)); prod *= 1.0f - a * (0.5f - 0.5f * (depth < 0 ? -w : w)); }
             }
         }
         for (int m = 0; m < MAP::Count; ++m)
         {
             if (! td.mapOn[m] || td.map[m].empty()) continue;
-            if (m == MAP::Unison && (t == TG::Pan || t == TG::Volume || t == TG::Pitch)) continue;      // done per unison voice
             float x = 0.5f;
             switch (m)
             {
@@ -595,6 +628,10 @@ private:
                 case MAP::Vel: x = v.vel; break;
                 case MAP::ModX: x = mod[0]; break; case MAP::ModY: x = mod[1]; break; case MAP::ModZ: x = mod[2]; break;
                 case MAP::Random: x = pv.trnd[t]; break;
+                case MAP::Unison:
+                    if (ux >= 0.0f) x = ux;
+                    else if (t == TG::Pan || t == TG::Volume || t == TG::Pitch) continue;      // laid out per unison voice further on
+                    break;
                 case MAP::Held: x = clamp01 ((float) v.heldIndex / 8.0f); break;
                 case MAP::XSpeed: x = modXSpeed; break;
                 default: break;
@@ -605,12 +642,13 @@ private:
         }
         float out = ti.mode == BSum ? k + sum * ti.range : k * prod;
         if (t == TG::Pitch) out = clampf (out, -9600.0f, 9600.0f);
+        else if (t == TG::PhOfs) {}                                                  // the offset goes round: no end stops
         else if (ti.pp >= 0) out = clampf (out, partDefs[ti.pp].lo, partDefs[ti.pp].hi);
         if (td.smooth > 0.0f)
         {
-            if (! pv.smInit) pv.sm[t] = out;
-            pv.sm[t] += (out - pv.sm[t]) * (1.0f - std::exp (-dt / (td.smooth * td.smooth * 0.5f + 1.0e-4f)));
-            out = pv.sm[t];
+            if (! pv.smInit) pv.sm[ue][t] = out;
+            pv.sm[ue][t] += (out - pv.sm[ue][t]) * (1.0f - std::exp (-dt / (td.smooth * td.smooth * 0.5f + 1.0e-4f)));
+            out = pv.sm[ue][t];
         }
         return out;
     }
@@ -706,6 +744,15 @@ private:
         PartVoice& pv = v.pv[p];
         const float* P = pp[p];
         const PartData& D = *data[p];
+        if (! pv.pdInit)
+        {
+            // the part's predelay, with its mappings (key, velocity, X / Y / Z, random...) taken at the start of the note
+            pv.pdInit = true;
+            float T0[TG::Count];
+            for (int t = TG::FirstMapping; t < TG::Count; ++t) T0[t] = targetInfo[t].pp >= 0 ? P[targetInfo[t].pp] : targetInfo[t].base;
+            const float pd = clampf (evalTarget (v, p, TG::Predelay, dt, T0), -1.0f, 1.0f);
+            pv.predelayLeft += pd < 0 ? pd * pd : pd * 16.0f * 0.25f / bps;
+        }
         if (pv.predelayLeft > 0.0f)
         {
             pv.predelayLeft -= dt;
@@ -714,13 +761,37 @@ private:
         }
         const bool first = ! pv.started;
 
+        // Unison voices share one set of partials unless a unison index mapping pulls them apart (anything but panning,
+        // volume and pitch, which are cheap to lay out per voice). Then every unison voice is shaped on its own.
+        const int U = juce::jlimit (1, MAXU, (int) P[PP::uniOrder]);
+        bool perU = false;
+        if (U > 1)
+            for (int t = 0; t < TG::Count && ! perU; ++t)
+                perU = t != TG::Pan && t != TG::Volume && t != TG::Pitch && D.tg[t].mapOn[MAP::Unison] && ! D.tg[t].map[MAP::Unison].empty();
+        const int UE = perU ? U : 1;
+        if (UE > pv.UE && ! first)
+            for (int e = pv.UE; e < UE; ++e)      // new slots carry on from where the shared one is
+            {
+                std::memcpy (pv.amp[e], pv.amp[0], sizeof (pv.amp[0])); std::memcpy (pv.cyc[e], pv.cyc[0], sizeof (pv.cyc[0]));
+                std::memcpy (pv.us[e], pv.us[0], sizeof (pv.us[0])); std::memcpy (pv.blur[e], pv.blur[0], sizeof (pv.blur[0]));
+                std::fill (pv.dAmp[e], pv.dAmp[e] + NP, 0.0f); std::fill (pv.dCyc[e], pv.dCyc[e] + NP, 0.0f);
+                for (int t = 0; t < TG::Count; ++t) { pv.es[e][t] = pv.es[0][t]; pv.ls[e][t] = pv.ls[0][t]; pv.sm[e][t] = pv.sm[0][t]; }
+                pv.im[e] = pv.im[0]; pv.K[e] = pv.K[0]; pv.Klast[e] = pv.Klast[0];
+            }
+        pv.UE = UE;
+
         // targets: mapping ones first, they steer the envelopes and LFOs of the rest
-        float T[TG::Count];
-        for (int t = TG::FirstMapping; t < TG::Count; ++t) T[t] = targetInfo[t].pp >= 0 ? P[targetInfo[t].pp] : targetInfo[t].base;
-        for (int t = TG::FirstMapping; t < TG::Count; ++t) T[t] = evalTarget (v, p, t, dt, T);
-        for (int t = 0; t < TG::FirstMapping; ++t) T[t] = evalTarget (v, p, t, dt, T);
+        float Tu[MAXU][TG::Count];
+        for (int e = 0; e < UE; ++e)
+        {
+            float* T = Tu[e];
+            const float ux = perU ? (float) e / (float) (U - 1) : -1.0f;
+            for (int t = TG::FirstMapping; t < TG::Count; ++t) T[t] = targetInfo[t].pp >= 0 ? P[targetInfo[t].pp] : targetInfo[t].base;
+            for (int t = TG::FirstMapping; t < TG::Count; ++t) T[t] = evalTarget (v, p, t, dt, T, e, ux);
+            for (int t = 0; t < TG::FirstMapping; ++t) T[t] = evalTarget (v, p, t, dt, T, e, ux);
+        }
         pv.smInit = true;
-        partFxMix[p] = T[TG::FxMix];
+        partFxMix[p] = Tu[0][TG::FxMix];
 
         // glide
         if (p == firstPart() || ! v.pv[firstPart()].active)
@@ -739,14 +810,71 @@ private:
             }
         }
 
+        pv.vibPh += P[PP::vibSpeed] * dt; pv.vibPh -= std::floor (pv.vibPh);
+        float f0u[MAXU];
+        for (int e = 0; e < UE; ++e)
+            if (! shapeSlot (v, p, dt, e, Tu[e], first, f0u[e])) { finish (pv); return; }
+
+        // unison: where each voice sits in pitch and in the stereo picture
+        if (first) startPhases (pv, P, D, U, Tu[0][TG::UniPhase]);
+        pv.U = U;
+        const int utype = (int) P[PP::uniType];
+        pv.tremPh += dt / (0.016f * std::pow (1000.0f, P[PP::tremSpeed])); pv.tremPh -= std::floor (pv.tremPh);
+        const float td = P[PP::tremDepth];
+        const float trL = 1.0f - td * (0.5f + 0.5f * std::sin (kTwoPi * pv.tremPh)), trR = 1.0f - td * (0.5f + 0.5f * std::sin (kTwoPi * pv.tremPh + P[PP::tremGap] * 0.01745329f));
+        const float uNorm = 1.0f / std::sqrt ((float) U);
+        const float hopsPerSec = sr / (float) H;
+        for (int u = 0; u < U; ++u)
+        {
+            const float* T = Tu[juce::jmin (u, UE - 1)];
+            const float f0 = f0u[juce::jmin (u, UE - 1)];
+            const float thick = T[TG::UniPitch];
+            const float maxCents = 60.0f * thick * thick * (utype == 0 ? 1.4f : 1.0f);
+            const float panBase = clampf (T[TG::Pan], -1.0f, 1.0f);
+            const float pu = U == 1 ? 0.0f : 2.0f * (float) u / (float) (U - 1) - 1.0f;
+            float dpos = pu;
+            if (utype == 0) dpos = pu * std::abs (pu) * 0.5f + pu * 0.5f;
+            else if (utype == 2) { pv.uJit[u] = clampf (pv.uJit[u] + pv.rng.bi() * 0.08f, -0.3f, 0.3f); dpos = pu + pv.uJit[u]; }
+            else if (utype == 3) dpos = U == 1 ? 0.0f : pv.uRnd[u];
+            float uPitch = 0.0f, uVol = 1.0f, uPan = 0.0f;
+            const float ux = U == 1 ? 0.5f : (float) u / (float) (U - 1);
+            if (perU) {}        // every slot already carries its own unison index mappings
+            else if (D.tg[TG::Pitch].mapOn[MAP::Unison] && ! D.tg[TG::Pitch].map[MAP::Unison].empty()) uPitch = (2.0f * D.tg[TG::Pitch].map[MAP::Unison].eval (ux) - 1.0f) * 4800.0f;
+            if (! perU && D.tg[TG::Volume].mapOn[MAP::Unison] && ! D.tg[TG::Volume].map[MAP::Unison].empty()) uVol = D.tg[TG::Volume].map[MAP::Unison].eval (ux);
+            if (! perU && D.tg[TG::Pan].mapOn[MAP::Unison] && ! D.tg[TG::Pan].map[MAP::Unison].empty()) uPan = 2.0f * D.tg[TG::Pan].map[MAP::Unison].eval (ux) - 1.0f;
+            if (utype == 4) { pv.uDet[u] = std::exp2 (uPitch / 1200.0f) - 1.0f; pv.uHz[u] = dpos * thick * f0 * 0.03f / hopsPerSec; }
+            else { pv.uDet[u] = std::exp2 ((dpos * maxCents + uPitch) / 1200.0f) - 1.0f; pv.uHz[u] = 0.0f; }
+            // Neighbours in pitch go to opposite sides, and the two voices at the same distance from the middle too, so the
+            // picture is balanced for every order (with an odd order the middle voice stays in the middle).
+            const int mirror = U - 1 - u;
+            const float sgn = u == mirror ? 0.0f : ((juce::jmin (u, mirror) & 1) ? 1.0f : -1.0f) * (u < mirror ? 1.0f : -1.0f);
+            const float side = (U == 1) ? 0.0f : sgn * (0.3f + 0.7f * std::abs (pu));
+            const float pan = clampf (panBase + side * P[PP::uniPan] + uPan, -1.0f, 1.0f);
+            const float ang = (pan + 1.0f) * 0.7853982f;
+            float gl = std::cos (ang) * 1.41421356f, gr = std::sin (ang) * 1.41421356f;
+            if (u & 1) gr *= 1.0f - 2.0f * P[PP::uniAlt];
+            pv.uGL[u] = gl * trL * uNorm * uVol; pv.uGR[u] = gr * trR * uNorm * uVol;
+        }
+
+        pv.started = true;
+        pv.age += dt;
+    }
+
+    // The partials of one unison slot (slot 0 is the whole note unless the unison voices are shaped apart).
+    // Returns false when the note has faded out and the voice can stop.
+    bool shapeSlot (Voice& v, int p, float dt, int ue, const float* T, bool first, float& f0Out)
+    {
+        PartVoice& pv = v.pv[p];
+        const float* P = pp[p];
+        const PartData& D = *data[p];
         // pitch
         const ImageData* img = (D.image != nullptr && D.image->valid()) ? D.image.get() : nullptr;
         const bool resynth = img != nullptr && img->resynth;
-        pv.vibPh += P[PP::vibSpeed] * dt; pv.vibPh -= std::floor (pv.vibPh);
-        const float cents = T[TG::Pitch] + bend * gp[GP::bendRange] * 100.0f + T[TG::VibDepth] * std::sin (kTwoPi * pv.vibPh);
+        const float cents = T[TG::Pitch] + xp[XP::gPitch] + bend * gp[GP::bendRange] * 100.0f + T[TG::VibDepth] * std::sin (kTwoPi * pv.vibPh);
         const float base = resynth ? img->baseFreq * std::exp2 ((v.pitchCur - 60.0f) / 12.0f) : midiHz (v.pitchCur);
         const float f0 = base * P[PP::freqMul] / juce::jmax (1.0f, P[PP::freqDiv]) * std::exp2 (cents / 1200.0f);
-        pv.f0 = f0;
+        if (ue == 0) pv.f0 = f0;
+        f0Out = f0;
         const float det = P[PP::detMul] / juce::jmax (1.0f, P[PP::detDiv]);
         const bool octMode = P[PP::pitchMode] > 0.5f;
         const float maxF = juce::jmin (21500.0f, sr * 0.46f);
@@ -806,32 +934,33 @@ private:
             const int w = img->w, h = img->h;
             const float speed = T[TG::ImgSpeed] * std::pow (64.0f, P[PP::imgCoarse]);
             const float ofsT = T[TG::ImgTime];
-            if (! pv.imgInit) { pv.imgInit = true; pv.imgRun = 0; pv.imgOfs = ofsT; pv.imgDir = 1; }
-            else pv.imgRun += (double) ((float) pv.imgDir * speed * dt / img->secPerCol);
+            ImgState& is = pv.im[ue];
+            if (! is.init) { is.init = true; is.run = 0; is.ofs = ofsT; is.dir = 1; }
+            else is.run += (double) ((float) is.dir * speed * dt / img->secPerCol);
             const float sm = P[PP::imgSmooth];
-            pv.imgOfs += (ofsT - pv.imgOfs) * (std::abs (sm) < 0.01f ? 1.0f : 1.0f - std::exp (-dt / (sm * sm)));
-            if (sm > 0 && std::abs (ofsT - pv.imgOfs) > 0.25f) pv.imgOfs = ofsT;
-            double pos = pv.imgRun + (double) pv.imgOfs * (double) (w - 1);
+            is.ofs += (ofsT - is.ofs) * (std::abs (sm) < 0.01f ? 1.0f : 1.0f - std::exp (-dt / (sm * sm)));
+            if (sm > 0 && std::abs (ofsT - is.ofs) > 0.25f) is.ofs = ofsT;
+            double pos = is.run + (double) is.ofs * (double) (w - 1);
             const int loop = (int) P[PP::imgLoop];
             const double la = img->hasLoop ? (double) img->loopStart * (w - 1) : 0.0, lb = img->hasLoop ? (double) img->loopEnd * (w - 1) : (double) (w - 1);
             float xfMix = 0.0f; double xfPos = 0.0;
-            if (loop == 0) { if (pos > (double) (w - 1) || pos < 0.0) { imgSilent = true; pv.imgEnded = true; } }
+            if (loop == 0) { if (pos > (double) (w - 1) || pos < 0.0) { imgSilent = true; is.ended = true; } }
             else if (lb - la > 1.0)
             {
                 if (loop == 1)
                 {
-                    if (pos > lb) { pv.imgRun -= (lb - la); pos -= (lb - la); }
-                    else if (pos < la && speed < 0) { pv.imgRun += (lb - la); pos += (lb - la); }
+                    if (pos > lb) { is.run -= (lb - la); pos -= (lb - la); }
+                    else if (pos < la && speed < 0) { is.run += (lb - la); pos += (lb - la); }
                     const double xf = (double) img->loopXfade * (lb - la);
                     if (xf > 1.0 && pos > lb - xf && la - (lb - pos) >= 0.0) { xfMix = (float) ((pos - (lb - xf)) / xf); xfPos = la - (lb - pos); }
                 }
                 else
                 {
-                    if (pos > lb) { pv.imgDir = -pv.imgDir; pv.imgRun -= 2.0 * (pos - lb); pos = lb - (pos - lb); }
-                    else if (pos < la && (pv.imgDir < 0) != (speed < 0)) { pv.imgDir = -pv.imgDir; pv.imgRun += 2.0 * (la - pos); pos = la + (la - pos); }
+                    if (pos > lb) { is.dir = -is.dir; is.run -= 2.0 * (pos - lb); pos = lb - (pos - lb); }
+                    else if (pos < la && (is.dir < 0) != (speed < 0)) { is.dir = -is.dir; is.run += 2.0 * (la - pos); pos = la + (la - pos); }
                 }
             }
-            if (v.order == orderCounter) playPos[p].store ((float) (pos / (double) juce::jmax (1, w - 1)));
+            if (ue == 0 && v.order == orderCounter) playPos[p].store ((float) (pos / (double) juce::jmax (1, w - 1)));
 
             float gcol[NP], fcol[NP];
             std::fill (gcol, gcol + NP, 0.0f); std::fill (fcol, fcol + NP, 0.0f);
@@ -874,13 +1003,13 @@ private:
             // sharpening: at a transient, put every partial back on its analysed phase
             const int col = juce::jlimit (0, w - 1, (int) pos);
             const float sharp = P[PP::imgSharp];
-            if (resynth && col != pv.imgLastCol && std::abs (sharp) > 0.02f && ! img->phase.empty()
-                && (img->transient[(size_t) col] || (sharp > 0 && pv.imgLastCol < 0)))
+            if (resynth && col != is.lastCol && std::abs (sharp) > 0.02f && ! img->phase.empty()
+                && (img->transient[(size_t) col] || (sharp > 0 && is.lastCol < 0)))
             {
                 const uint8_t* phs = img->phase.data() + (size_t) col * (size_t) h;
-                for (int n = 0; n < juce::jmin (K, h); ++n) pv.ph[0][n] = (uint32_t) phs[n] << 24;
+                for (int n = 0; n < juce::jmin (K, h); ++n) pv.ph[ue][n] = (uint32_t) phs[n] << 24;
             }
-            pv.imgLastCol = col;
+            is.lastCol = col;
         }
 
         // levels to amplitudes (the built-in brown slope), plus the sub sliders
@@ -972,7 +1101,7 @@ private:
                         const float ca = ba > 1.0e-3f ? 1.0f - std::exp (-dt / (ba * ba * 4.0f)) : 1.0f, cd = bd > 1.0e-3f ? 1.0f - std::exp (-dt / (bd * bd * 4.0f)) : 1.0f;
                         for (int n = 0; n < K; ++n)
                         {
-                            float& s = pv.blur[n];
+                            float& s = pv.blur[ue][n];
                             s += (a[n] - s) * (a[n] > s ? ca : cd);
                             a[n] += (s - a[n]) * bm * D.tab[SH::BlurMask][n];
                         }
@@ -1120,67 +1249,36 @@ private:
 
         // gates: note gate (when no volume envelope), arpeggiator points, image end
         const TargetDef& vt = D.tg[TG::Volume];
-        const EnvState& ves = vt.env.global ? genv[p][TG::Volume] : pv.es[TG::Volume];
-        bool open = vt.env.on ? ! ves.done : v.gate;
+        const EnvState& ves = vt.env.global ? genv[p][TG::Volume] : pv.es[ue][TG::Volume];
         if (vt.env.on && ves.arpSeen && chordN > 1 && v.gate)
         {
             int rank = 0; for (int i = 0; i < chordN; ++i) if (chord[i] < v.note) ++rank;
             if (((ves.arp % chordN) + chordN) % chordN != rank) gain = 0.0f;
         }
-        if (imgSilent) open = false;
         const float dck = juce::jmax (0.0005f, P[PP::declick] * 0.001f);
-        const float gateTarget = open ? 1.0f : 0.0f;
-        const float gstep = dt / (open ? dck : juce::jmax (dck, 0.004f) * (v.relScale < 0.1f ? 1.0f : 1.0f));
-        const float prevGate = pv.gateGain;
-        pv.gateGain = pv.gateGain < gateTarget ? juce::jmin (gateTarget, pv.gateGain + gstep) : juce::jmax (gateTarget, pv.gateGain - gstep);
-        if (first && P[PP::declick] <= 0.01f) pv.gateGain = gateTarget;
+        if (ue == 0)
+        {
+            bool open = vt.env.on ? ! ves.done : v.gate;
+            if (imgSilent) open = false;
+            const float gateTarget = open ? 1.0f : 0.0f;
+            const float gstep = dt / (open ? dck : juce::jmax (dck, 0.004f));
+            const float prevGate = pv.gateGain;
+            pv.gateGain = pv.gateGain < gateTarget ? juce::jmin (gateTarget, pv.gateGain + gstep) : juce::jmax (gateTarget, pv.gateGain - gstep);
+            if (first && P[PP::declick] <= 0.01f) pv.gateGain = gateTarget;
+            if (! open && prevGate <= 0.0f && ! first) return false;       // one more period at zero, so the fade completes
+        }
         gain *= pv.gateGain;
-        if (! open && prevGate <= 0.0f && ! first) { finish (pv); return; }       // one more period at zero, so the fade completes
 
         // ramp: how the partials come in at the start of the note
         const float rp = P[PP::ramp];
         const float rampT = std::abs (rp) * 0.2f;
         const bool ramping = pv.age < rampT + dck + 0.05f;
 
-        // unison
-        const int U = juce::jlimit (1, MAXU, (int) P[PP::uniOrder]);
-        if (first) startPhases (pv, P, D, U, T[TG::UniPhase]);
-        pv.U = U;
-        const float thick = T[TG::UniPitch];
-        const int utype = (int) P[PP::uniType];
-        const float maxCents = 60.0f * thick * thick * (utype == 0 ? 1.4f : 1.0f);
-        const float panBase = clampf (T[TG::Pan], -1.0f, 1.0f);
-        pv.tremPh += dt / (0.016f * std::pow (1000.0f, P[PP::tremSpeed])); pv.tremPh -= std::floor (pv.tremPh);
-        const float td = P[PP::tremDepth];
-        const float trL = 1.0f - td * (0.5f + 0.5f * std::sin (kTwoPi * pv.tremPh)), trR = 1.0f - td * (0.5f + 0.5f * std::sin (kTwoPi * pv.tremPh + P[PP::tremGap] * 0.01745329f));
-        const float uNorm = 1.0f / std::sqrt ((float) U);
-        const float hopsPerSec = sr / (float) H;
-        for (int u = 0; u < U; ++u)
-        {
-            const float pu = U == 1 ? 0.0f : 2.0f * (float) u / (float) (U - 1) - 1.0f;
-            float dpos = pu;
-            if (utype == 0) dpos = pu * std::abs (pu) * 0.5f + pu * 0.5f;
-            else if (utype == 2) { pv.uJit[u] = clampf (pv.uJit[u] + pv.rng.bi() * 0.08f, -0.3f, 0.3f); dpos = pu + pv.uJit[u]; }
-            else if (utype == 3) dpos = U == 1 ? 0.0f : pv.uRnd[u];
-            float uPitch = 0.0f, uVol = 1.0f, uPan = 0.0f;
-            const float ux = U == 1 ? 0.5f : (float) u / (float) (U - 1);
-            if (D.tg[TG::Pitch].mapOn[MAP::Unison] && ! D.tg[TG::Pitch].map[MAP::Unison].empty()) uPitch = (2.0f * D.tg[TG::Pitch].map[MAP::Unison].eval (ux) - 1.0f) * 4800.0f;
-            if (D.tg[TG::Volume].mapOn[MAP::Unison] && ! D.tg[TG::Volume].map[MAP::Unison].empty()) uVol = D.tg[TG::Volume].map[MAP::Unison].eval (ux);
-            if (D.tg[TG::Pan].mapOn[MAP::Unison] && ! D.tg[TG::Pan].map[MAP::Unison].empty()) uPan = 2.0f * D.tg[TG::Pan].map[MAP::Unison].eval (ux) - 1.0f;
-            if (utype == 4) { pv.uDet[u] = std::exp2 (uPitch / 1200.0f) - 1.0f; pv.uHz[u] = dpos * thick * f0 * 0.03f / hopsPerSec; }
-            else { pv.uDet[u] = std::exp2 ((dpos * maxCents + uPitch) / 1200.0f) - 1.0f; pv.uHz[u] = 0.0f; }
-            const float side = (U == 1) ? 0.0f : ((u & 1) ? 1.0f : -1.0f) * (0.3f + 0.7f * std::abs (pu));
-            const float pan = clampf (panBase + side * P[PP::uniPan] + uPan, -1.0f, 1.0f);
-            const float ang = (pan + 1.0f) * 0.7853982f;
-            float gl = std::cos (ang) * 1.41421356f, gr = std::sin (ang) * 1.41421356f;
-            if (u & 1) gr *= 1.0f - 2.0f * P[PP::uniAlt];
-            pv.uGL[u] = gl * trL * uNorm * uVol; pv.uGR[u] = gr * trR * uNorm * uVol;
-        }
-
         // write the targets the synthesis loop will glide to
         const float cycPerHz = (float) H / sr;
         const float inv = 1.0f / (float) ctrlDiv;
-        const int Kall = juce::jmax (K, pv.Klast);
+        const int Kall = juce::jmax (K, pv.Klast[ue]);
+        float* amp = pv.amp[ue]; float* dAmp = pv.dAmp[ue]; float* cyc = pv.cyc[ue]; float* dCyc = pv.dCyc[ue]; float* us = pv.us[ue];
         const float* usT = D.tab[SH::HarmUniPitch];
         const bool imgUni = img != nullptr && fmode == 3;
         for (int n = 0; n < Kall; ++n)
@@ -1196,13 +1294,13 @@ private:
                     tg *= clamp01 ((pv.age + dt) / (dck * (0.2f + 0.8f * (float) n / (float) juce::jmax (1, K))));
                 }
                 const float c = f0 * rat[n] * cycPerHz;
-                if (first || n >= pv.Klast || pv.cyc[n] <= 0.0f) { pv.cyc[n] = c; pv.dCyc[n] = 0.0f; }
-                else pv.dCyc[n] = (c - pv.cyc[n]) * inv;
-                pv.us[n] = usT[n] * (imgUni ? uniImg[n] : 1.0f);
+                if (first || n >= pv.Klast[ue] || cyc[n] <= 0.0f) { cyc[n] = c; dCyc[n] = 0.0f; }
+                else dCyc[n] = (c - cyc[n]) * inv;
+                us[n] = usT[n] * (imgUni ? uniImg[n] : 1.0f);
             }
-            else pv.dCyc[n] = 0.0f;
+            else dCyc[n] = 0.0f;
             if (! std::isfinite (tg)) tg = 0.0f;
-            pv.dAmp[n] = (tg - pv.amp[n]) * inv;
+            dAmp[n] = (tg - amp[n]) * inv;
         }
         // extra partials: subs below the fundamental and the filters' self-oscillation
         const float xg = gain * (volLast ? 1.0f : volScalar);
@@ -1217,22 +1315,21 @@ private:
                 if (subs[i] > 0.0f) { tg = subs[i] * 0.8f * xg; c = f0 * (subBelow ? below[i] : around[i]) * cycPerHz; }
             }
             else if (selfOsc[i - 3] > 0.0f) { tg = selfOsc[i - 3] * 0.6f * xg; c = std::exp2 (selfLf[i - 3]) * cycPerHz; }
-            if (first || pv.cyc[n] <= 0.0f) { pv.cyc[n] = c; pv.dCyc[n] = 0.0f; } else if (c > 0.0f) pv.dCyc[n] = (c - pv.cyc[n]) * inv; else pv.dCyc[n] = 0.0f;
-            pv.us[n] = 1.0f;
-            pv.dAmp[n] = (tg - pv.amp[n]) * inv;
+            if (first || cyc[n] <= 0.0f) { cyc[n] = c; dCyc[n] = 0.0f; } else if (c > 0.0f) dCyc[n] = (c - cyc[n]) * inv; else dCyc[n] = 0.0f;
+            us[n] = 1.0f;
+            dAmp[n] = (tg - amp[n]) * inv;
         }
-        pv.K = Kall; pv.Klast = K;
-        pv.started = true;
-        pv.age += dt;
+        pv.K[ue] = Kall; pv.Klast[ue] = K;
 
         // display: the newest voice of the part on show
-        if (p == vizPart.load (std::memory_order_relaxed) && v.order == orderCounter)
+        if (ue == 0 && p == vizPart.load (std::memory_order_relaxed) && v.order == orderCounter)
         {
             vizSeq.fetch_add (1, std::memory_order_acq_rel);
             viz.count = K;
             for (int n = 0; n < K; ++n) { viz.freq[n] = f0 * rat[n]; viz.amp[n] = a[n] * gain; }
             vizSeq.fetch_add (1, std::memory_order_acq_rel);
         }
+        return true;
     }
 
     void finish (PartVoice& pv)
@@ -1274,7 +1371,7 @@ private:
     int outPos = 0; float fftScale = 1.0f;
 
     std::unique_ptr<Voice[]> voices;
-    float gp[GP::Count], pp[2][PP::Count];
+    float gp[GP::Count], pp[2][PP::Count], xp[XP::Count], em[2][TG::FirstMapping][EM::Count];
     std::shared_ptr<const PartData> data[2];
     std::vector<Ev> events, pendingOn;
     int64_t sampleTime = 0; uint64_t tick = 0, orderCounter = 0; int ctlTick = 0;
