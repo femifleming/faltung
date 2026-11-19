@@ -51,8 +51,9 @@ public:
         setWantsKeyboardFocus (true);
         setPage (0);
         rebuildAll();
+        proc.onProjectReplaced = [this] { windows.clear(); select (nullptr); rebuildAll(); };
     }
-    ~StudioView() override { windows.clear(); }
+    ~StudioView() override { proc.onProjectReplaced = nullptr; windows.clear(); }
 
     // ---- selection --------------------------------------------------------------------------------
     Track* selected()
@@ -180,7 +181,7 @@ public:
     // ---- structure watch: rebuild the pages when tracks / devices / selection change ----------------
     long long structureKey() const
     {
-        long long k = (long long) s.tracks.size() * 1000003 + (long long) s.returns.size() * 7919 + selUid * 31;
+        long long k = (long long) s.epoch.load() * 1000000007LL + (long long) s.tracks.size() * 1000003 + (long long) s.returns.size() * 7919 + selUid * 31;
         for (auto& t : s.tracks) k = k * 31 + t->uid * 7 + t->numDevices() + (t->isAudio() ? 1 : 0);
         for (auto& r : s.returns) k = k * 31 + r->numDevices();
         k = k * 31 + s.master->numDevices();
@@ -201,7 +202,9 @@ public:
         for (auto& t : s.tracks) wire (*t);
         for (auto& r : s.returns) wire (*r);
         wire (*s.master);
-        pages[page]->rebuild();
+        // every page, the hidden ones too: a hidden page still holds sliders attached to the devices it showed, and
+        // those must not outlive them (a late slider update or the page's own destructor would reach a dead device)
+        for (auto* pg : pages) pg->rebuild();
         structure = structureKey();
     }
     void tick()
@@ -237,14 +240,14 @@ public:
         for (auto* l : { &play, &stop, &rec }) { l->setBounds (x, 12, 46, 20); x += 48; }
         fill.setBounds (x, 12, 40, 20); x += 44;
         loop.setBounds (x, 12, 44, 20); x += 48;
-        bpm.setBounds (x, 12, 170, 20); x += 184;
-        swing.setBounds (x, 12, 150, 20); x += 160;
+        bpm.setBounds (x, 12, 156, 20); x += 166;
+        swing.setBounds (x, 12, 136, 20); x += 144;
         mode.setBounds (x, 12, 70, 20); x += 74;
         outMode.setBounds (x, 12, 76, 20); x += 80;
         autoWrite.setBounds (x, 12, 50, 20); x += 54;
-        master.setBounds (x, 12, 180, 20); x += 186;
-        punch.setBounds (x, 12, 50, 20); x += 52; capture.setBounds (x, 12, 60, 20);
-        panic.setBounds (w - 240, 12, 50, 20); audio.setBounds (w - 188, 12, 50, 20); file.setBounds (w - 136, 12, 50, 20); save.setBounds (w - 82, 12, 50, 20);
+        master.setBounds (x, 12, 160, 20); x += 166;
+        punch.setBounds (x, 12, 50, 20); x += 52; capture.setBounds (x, 12, 60, 20); x += 66;
+        panic.setBounds (std::max (x, w - 240), 12, 50, 20); audio.setBounds (w - 188, 12, 50, 20); file.setBounds (w - 136, 12, 50, 20); save.setBounds (w - 82, 12, 50, 20);
         int tx = 12;
         for (auto* t : tabs) { t->setBounds (tx, 46, 70, 20); tx += 72; }
         for (auto* p : pages) p->setBounds (0, 70, w, getHeight() - 70 - 20);

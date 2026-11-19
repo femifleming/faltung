@@ -148,6 +148,7 @@ public:
     juce::String projectName { "untitled" };
     juce::File projectFile;
     std::atomic<bool> dirty { false };
+    std::atomic<int> epoch { 0 };   // counts clear() (new / open / a host's state): the editor rebuilds on a change
 
     std::atomic<int> mode { (int) PlayMode::Session };
     std::atomic<bool> loopOn { false }; std::atomic<double> loopStart { 0 }, loopEnd { 8 };   // bars
@@ -312,13 +313,17 @@ public:
 
     // ---- state -------------------------------------------------------------------------------------
     std::unique_ptr<juce::XmlElement> save() const;
-    bool load (const juce::XmlElement&, juce::String* error = nullptr);
+    bool load (const juce::XmlElement& e, juce::String* error = nullptr) { const bool ok = loadImpl (e, error); if (onReplaced) onReplaced(); return ok; }
+    /** after load / newFromTemplate replaced every track: views that hold tracks or devices rebuild (message thread) */
+    std::function<void()> onReplaced;
     void clear();
-    void newFromTemplate (int which);
+    void newFromTemplate (int which) { newFromTemplateImpl (which); if (onReplaced) onReplaced(); }
     static juce::StringArray templateNames();
     void loadTrackXml (Track&, const juce::XmlElement&, juce::StringArray& problems);
 
 private:
+    bool loadImpl (const juce::XmlElement&, juce::String* error);
+    void newFromTemplateImpl (int which);
     juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override;
     double sr = 48000; int bs = 512;
     int latTotal = 0, latTracks = 0, latReturns = 0, latMaster = 0;

@@ -219,6 +219,7 @@ std::unique_ptr<juce::XmlElement> Session::save() const
 
 void Session::clear()
 {
+    epoch.fetch_add (1);   // every track object is about to be replaced: views holding them must rebuild, even if the uids come back the same
     stop();
     stopRecording();
     while (! tracks.empty()) removeTrack ((int) tracks.size() - 1);
@@ -247,7 +248,7 @@ void Session::clear()
     dirty = false;
 }
 
-bool Session::load (const juce::XmlElement& e, juce::String* error)
+bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
 {
     if (! e.hasTagName ("studio")) { if (error) *error = "not a studio project"; return false; }
     clear();
@@ -385,7 +386,7 @@ int programNamed (const Device& d, const juce::String& name)
 struct Def { const char* name; const char* type; const char* preset; int root; };
 }
 
-void Session::newFromTemplate (int which)
+void Session::newFromTemplateImpl (int which)
 {
     clear();
     if (which == 0)
@@ -395,7 +396,7 @@ void Session::newFromTemplate (int which)
         dirty = false;
         return;
     }
-    if (which == 4) { newFromTemplate (1); projectName = "multi-out to ableton"; assignOutputs(); masterBypass.store (true); dirty = false; return; }
+    if (which == 4) { newFromTemplateImpl (1); projectName = "multi-out to ableton"; assignOutputs(); masterBypass.store (true); dirty = false; return; }
     if (which == 7)
     {
         // the ambisonic session: the starter's tracks behind one encoder each would be a lot to look at, so three sources

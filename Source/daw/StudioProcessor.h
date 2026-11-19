@@ -45,6 +45,10 @@ public:
     std::atomic<int> standaloneInputs { 0 }, standaloneInputLatency { 0 };
     /** the standalone's audio settings page (set by the app; the editor shows it) */
     std::function<void()> openAudioSettings;
+    /** called on the message thread right after a project replaced the session (open, a host's state): the editor
+        rebuilds its views before anything paints the tracks that are gone */
+    std::function<void()> onProjectReplaced;
+    void projectReplaced() { if (onProjectReplaced && juce::MessageManager::existsAndIsCurrentThread()) onProjectReplaced(); }
     /** the editor can close plug-in windows before a device is deleted */
     std::function<void (Device*)> onDeviceRemoving;
 

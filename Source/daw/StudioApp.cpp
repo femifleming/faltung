@@ -252,7 +252,12 @@ private:
                     const bool ok = app.processor->saveProject (f, err);
                     const auto a = s.save()->toString();
                     const bool ok2 = app.processor->loadProject (f, err);
-                    say ("project saved " + juce::String (ok ? "ok" : "FAILED") + ", reopened " + (ok2 ? "ok" : "FAILED " + err) + ", identical " + (a == s.save()->toString() ? "yes" : "NO"));
+                    const auto b = s.save()->toString();
+                    // a device's own state blob carries its live value (automation and modulators move it); the project's
+                    // base values sit beside it. Compare everything but those blobs.
+                    auto bare = [] (juce::String x) { juce::String o; for (;;) { const int i = x.indexOf ("<state>"); if (i < 0) break; const int j = x.indexOf (i, "</state>"); if (j < 0) break; o << x.substring (0, i); x = x.substring (j + 8); } return o + x; };
+                    say ("project saved " + juce::String (ok ? "ok" : "FAILED") + ", reopened " + (ok2 ? "ok" : "FAILED " + err) + ", identical " + (a == b ? "yes" : bare (a) == bare (b) ? "yes, apart from live values inside device states" : "NO (saved / reopened xml written beside the log)"));
+                    if (a != b) { dir.getChildFile ("roundtrip-a.xml").replaceWithText (a); dir.getChildFile ("roundtrip-b.xml").replaceWithText (b); }
                     break;
                 }
                 default: say ("done"); stopTimer(); juce::JUCEApplicationBase::quit(); break;
