@@ -51,7 +51,7 @@ add('''<section class="page"><h2>contents</h2><ol class="toc">
 <li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
 <li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out, into ableton</a></li>
-<li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li></ol>
+<li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#artists">to work like …</a></li></ol>
 <h2 id="intro">what it is</h2>
 <p class="lead">sndstudio is a studio for microhouse, rominimal, dub techno and the music around them, built out of the faltung suite:
 its drum engines, bass synth, effects and mastering bus are the devices, and around them a step sequencer that goes further than kt1,
@@ -112,7 +112,7 @@ add('''<section class="page"><h2 id="seq">seq</h2>
 <table class="params"><tr><th>control</th><th>what it does</th></tr>
 <tr><td class="n">pattern</td><td>which of the track's 64 patterns is playing (launched at the next quantise point)</td></tr>
 <tr><td class="n">length</td><td>1–64 steps; longer than 16 shows pages above the grid. Different lengths on different tracks = polymeter.</td></tr>
-<tr><td class="n">speed</td><td>x1/4 … x4: the step length relative to a 16th</td></tr>
+<tr><td class="n">speed</td><td>x1/4 … x8: how fast the steps run, relative to 16ths</td></tr>
 <tr><td class="n">swing</td><td>added to the global swing for this track (±25%)</td></tr>
 <tr><td class="n">shift</td><td>the whole track earlier or later, in ms</td></tr>
 <tr><td class="n">probability</td><td>multiplies every step's chance</td></tr>
@@ -240,8 +240,195 @@ whole arrangement or the loop, 32-bit float, at bar 1 or the loop start, and equ
 <li>Projects are xml; audio files are referenced relative to the project when they sit next to it; autosave every two minutes while there are changes.</li></ul>
 </section>''')
 
+# ------------------------------------------------------------------------------------------------
+#  the later chapters: timing, the new tools, the new devices, templates, the device reference, install, artists
+import json as _json
+_P = _json.load(open(os.path.join(HERE, 'sndstudio-params.json')))
+_PD = _json.load(open(os.path.join(ROOT, 'docs', 'manual-deep', 'sndstudio-params.json')))
+
+add('''<section class="page"><h2 id="timing">on the grid and off it: sync and free</h2>
+<p>Everything in sndstudio that runs in time can follow the tempo or ignore it. The rule is the same everywhere: a <b>sync</b> setting
+counts in divisions of the bar (the list below), a <b>free</b> setting in hz, ms or seconds; flipping between them keeps the time it had
+as closely as the other side allows, so nothing jumps.</p>
+<table class="params"><tr><th>what</th><th>on the grid</th><th>off the grid</th></tr>
+<tr><td class="n">a track's steps</td><td><i>clock</i> grid: a step is a 16th times <i>speed</i> (x1/4 … x8) times the step's own <i>step time</i></td><td><i>clock</i> free: every step lasts <i>step ms</i>, whatever the tempo</td></tr>
+<tr><td class="n">a step's place</td><td>on its step</td><td><i>micro</i> (shift-drag in the grid), the track's <i>shift</i> in ms, the tools <i>ratios</i> / <i>accelerate</i></td></tr>
+<tr><td class="n">modulators</td><td><i>sync</i>: 1/64 … 16 bars</td><td><i>free</i>: 0.01 … 40 hz</td></tr>
+<tr><td class="n">fl7's lfo</td><td><i>rate</i> divisions</td><td>the last entry of <i>rate</i>, <b>free</b>, and the <i>free rate</i> control (hz)</td></tr>
+<tr><td class="n">wb1 / sb1 wobble and steps</td><td><i>rate</i> divisions</td><td><b>free</b> as the last entry of the rate, with <i>free rate</i> / <i>free time</i></td></tr>
+<tr><td class="n">mc3</td><td>divisions</td><td><b>free</b>, as before</td></tr>
+<tr><td class="n">throw, repeat</td><td>time / grid / slice on divisions</td><td>the same in ms</td></tr>
+<tr><td class="n">line, wear, skip</td><td><i>on the grid</i> on: pass / loop / fragment on divisions</td><td>off: seconds or ms</td></tr>
+<tr><td class="n">audio clips</td><td><i>warp to tempo</i></td><td><i>repitch</i> or <i>stretch</i>, snap off for placing them anywhere</td></tr>
+<tr><td class="n">the arrangement</td><td><b>snap</b> on: bars (beats when zoomed in)</td><td>snap off; <b>,</b> and <b>.</b> nudge the clip you last touched by 5 ms</td></tr></table>
+<p>The divisions, wherever a list of them appears: ''' + ' · '.join(e(x) for x in _P['divisions']) + ''' (d = dotted, t = triplet).</p>
+
+<h2 id="tools2">more of the sequencer</h2>
+<h3>per track</h3>
+<table class="params"><tr><th>control</th><th>what it does</th></tr>
+<tr><td class="n">evolve</td><td>off … 100%: on every pass a few steps change (a hit appears or goes, velocities drift) or come back to what is written; the pattern drifts around its written form and never far from it. <b>freeze</b> (tools) writes the current drift into the pattern.</td></tr>
+<tr><td class="n">choke group</td><td>off, a … h: a hit on one track of a group cuts the other tracks of that group (closed hat / open hat, chopped samples on several tracks).</td></tr></table>
+<h3>per step</h3>
+<table class="params"><tr><th>control</th><th>what it does</th></tr>
+<tr><td class="n">step time</td><td>x0.25 … x4: how long this step lasts, in steps — a triplet next to a straight step, a long step after short ones. The pattern's length in time follows.</td></tr>
+<tr><td class="n">ratchet curve</td><td>even, or the hits of a ratchet <i>speed up</i> (crowd towards the end) or <i>slow</i> (spread out)</td></tr>
+<tr><td class="n">chord</td><td>one note · octave · fifth · minor · major · minor 7 · major 7 · minor 9 · sus 4 · stack of fourths, stacked on the step's note (synths, tone, sampler)</td></tr></table>
+<h3>the tools that ask</h3>
+<table class="params"><tr><th>tool</th><th>what you type</th><th>what it does</th></tr>
+<tr><td class="n">ratios</td><td>1 1 2/3 2/3 2/3 3/2</td><td>one number per step: its step time. The series repeats over the length.</td></tr>
+<tr><td class="n">accelerate</td><td>0.9</td><td>every step lasts this many times the one before; the loop keeps its length (below 1: faster and faster, above 1: slower)</td></tr>
+<tr><td class="n">even</td><td>—</td><td>every step time back to x1</td></tr>
+<tr><td class="n">strict</td><td>2 0.5</td><td>velocities on so many levels (1 = all alike, 2 = accent or not …), then one note length in steps for all</td></tr>
+<tr><td class="n">sieve</td><td>3@0 | 4@1</td><td>the steps a sieve keeps get a hit, the rest none: residue classes modulus@residue, <b>|</b> joins, <b>&amp;</b> intersects, <b>!</b> excludes</td></tr>
+<tr><td class="n">sieve pitch</td><td>3@0 | 4@1 (random)</td><td>the sieve read as a scale in semitones; the hits climb it in order, or draw from it with <i>random</i></td></tr>
+<tr><td class="n">cloud</td><td>1 12</td><td>a stochastic cloud: events per step (the times between them exponential), then the pitch range in semitones; velocities gaussian</td></tr>
+<tr><td class="n">freeze</td><td>—</td><td>writes the drift of <i>evolve</i> into the pattern</td></tr></table>
+<h3>playing controls from the keyboard</h3>
+<p>Right-click any control: <b>play it from a key: toggle</b> or <b>… while held</b>, then press the key. The key then switches the control between its value and its far end
+(a mute, a send, the throw), and with <b>write</b> on the moves are written as automation. Mapped keys are listed on the mod page (right-click to remove); a mapped key no longer does
+its usual job (so map letters you do not need).</p>
+<h3>the one gesture: control → modulator</h3>
+<p>Right-click any slider (a device's, a strip's, the tempo, the swing, the master): <b>map an lfo</b>, <b>map a random</b> (a new value each period), <b>map a slewed random</b>,
+<b>map a random gate</b> (on / off). The modulator is made at once and its popup opens with its shape, rate (sync or free), depth and polarity. <i>map something else</i> holds the
+envelope, the step sequence, the follower and <b>bounce</b> (four ramps at unrelated rates, each turning round where it meets its neighbours: four related voltages that never repeat).
+A modulator's rate is itself a target, so modulators modulate modulators.</p>
+<h3>freehand automation</h3>
+<p>In an automation lane, shift-drag draws the curve by hand (a point every few pixels): arcs drawn on <i>tone</i>'s frequency become glissandi, on an encoder's azimuth a path around the room.</p></section>''')
+
+add('''<section class="page"><h2 id="devices2">more studio devices</h2>
+<table class="params"><tr><th>device</th><th>what it is</th></tr>
+<tr><td class="n">encoder</td><td>ambisonic encoder: a mono or stereo source to order 1 – 7 (acn channel order, sn3d), with azimuth, elevation, stereo width, order (as wide as the track, or 1 – 7) and gain; azimuth and elevation are natural targets for lanes and modulators. On a 16-channel track it reads the stereo clip or instrument and writes 16 channels (order 3).</td></tr>
+<tr><td class="n">decoder</td><td>ambisonics to a ring, a dome or a sphere of speakers (rotate, numbering clockwise or not, a speaker or a pair at the front); as many speakers as the track is wide (24 in the spatial template).</td></tr>
+<tr><td class="n">binaural</td><td>ambisonics to headphones, with head turn and head size (a spherical-head model, for placing things while you arrange; hosted decoders do measured-ear work).</td></tr>
+<tr><td class="n">line</td><td>on a wide track, each input channel becomes a line of sound travelling along the track's speakers: a pass on the grid or in seconds, a rest at the ends, legato from a hard switch to a melt, the figure (there and back, round, swinging, at random), a second line against the first, and a sieve choosing which speakers sound.</td></tr>
+<tr><td class="n">wear</td><td>a loop of the input that goes round and loses a little on every pass: first the highs, then dropouts, then level. Loop length on the grid or in seconds; <i>record</i> off keeps the loop going without new input; wear, dropouts, mix.</td></tr>
+<tr><td class="n">skip</td><td>an instrument that reads a sample like a skipping disc: a fragment repeats, the read point jumps on, back or anywhere; read errors drop out or hold a frame. <i>intensity</i> sets how broken it is; fragments on the grid or in ms; <i>from</i> / <i>to</i> bound the region; pitch; it plays until the next note or while the note is held; steps address places in the file.</td></tr>
+<tr><td class="n">tone (more)</td><td>a <b>second tone</b>, a difference in hz or a ratio away (1.22 by default), each tone on its own channel (<i>one tone per channel</i>), so the difference tone is made in the ear; a <b>tuning</b> for key-tracked notes: equal, just (5-limit), just (7-limit), the harmonic series.</td></tr></table>
+<p>Also in the device list, without a scan: the suite's kit and loop (<b>kt1</b>, <b>kt2</b>) as track instruments, and the house's other plug-ins when they are installed
+(Partials, Cloudfin, openprocess, openfield, Leitner and the rest) — hosted as VST3 / AU like any plug-in.</p>
+<h3>routes that close a loop</h3>
+<p>A route into a track that already feeds the source closes a loop. The popup says so; if you accept, it becomes a <b>feedback route</b>: one buffer late and soft-limited, so the
+loop sings but cannot run away.</p>
+<h3>capture, bounce, render</h3>
+<table class="params"><tr><th>what</th><th>where</th><th>what it does</th></tr>
+<tr><td class="n">capture</td><td>header</td><td>a new audio track records the master from now until you click again: a jam to cut up afterwards</td></tr>
+<tr><td class="n">bounce</td><td>a track's strip, or file → bounce</td><td>the track (offline, its whole arrangement or the loop) into a new audio track, or into a sampler on a new track, sliced</td></tr>
+<tr><td class="n">render</td><td>the master strip's bounce, or file → render the project into a new audio track</td><td>the whole project or the loop, through the master chain or before it, onto a new audio track</td></tr>
+<tr><td class="n">auto master</td><td>the master strip</td><td>puts ms0 on the master if it is not there, switches it (and the master chain) on, starts playback if stopped, listens to up to 20 s and sets ms0's starting point (click again to decide early). Not in faltung deep, which has no ms0</td></tr></table>
+<h2 id="templates">templates</h2>
+<p><b>file → new from template</b> (or browse → new from template). Each is a full project to start from.</p>
+<table class="params"><tr><th>faltung sndstudio</th><th>faltung deep sndstudio</th></tr>''' +
+''.join(f'<tr><td>{e(a)}</td><td>{e(b)}</td></tr>' for a, b in zip(_P['templates'], _PD['templates'])) + '''</table>
+<p><i>bass first</i> starts from the bass at 172 in half time; <i>two-step</i> is a garage skeleton at 132 with mpc-style swing; <i>half-step</i> a 140 frame with wb1 in front;
+<i>spatial</i> builds the encoder → decoder (24 speakers) → master and encoder → binaural chain described in the spatial chapter, with the master 24 wide.</p></section>''')
+
+# ---- every device, every parameter
+def _devtable(dev):
+    rows = []
+    for p in dev['params']:
+        if 'choices' in p and len(p['choices']) <= 12: rng = ' · '.join(p['choices'])
+        elif 'choices' in p: rng = f"{p['min']} … {p['max']} ({len(p['choices'])} choices)"
+        elif p.get('switch'): rng = 'off / on'
+        else: rng = f"{p['min']} … {p['max']}"
+        rows.append(f'<tr><td class="n">{e(p["name"])}</td><td class="r">{e(rng)}</td><td class="d">{e(p["default"])}</td></tr>')
+    head = f'<h3>{e(dev["name"])} <span style="font-weight:400">({e(dev["type"])}, {e(dev["family"])}{", instrument" if dev["instrument"] and dev["family"] == "studio" else ""})</span></h3>'
+    blurb = f'<p>{e(dev["blurb"])}.</p>' if dev.get('blurb') else ''
+    pres = ('<p class="presets"><span>presets</span> ' + ' · '.join(e(n) for n in dev['presets']) + '</p>') if dev.get('presets') and dev['presets'] != ['init'] else ''
+    return head + blurb + pres + '<table class="params"><tr><th>parameter</th><th>range</th><th>default</th></tr>' + ''.join(rows) + '</table>'
+
+_ref = ['<section class="page"><h2 id="reference">every device, every parameter</h2>',
+        '<p>Written from the devices themselves (<code>sndstudioTest --dump-params</code>), so names, ranges and defaults are exactly what the sliders show. '
+        'The suite\'s engines (bd1 … ms0) are described control by control in <b>faltung Manual.pdf</b>; here is what each one offers inside the studio. '
+        'Every parameter takes locks, lanes, modulators, macros, midi and keys. In <i>faltung deep sndstudio</i> the list is the same except: sb1 stabs in place of wb1, and no ms0 '
+        '(the deep master chain is filter → glue). Deep-only device:</p>']
+for _d in _PD['devices']:
+    if _d['type'] not in {x['type'] for x in _P['devices']}: _ref.append(_devtable(_d))
+for _d in _P['devices']: _ref.append(_devtable(_d))
+_ref.append('</section>')
+add(''.join(_ref))
+
+add('''<section class="page"><h2 id="blackhole">from the standalone into Ableton (BlackHole)</h2>
+<p>As a plug-in inside Live, sndstudio's 64 stereo buses reach Live directly (the modes chapter). From the standalone app, the channels travel through a virtual audio device:</p>
+<ol><li>Install BlackHole (<code>brew install --cask blackhole-64ch</code>, or the 128-channel build from existential.audio). It appears as an audio device with that many inputs and outputs.</li>
+<li>In sndstudio: <b>audio</b> → output device <i>BlackHole 64ch</i> (or 128ch), the same sample rate as Live, all output channels enabled.</li>
+<li><b>mix → multi-out → assign all outputs</b>. The master leaves on 1 … w (its width), then every track and return on its own channels in order; the strips show which.</li>
+<li>In Live: <i>Settings → Audio</i>, input device <i>BlackHole</i>, <i>Input Config</i>: enable the pairs (or mono inputs, for wide tracks) you need. Make an audio track per pair, <i>Audio From: Ext. In</i>, the pair, <i>Monitor: In</i> to hear, arm, record.</li>
+<li>To hear sndstudio while doing this, listen through Live (its output on your speakers or interface). Keep both apps at one sample rate; do not let either change the device's rate while the other runs.</li>
+<li>If the mastering happens in Live, switch on <b>master chain bypass</b> in the mixer.</li></ol>
+<p>A 16- or 64-channel track (spatial work) uses consecutive channels; make a Live track per channel, or record them as one multichannel file in a host that takes them.</p>
+
+<h2 id="install">installing</h2>
+<table class="params"><tr><th>format</th><th>macOS</th></tr>
+<tr><td class="n">app</td><td>/Applications/faltung/faltung sndstudio.app (deep: faltung deep sndstudio.app)</td></tr>
+<tr><td class="n">VST3</td><td>~/Library/Audio/Plug-Ins/VST3/faltung sndstudio.vst3</td></tr>
+<tr><td class="n">Audio Unit</td><td>~/Library/Audio/Plug-Ins/Components/faltung sndstudio.component (an instrument, FreakiePie)</td></tr>
+<tr><td class="n">VST2</td><td>~/Library/Audio/Plug-Ins/VST/faltung sndstudio.vst</td></tr></table>
+<p>With Homebrew: <code>brew tap femifleming/tap &amp;&amp; brew install --cask femifleming/tap/faltung</code> (deep: <code>…/faltung-deep</code>); or from the release zips
+(Windows: the .exe app and the VST3 / VST2 into the usual folders; Linux: the app, the VST3, the LV2 and the VST2 .so). In Live: <i>Settings → Plug-Ins</i>, VST3 / Audio Units on, <i>Rescan</i>;
+it is under FreakiePie. Projects (<code>.fstudio</code>) and their audio folders go to <i>Documents/faltung sndstudio</i> by default; settings and the plug-in scan list live in the
+user's application data folder.</p></section>''')
+
+# ---- the artist appendix: one how-to per artist
+_artists = [
+ ('Ricardo Villalobos', 'Long recorded jams, cut afterwards; odd meters by polymeter; a console colour on everything.',
+  'Set tracks to different lengths (a 20-step perc against a 16-step kick) and some to <i>clock free</i>. Put <b>colour</b> on the tracks and the master. Press <b>capture</b> and play scenes, mutes and sends for ten minutes; click capture again, then cut the take on the arrangement. Watch the bar · minute readout for the length.'),
+ ('[a:rpia:r] (Rhadoo, Petre Inspirescu, Raresh)', 'An infinite groove, 7–8 minutes, percussion played through its parameters.',
+  'Start from <i>long form</i>. Lock pitch and decay per step on rm3 / pc7 / cl8 and set <i>slide</i> on some steps; map a slow <i>slewed random</i> to the hats\' decay. Send to <b>throw</b> and rv5. Drop acoustic fragments on audio tracks in <i>repitch</i> or <i>stretch</i>.'),
+ ('Basic Channel / Maurizio', 'The mixer is the instrument: dub sends thrown and muted by hand.',
+  'On the stab track (wb1 / sb1) set <i>chord</i> to minor 7 or minor 9 on its steps. Put <b>throw</b> and <b>spring</b> on returns, <b>noise bed</b> on the master. Right-click the throw send → <i>play it from a key: while held</i>; switch <b>write</b> on and play the throws: they become automation.'),
+ ('Dubtil', 'Hardware sequenced from the studio, vocal snippets, versions as scenes.',
+  'Send midi clock to your hardware (the app\'s menu bar: <i>midi clock out</i>). Load vocal snippets into a <b>sampler</b> and add <b>grain</b>; make a scene per version.'),
+ ('Autechre', 'Generative patterns that drift, rules that rewrite, modulators on modulators.',
+  'Use <i>euclid</i>, <i>markov</i>, <i>rewrite</i>, <i>mutate</i>; set <i>evolve</i> to 20–40% so the pattern drifts, and <i>freeze</i> what you like. Give steps conditions (1:3, not prev). Map an lfo onto another modulator\'s rate. Use <b>repeat</b> on a send and fm perc for the hits.'),
+ ('Mark Fell / snd', 'Time per step, ratio series, accelerating loops, strict velocity and length.',
+  'Type a series into <i>ratios</i> (1 1 2/3 2/3 2/3 3/2) or press <i>accelerate</i> 0.9. Press <i>strict</i> 2 0.5. Use <b>fm perc</b> and lock its ratios per step. For snd\'s two-elements discipline, build scenes that keep two tracks playing and stop the rest.'),
+ ('Grischa Lichtenberger', 'Signal paths that feed back; gates as instruments.',
+  'Route a track into another that routes back: accept the <i>feedback route</i>. Use the gate of <b>strip</b> hard (high range, fast release) as a shaping tool; resample the result with <b>bounce</b>.'),
+ ('Second Woman', 'Clocks off the grid, ratchets that bend.',
+  'Set a track to <i>clock free</i> with a step ms that does not divide the tempo; give steps ratchets 4–8 with a <i>ratchet curve</i>; automate the tempo; <b>repeat</b> with pitch, <b>clip</b> on the master, bd1 tuned to 30 hz.'),
+ ('Ryoji Ikeda', 'Pure tones, clicks and data at exact frequencies and durations.',
+  'A <b>tone</b> track (sine at an exact hz, 10 ms) and a <b>data</b> track; speed x4 or x8, or the ms clock. Export 32-bit float without dither. For installation work set the master width up to 64.'),
+ ('Noisia', 'Basses resampled and resampled again; multiband distortion.',
+  'wb1 with a reese or neuro preset, <b>multiband</b> after it, <b>sidechain</b> keyed from the kick. <b>bounce</b> the bass into a sampler (sliced) and sequence the slices; ms0 multiband on the master.'),
+ ('Current Value', 'Half-time drum & bass, modular voices.',
+  'Start from <i>bass first (half time, 172)</i>; <b>transient</b> on the drums, <b>sidechain</b> with the master as key; host your modular-style plug-ins as devices.'),
+ ('Shigeto', 'Live drums and recordings sliced into steps.',
+  'Record onto an audio track (arm, rec). <b>bounce</b> it into a sampler (sliced on transients) and address slices per step with pitch and decay locks; gl8 on the drum route; export stems.'),
+ ('Four Tet', 'Audio moved by ear, off the grid.',
+  'Snap off; drag clips anywhere; <b>,</b> and <b>.</b> nudge by 5 ms; split and trim; audition files in the browser before dropping them; per-track swing; ms0 auto master at the end.'),
+ ('Prefuse 73', 'Vocal cut-ups, chokes, stutters.',
+  'Put sampler tracks for the cut-up in one <i>choke group</i>; pitch and slice per step; mutes from held keys; <b>repeat</b> for stutters; record a turntable through an audio input.'),
+ ('Lapalux', 'Warped tape, drifting pitch.',
+  '<b>vinyl</b> and <b>throw</b> on the track; a slow <i>slewed random</i> or drift lfo on pitch; resample to audio and split / duplicate clips for stutters.'),
+ ('Todd Edwards', 'Syllables chopped, pitched and stacked.',
+  'A sampler in slices mode on a vocal; one slice per step with pitch; <i>chord</i> on some steps; swing from sw6 or the per-track swing; start from <i>two-step (garage, 132)</i>.'),
+ ('Oval (Markus Popp)', 'Skipping CDs: fragments that repeat and jump.',
+  'Put <b>skip</b> on a track with a sample; raise <i>intensity</i>; fragments on the grid or in ms; steps address places in the file. Loop and split audio clips on the timeline. openprocess / openfield, if installed, are in the device list.'),
+ ('Gábor Lázár', 'Bursts that accelerate, pulse widths and pitches locked per hit.',
+  'Ratchets with a strong <i>ratchet curve</i>, <i>accelerate</i> on the pattern, locks with <i>slide</i> on <b>fm perc</b> and <b>tone</b> (pulse width, frequency); speed x8.'),
+ ('Kindohm (Mike Hodnick)', 'Live-coded patterns: degrade, every nth, polymeter.',
+  'Euclid, rotate, reverse; conditions 1:2 … 8:8 as "every"; chance per step and per track as "degrade"; different lengths per track; chopped breaks via bounce → sampler. Or drive the selected track with midi from your live-coding tool.'),
+ ('Peter Blasser', 'Chaotic cross-modulation, touched nodes.',
+  'Map <b>bounce</b> to a control (four never-repeating ramps); map an lfo onto that modulator\'s rate; route tracks into each other through feedback routes; hold a control open from a key like a touched plate.'),
+ ('Iannis Xenakis', 'Sieves, stochastic clouds, drawn glissandi, sound in space.',
+  'Use <i>sieve</i> for rhythm and <i>sieve pitch</i> for the scale (3@0 | 4@1, &amp;, !); <i>cloud</i> for stochastic textures; shift-drag freehand arcs onto <b>tone</b>\'s frequency (UPIC-style glissandi); automate an <b>encoder</b>\'s azimuth and elevation, or use <b>line</b>.'),
+ ('Bernhard Leitner', 'Sound lines travelling through a space of speakers.',
+  'Make a wide track (16 or 24 channels), put <b>line</b> on it: pass time, figure, legato, the speaker sieve. The user\'s Leitner plug-in, if installed, is in the device list and feeds a 16-channel track.'),
+ ('Alex Chechile', 'Difference tones made in the ear.',
+  '<b>tone</b> with <i>second tone</i> a difference (e.g. 40 hz) or a ratio (1.22) away, <i>one tone per channel</i> at 100%, quiet levels, on headphones or two speakers.'),
+ ('La Monte Young', 'Drones in just intonation.',
+  '<b>tone</b> held by the note\'s <i>gate</i>, <i>tuning</i> just (7-limit) or the harmonic series, key tracking on, chords on a long step for sine chords.'),
+ ('William Basinski, Ian William Craig, Amulets', 'Loops that decay as they repeat.',
+  '<b>wear</b> on the track (loop length on the grid or in seconds), <b>vinyl</b> and <b>colour</b> for wow, flutter and hiss; layer looped audio clips on the timeline.'),
+ ('Loefah, Skream, Rusko, Jakes, Billain', 'Half-step wobble and sub.',
+  'Start from <i>half-step (140)</i>; wb1\'s wobble on the grid or free, its vowel filter, sub; <b>multiband</b>; bounce the bass to a sampler and resequence it.'),
+]
+add('<section class="page"><h2 id="artists">to work like …</h2><p>One how-to per artist the studio was shaped around. The reasons and sources are in <code>docs/daw-research.md</code>. '
+    'No device, preset or template carries an artist\'s name: these are ways of using the studio, not imitations.</p>' +
+    ''.join(f'<h3>{e(n)}</h3><p><i>{e(w)}</i> {h}</p>' for n, w, h in _artists) + '</section>')
+
 if __name__ == '__main__':
-    page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>sndstudio manual</title><style>{CSS}</style></head><body>{"".join(doc)}</body></html>'
+    page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>sndstudio manual</title><style>{CSS} h2,h3{{break-after:avoid}} tr{{break-inside:avoid}}</style></head><body>{"".join(doc)}</body></html>'
     open(os.path.join(HERE, 'sndstudio.html'), 'w').write(page)
     chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     pdf = os.path.join(HERE, 'sndstudio Manual.pdf')
