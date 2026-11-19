@@ -1,49 +1,60 @@
 #!/usr/bin/env python3
-"""faltung deep manual → "faltung deep Manual.pdf". Same machinery as docs/manual/make.py (whose control texts and
-helpers it reuses); parameter tables from params.json (faltungDeepTest --dump-params), pictures from img/
-(faltungDeepTest --screenshots, --tree; converted to jpeg with sips to keep the pdf small)."""
-import html, json, os, re, subprocess
+"""faltung deep manual → "faltung deep Manual.pdf". The dark mode of the faltung manual: the same machinery as
+docs/manual/make.py (whose control texts, helpers and page style it reuses) on dark pages; parameter tables from
+params.json (faltungDeepTest --dump-params), pictures from img/ (faltungDeepTest --screenshots)."""
+import colorsys, html, json, os, re, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 MAIN = open(os.path.join(ROOT, 'docs', 'manual', 'make.py')).read()
 P = {p['code']: p for p in json.load(open(os.path.join(HERE, 'params.json')))}
-FONTS = os.path.join(ROOT, 'Resources', 'fonts')
+FONTS = '../../Resources/fonts'
 e = html.escape
-GROUND = {'kt1': '#1d3772', 'kt2': '#33441c', 'bd1': '#5a2414', 'sd2': '#2e3566', 'rm3': '#3b2c2a', 'hh4': '#1f3d52', 'cp6': '#5b3416', 'pc7': '#2c4a34',
-          'cl8': '#26355c', 'tm9': '#4a1e1a', 'mc3': '#2b2e5c', 'dl4': '#183d4a', 'rv5': '#40331f', 'sw6': '#3b2450', 'fl7': '#2f4316', 'gl8': '#2a323c', 'sb1': '#14123f'}
-LIGHT = {'kt1': '#d8e3f7', 'kt2': '#e3ecc9', 'bd1': '#f3d6c8', 'sd2': '#dfe2f7', 'rm3': '#f2dcd6', 'hh4': '#d5e6ef', 'cp6': '#f1dcc4', 'pc7': '#dbead9',
-         'cl8': '#e1e8f6', 'tm9': '#f0d6cf', 'mc3': '#dfe0f5', 'dl4': '#d3e9ec', 'rv5': '#efe2cc', 'sw6': '#eadcf2', 'fl7': '#e5efcf', 'gl8': '#e1e6eb', 'sb1': '#f0dfe6'}
+
+# the colours: each plug-in's field is the dark counterpart of its faltung twin's (ui::darkField / ui::darkAccent in Source/Ui.cpp)
+def _hsl(c): r, g, b = (int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)); h, l, s_ = colorsys.rgb_to_hls(r, g, b); return h, s_, l
+def _hex(h, s_, l): r, g, b = colorsys.hls_to_rgb(h, l, s_); return '#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255))
+def dark_field(c):
+    h, s_, l = _hsl(c); chroma = s_ * (1 - abs(2 * l - 1))
+    return _hex(h, min(0.62, 0.10 + 0.80 * chroma + (0.12 * s_ if l > 0.9 else 0)), 0.085 + 0.085 * min(1, chroma * 1.6))
+def dark_accent(c):
+    h, s_, l = _hsl(c); return _hex(h, min(1, s_ * 0.94), 0.47 + (l - 0.47) * 0.62)
+g = globals()
+exec (MAIN[MAIN.index('GROUND = {'):MAIN.index('e = html.escape')], g)      # faltung's light fields
+LIGHTGROUND = dict(GROUND); LIGHTGROUND['sb1'] = LIGHTGROUND['wb1']
+GROUND = {c: dark_field(v) for c, v in LIGHTGROUND.items()}
+INK, PAGE = '#f6f6f0', '#15171a'
 
 # reuse the shared descriptions and helpers of the faltung manual
-g = globals()
 exec (MAIN[MAIN.index('SLOT = {'):MAIN.index('INTRO = {')], g)
-exec (MAIN[MAIN.index('def ptable'):MAIN.index('def chevrons')], g)
+exec (MAIN[MAIN.index('def ptable'):MAIN.index('def shot(')], g)
+exec (MAIN[MAIN.index('def presets'):MAIN.index('# ------------------------------------------------------------------------------------------------\n#  document')], g)   # presets, chevrons, wire, divider
 exec (MAIN[MAIN.index('WBMOD = {'):MAIN.index("add(divider('wb1 wub'")], g)
 exec (MAIN[MAIN.index('def loop_desc'):MAIN.index('add(f\'\'\'<section class="page" id="kt2"')], g)   # the step-feature text of kt2
 
 def shot(code, cls='shot'):
-    return f'<img class="{cls}" src="img/{code}.jpg" alt="{code}">'
+    return f'<img class="{cls}" src="img/{code}.png" alt="{code}">'
 
 doc = []
 add = doc.append
+VERSION = re.search(r"VERSION = '([^']+)'", MAIN).group(1)
 ORDER = ['kt1', 'kt2', 'bd1', 'sd2', 'rm3', 'hh4', 'cp6', 'pc7', 'cl8', 'tm9', 'mc3', 'dl4', 'rv5', 'sw6', 'fl7', 'gl8', 'sb1']
 
-def sleeve(code, title, sideA, sideB, cat, art):
-    """a divider page laid out like the back of a sleeve"""
-    a = ''.join(f'<div>{i + 1}.&nbsp;&nbsp;&nbsp;{e(t)}</div>' for i, t in enumerate(sideA))
-    b = ''.join(f'<div>{i + 1 + len(sideA)}.&nbsp;&nbsp;&nbsp;{e(t)}</div>' for i, t in enumerate(sideB))
-    return f'''<section class="sleeve" style="background:{GROUND[code]};color:{LIGHT[code]}"><img class="tree" src="img/{art}"><div class="fade" style="background:linear-gradient(180deg,transparent 45%,{GROUND[code]} 92%)"></div>
-<div class="s-l"><div>faltung deep</div><div>{e(title)}</div><div class="cat">{cat}</div></div>
-<div class="s-a"><div>Side A</div>{a}</div><div class="s-b"><div>Side B</div>{b}</div>
-<div class="vert">drums, processes and stabs for deep house &nbsp;·&nbsp; faltung deep &nbsp;·&nbsp; FreakiePie</div></section>'''
+def ddivider(code, title, sub, accent):
+    """a divider page: the plug-in's dark field with the wireframe solid, as in the faltung manual"""
+    return divider(title, sub, GROUND[code], wire(dark_accent(accent)), INK, '#ffffff')
 
 # ---- cover ------------------------------------------------------------------------------------------------
-add(sleeve('kt1', 'MANUAL', ['kt1 kit', 'kt2 loop', 'bd1 kick', 'sd2 snare', 'rm3 rim', 'hh4 hats', 'cp6 clap', 'pc7 perc', 'cl8 dust'],
-           ['tm9 tom', 'mc3 micro', 'dl4 dub', 'rv5 room', 'sw6 swing', 'fl7 filter', 'gl8 glue', 'sb1 stabs'], 'FDP000', 'tree-kt1.jpg'))
+add(f'''<section class="cover">{chevrons(dark_accent('#9fd3ec'))}
+<svg class="cube" viewBox="0 0 104 112"><polygon points="0,30 52,0 104,30 52,60" fill="{dark_accent('#ffe15a')}"/><polygon points="0,30 52,60 52,112 0,82" fill="{dark_accent('#f2c100')}"/>
+<polygon points="52,60 104,30 104,82 52,112" fill="{dark_accent('#d8a800')}"/><text x="52" y="35" text-anchor="middle" font-size="10" font-weight="600" fill="#2a2100" font-family="Inter">faltung deep</text></svg>
+<div class="ct"><h1>faltung deep</h1><p class="sub">drums, processes and stabs for deep house · faltung's dark mode</p>
+<p class="ver">manual · version {VERSION} · november 2026</p></div>
+<div class="tl">''' + ''.join(f'<div><span class="chip" style="background:{GROUND[c]}"></span><span>01 : {i:02d} : {(i*17)%60:02d}</span><b>{c}</b><span>{e(P[c]["name"])}</span><span>{e(P[c]["blurb"])}</span></div>'
+                      for i, c in enumerate(ORDER)) + '</div></section>')
 
 add('''<section class="page"><h2>contents</h2><ol class="toc">
-<li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">the controls and the tree</a></li>
+<li><a href="#intro">introduction</a></li><li><a href="#install">installing</a></li><li><a href="#using">the controls and the pictures</a></li>
 <li><a href="#auto">automation and midi</a></li><li><a href="#kt1">kt1 kit</a></li><li><a href="#kt2">kt2 loop</a></li>
 <li><a href="#modules">the drum modules</a></li><li><a href="#fx">the processes</a></li><li><a href="#sb1">sb1 stabs</a></li><li><a href="#recipes">recipes</a></li></ol>
 <h2 id="intro">introduction</h2>
@@ -52,8 +63,11 @@ warm, swung, late-night house — round kicks, wooden rims, soft claps, shakers 
 <p>It has seventeen plug-ins: the drum machine <b>kt1 kit</b>, the slicer <b>kt2 loop</b>, eight single drum modules, six effects and
 <b>sb1 stabs</b>, a synth that plays a whole chord from one key. faltung's mastering bus and Partials are not part of it — use them from
 faltung itself. Both suites install side by side; every faltung deep plug-in is called <i>faltung deep …</i>.</p>
-<p>The look follows record sleeves: a mirrored tree in one duotone per plug-in, and the controls laid out like the back of a sleeve —
-title top left, a "Side A / Side B" track list, a catalogue number, small credits along the right edge.</p>
+<p><b>The look is faltung's, in the dark.</b> Every faltung deep plug-in has the layout, the type and the shapes of its faltung twin — snd's
+folded strips, Mark Fell's wireframe solids, Oval's coloured lines, stdio's chevrons and tracklists — on the dark counterpart of the
+twin's colour field: mustard becomes a dark olive, the pale papers go near black with their tint kept, and the strips, lines and
+fills keep their hues a little dimmer. (Up to version 1.1.0 faltung deep had a look of its own, a mirrored tree on a record sleeve; sounds,
+parameters, presets and saved sessions are unchanged.)</p>
 <table class="params"><tr><th>id</th><th>name</th><th>what it is</th></tr>''' +
 ''.join(f'<tr><td class="n">{c}</td><td>{e(P[c]["name"])}</td><td>{e(P[c]["blurb"])}</td></tr>' for c in ORDER) + '''</table></section>''')
 
@@ -68,17 +82,18 @@ add('''<section><h2 id="install">installing</h2>
 <i>C:\\Program Files\\Common Files\\VST3</i>; on Linux to <i>~/.vst3</i> (LV2: <i>~/.lv2</i>). In Ableton Live, rescan plug-ins; they appear under
 <b>FreakiePie</b>. Every plug-in opens on its first deep house preset.</p>
 
-<h2 id="using">the controls and the tree</h2>
+<h2 id="using">the controls and the pictures</h2>
 <table class="params"><tr><th>control</th><th>how</th></tr>
-<tr><td class="n">slider</td><td>a condensed label, a hairline and a white tick. Drag sideways or up/down; <b>shift</b> for fine moves; <b>double-click</b> resets; the wheel steps.</td></tr>
-<tr><td class="n">choice</td><td>click for a menu, drag up/down to step.</td></tr>
-<tr><td class="n">switch</td><td>the small square: filled = on.</td></tr>
-<tr><td class="n">presets</td><td>&lt; and &gt; step, click the name for the list; also in the host's program menu.</td></tr>
-<tr><td class="n">size</td><td>drag the bottom-right corner (half to double size).</td></tr></table>
-<p><b>The tree</b> is alive. It sways in a slow wind — every branch at its own pace, so it never repeats — and the sway grows with the
-level coming out of the plug-in. Leaves brighten on each hit, and the glow behind the canopy breathes with the loudness. It is mirrored
-around the centre line like the sleeves, and fades into the ground behind the controls so they stay readable. It is drawn at a reduced
-size and scaled up, so it costs very little processor time.</p>
+<tr><td class="n">slider</td><td>a label, a thin rule, a slanted bar and a white edge mark. Drag left/right (or up/down) anywhere on it. <b>shift</b>-drag for fine moves,
+<b>double-click</b> for the default, scroll wheel for small steps. Bipolar controls (pan, shift, offsets) fill from the centre.</td></tr>
+<tr><td class="n">choice</td><td>click for a menu; drag up/down to step through.</td></tr>
+<tr><td class="n">toggle</td><td>the small parallelogram; filled = on.</td></tr>
+<tr><td class="n">presets</td><td>top right: <b>&lt;</b> and <b>&gt;</b> step through, click the name for the list; also in the host's program menu.</td></tr>
+<tr><td class="n">picture</td><td>in the modules, click the picture to play the sound (hh4: left half closed, right half open). In kt1 click a strip; in kt2 click a slice.</td></tr>
+<tr><td class="n">size</td><td>drag the bottom-right corner; the window scales between half and double size.</td></tr></table>
+<p>The pictures are drawn from the settings and move as you play: the strips of a module grow and shrink with its eight controls and
+flash on every hit, the wireframe solid of bd1, tm9 and sb1 changes shape with the sound, dl4's arcs are its repeats, the chevrons of
+rv5 and gl8 follow the room and the gain reduction. Hover over any control for its full name.</p>
 
 <h2 id="auto">automation and midi</h2>
 <p>Every control is a host parameter with a readable name; in kt1 the names start with the voice (<i>bd1 decay</i>, <i>sh6 level</i>).
@@ -93,7 +108,7 @@ The pattern (a1–a8), track mutes, lengths, probabilities and shifts are parame
 NAMES = ['Kick', 'Rim', 'Clap', 'Closed hat', 'Open hat', 'Shaker', 'Conga', 'Tom']
 IDS = ['bd1', 'rm2', 'cp3', 'ch4', 'oh5', 'sh6', 'cg7', 'tm8']
 ENG = ['kick', 'rim', 'clap', 'hat', 'hat', 'hat (noise)', 'perc (conga)', 'tom']
-add(sleeve('kt1', 'KT1 KIT', NAMES[:4], NAMES[4:], 'FDP001', 'tree-kt1.jpg'))
+add(ddivider('kt1', 'drum machines', 'kt1 kit · kt2 loop', '#e7d873'))
 def kt1_rows():
     rows = []
     for p in P['kt1']['params']:
@@ -107,8 +122,8 @@ def kt1_rows():
     return rows
 add(f'''<section class="page" id="kt1"><h2>kt1 kit</h2><p class="lead">A deep house drum machine: eight voices with their own engines, a
 16-step sequencer with swing, microtiming, probability and ratchets, and a separate output per voice.</p>{shot('kt1')}
-<h3>the page</h3><p>The track list at the top is the voice selector: <b>Side A</b> 1–4 and <b>Side B</b> 5–8 — click a name to select and
-hear it; it lights up on every hit. On the right, the selected voice's model and eight sound controls, then its track settings. At the
+<h3>the page</h3><p>The folded strips at the top left are the voice selector: click a strip (or a row name in the grid) to select and
+hear that voice; it flashes on every hit. On the right, the selected voice's model and eight sound controls, then its track settings. At the
 bottom the step grid and the global row: run, internal bpm, swing, micro range, patterns a1–a8 and copy / paste / clear.</p>
 <table class="params"><tr><th>voice</th><th>engine</th><th>midi</th><th>output</th></tr>''' +
 ''.join(f'<tr><td class="n">{IDS[v]} {NAMES[v].lower()}</td><td>{ENG[v]}</td><td>{["C1","C#1","D1","D#1","E1","F1","F#1","G1"][v]}</td><td>{v + 2}</td></tr>' for v in range(8)) +
@@ -131,10 +146,10 @@ alt-click to reverse, shift-drag (or shift-scroll) for microtiming, right-click 
 <h3>controls</h3>{ptable(params_rows('kt2', lambda pid: LOOP.get(pid) or SEQ.get(pid, ''), g["loop_skip"], g["loop_name"]))}{presets('kt2')}</section>''')
 
 # ---- modules ----------------------------------------------------------------------------------------------
-add(sleeve('bd1', 'DRUM MODULES', ['bd1 kick', 'sd2 snare', 'rm3 rim', 'hh4 hats'], ['cp6 clap', 'pc7 perc', 'cl8 dust', 'tm9 tom'], 'FDP003', 'tree-bd1.jpg'))
+add(ddivider('bd1', 'the drum modules', 'bd1 kick · sd2 snare · rm3 rim · hh4 hats · cp6 clap · pc7 perc · cl8 dust · tm9 tom', '#e3bf5f'))
 add('''<section class="page" id="modules"><h2>the drum modules</h2><p class="lead">Each module is one drum engine as its own instrument, for drum
 racks and midi clips. Four models and eight controls per engine; level, pan, velocity, key tracking and choke on all of them. Click the
-tree to hear the sound.</p></section>''')
+picture to hear the sound.</p></section>''')
 MODTXT = {
  'bd1': 'Deep house kicks are round and a little long. <b>deep round</b> is the thud model with a soft click and some sub; <b>lofi 909</b> drives the 909 shape; <b>long thud</b> for sparse tracks.',
  'sd2': 'Snares are rare; <b>brush</b> is the one you will use most — a soft noise swell under the clap.',
@@ -152,7 +167,7 @@ for code, t in [('bd1', 'kick'), ('sd2', 'snare'), ('rm3', 'rim'), ('hh4', 'hat'
 <h3>models</h3><table class="params">{models}</table><h3>controls</h3>{ptable(params_rows(code, d))}{presets(code)}</section>''')
 
 # ---- effects ----------------------------------------------------------------------------------------------
-add(sleeve('dl4', 'PROCESSES', ['mc3 micro', 'dl4 dub', 'rv5 room'], ['sw6 swing', 'fl7 filter', 'gl8 glue'], 'FDP012', 'tree-dl4.jpg'))
+add(ddivider('dl4', 'the processes', 'mc3 micro · dl4 dub · rv5 room · sw6 swing · fl7 filter · gl8 glue', '#2f7fd1'))
 DINTRO = {
  'mc3': 'Micro-sampling for chopped textures: grains and stutters cut from whatever passes through, in time with the host.',
  'dl4': 'Tape echo with the filter inside the repeats — for chord stabs (1/8 dotted), rim throws and dub washes.',
@@ -179,7 +194,7 @@ for code in ['mc3', 'dl4', 'rv5', 'sw6', 'fl7', 'gl8']:
 <h3>controls</h3>{ptable(params_rows(code, d, skip))}<h3>using it</h3><ul>{tips}</ul>{presets(code)}</section>''')
 
 # ---- sb1 stabs ----------------------------------------------------------------------------------------------
-add(sleeve('sb1', 'SB1 STABS', ['minor 9 stab', 'organ stab', 'electric piano', 'dub chord'], ['warm pad', 'deep sub', 'round bass', 'plucked chord'], 'FDP017', 'tree-sb1.jpg'))
+add(ddivider('sb1', 'sb1 stabs', 'chord stabs, organs and sub bass', '#7fd3c8'))
 CH = [('off', 'single notes'), ('fifth', '0 7'), ('octave', '0 12'), ('major', '0 4 7'), ('minor', '0 3 7'), ('major 7', '0 4 7 11'), ('minor 7', '0 3 7 10'),
       ('dominant 7', '0 4 7 10'), ('major 9', '0 4 7 11 14'), ('minor 9', '0 3 7 10 14'), ('minor 11', '0 3 7 10 14 17'), ('sus 4', '0 5 7'),
       ('6 / 9', '0 4 7 9 14'), ('minor 9 (no 5th)', '0 3 10 14'), ('deep stack', '0 7 10 14 17')]
@@ -207,41 +222,26 @@ the cutoff slowly over 16 bars.</p>
 <h3>texture</h3><p>cl8 <b>vinyl dust</b> on 16ths at low level, and mc3 <b>soft grains</b> on a pad.</p>
 <h2>technical notes</h2><ul><li>Same engines and quality as faltung: band-limited oscillators, modal resonators, anti-aliased saturation, 2× oversampled synth voice.</li>
 <li>Every plug-in passes the same offline tests as faltung (silence, overload, non-finite output, state recall), plus a chord check for sb1.</li>
-<li>Licence AGPL-3.0. Fonts: Barlow, Inter, IBM Plex Mono (SIL Open Font License).</li></ul></section>''')
+<li>Licence AGPL-3.0. Fonts: Inter, IBM Plex Mono (SIL Open Font License).</li></ul></section>''')
 
-CSS = f'''
-@font-face {{ font-family: Cond; src: url("file://{FONTS}/BarlowCondensed-Regular.ttf"); font-weight: 400; }}
-@font-face {{ font-family: Cond; src: url("file://{FONTS}/BarlowCondensed-Medium.ttf"); font-weight: 600; }}
-@font-face {{ font-family: Barlow; src: url("file://{FONTS}/Barlow-Light.ttf"); font-weight: 300; }}
-@font-face {{ font-family: Barlow; src: url("file://{FONTS}/Barlow-Regular.ttf"); font-weight: 400; }}
-@page {{ size: A4; margin: 15mm 15mm 16mm 15mm; @bottom-right {{ content: counter(page); font: 8pt Cond; }} }}
-html {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-body {{ font: 9.6pt/1.5 Barlow, Helvetica, sans-serif; font-weight: 400; color: #1b2235; margin: 0; }}
-h2 {{ font: 600 22pt Cond; letter-spacing: .3px; margin: 0 0 6pt; color: #1d3772; }}
-h3 {{ font: 600 11pt Cond; letter-spacing: .6px; text-transform: uppercase; margin: 14pt 0 4pt; border-bottom: .6pt solid #1d3772; padding-bottom: 2pt; color: #1d3772; }}
-p.lead {{ font-size: 11pt; font-weight: 300; line-height: 1.45; }}
-.page {{ break-before: page; }}
-code {{ font: 8.6pt Cond; background: #e8eef9; padding: 0 3px; }}
-a {{ color: inherit; }}
-table.params {{ width: 100%; border-collapse: collapse; margin: 4pt 0 6pt; font-size: 8.5pt; }}
-table.params th {{ text-align: left; font: 600 8.5pt Cond; letter-spacing: .5px; text-transform: uppercase; border-bottom: .6pt solid #1d3772; padding: 2pt 6pt 2pt 0; }}
-table.params td {{ border-bottom: .4pt solid #d5dbe8; padding: 1.8pt 6pt 1.8pt 0; vertical-align: top; }}
-table.params td.n {{ font: 600 9pt Cond; white-space: nowrap; }}
-table.params td.r, table.params td.d {{ font: 400 8.6pt Cond; color: #3b4660; }}
-table.params tr {{ break-inside: avoid; }}
-img.shot {{ width: 100%; margin: 6pt 0 2pt; }}
-img.shot.half {{ width: 64%; }}
-.presets {{ font: 9pt Cond; margin-top: 8pt; }} .presets span {{ background: #1d3772; color: #fff; padding: 1px 6px; margin-right: 6px; text-transform: uppercase; letter-spacing: .5px; }}
-.small {{ font-size: 8pt; color: #555; }}
-ol.toc {{ font: 13pt Cond; line-height: 1.8; }} ul, ol {{ padding-left: 14pt; }} li {{ margin: 2pt 0; }}
-.sleeve {{ break-before: page; position: relative; height: 265mm; overflow: hidden; font-family: Cond; }}
-.sleeve:first-child {{ break-before: auto; }}
-.sleeve img.tree {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
-.sleeve .fade {{ position: absolute; inset: 0; }}
-.sleeve .s-l {{ position: absolute; left: 12mm; top: 12mm; font-size: 14pt; line-height: 1.3; }} .sleeve .cat {{ margin-top: 12mm; font-weight: 600; letter-spacing: 1px; }}
-.sleeve .s-a {{ position: absolute; left: 70mm; top: 12mm; font-size: 14pt; line-height: 1.3; }}
-.sleeve .s-b {{ position: absolute; left: 125mm; top: 12mm; font-size: 14pt; line-height: 1.3; }}
-.sleeve .vert {{ position: absolute; right: 6mm; top: 14mm; writing-mode: vertical-rl; font: 300 8pt Barlow; letter-spacing: .4px; }}
+exec ('CSS = f' + repr (MAIN[MAIN.index("CSS = f\'\'\'") + 8:MAIN.index("\'\'\'\nms_page")]), g)      # the faltung manual's sheet (fonts by relative path)
+CSS += f'''
+@page {{ background: {PAGE}; @bottom-right {{ color: {INK}; }} }}
+html, body {{ background: {PAGE}; }}
+body {{ color: {INK}; }}
+h3 {{ border-bottom-color: {INK}; }}
+p.lead {{ color: #a9c9d2; }}
+code {{ background: #262b31; }}
+table.params th {{ border-bottom-color: {INK}; }}
+table.params td {{ border-bottom-color: #343a41; }}
+table.params td.r, table.params td.d {{ color: #aab4b9; }}
+img.shot {{ border-color: #343a41; }}
+.presets span {{ background: {INK}; color: {PAGE}; }}
+.small {{ color: #9aa3a8; }}
+.cover {{ background: {dark_field('#fbfcfc')}; }}
+.cover .sub {{ color: {dark_accent('#2f6f93')}; }} .cover .ver {{ color: #9aa9b1; }}
+.cover .tl {{ background: rgba(21,23,26,.82); }}
+.chip {{ border-color: #6b767c; }}
 '''
 page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>faltung deep manual</title><style>{CSS}</style></head><body>{"".join(doc)}</body></html>'
 open(os.path.join(HERE, 'manual.html'), 'w').write(page)

@@ -9,7 +9,7 @@ ConvoSolution, ObliqSound and ObliqSonic come with the faltung cask and zips (th
 
 **Manuals:** [faltung Manual.pdf](docs/manual/faltung%20Manual.pdf) (ballonwinkel and ballonpaleis included) · [ms0 master Manual.pdf](docs/manual/ms0%20master%20Manual.pdf) · [Partials Manual.pdf](partials/docs/manual/manual.pdf) · [Cloudfin Manual.pdf](cloudfin/docs/manual/Cloudfin%20Manual.pdf) · [convosolution Manual.pdf](convosolution/docs/manual/convosolution%20Manual.pdf) · [obliqsound Manual.pdf](obliqsound/docs/manual/obliqsound%20Manual.pdf) (ObliqSound and ObliqSonic) · [faltung deep Manual.pdf](docs/manual-deep/faltung%20deep%20Manual.pdf) (also in every download).
 
-**Two suites, one repository:** *faltung* (minimal / microhouse, below) and *faltung deep* (deep house, [further down](#faltung-deep)).
+**Two suites, one repository:** *faltung* (minimal / microhouse, below) and *faltung deep* (deep house, drawn as faltung's dark mode, [further down](#faltung-deep)).
 `brew install --cask femifleming/tap/faltung-deep`, or `faltung-deep-macOS.zip`, `faltung-deep-Windows.zip`, `faltung-deep-Linux.tar.gz` from the releases. They install side by side.
 
 Drums and processes for minimal / microhouse, after the 2000–2015 sound of Perlon, [a:rpia:r],
@@ -65,9 +65,12 @@ the bass synth with a chord section (one key plays a minor 9, minor 7, 6/9 … i
 and organ, electric piano, pad, stab and sub presets. Every plug-in is named *faltung deep …* and opens on a
 deep house preset.
 
-The look follows record sleeves of deep house labels: a mirrored tree in one duotone per plug-in that sways
-in a slow wind, sways more as the output gets louder and lights up on every hit, with the controls set like
-the back of a sleeve (Side A / Side B track list, catalogue number, vertical credits). Barlow type.
+**faltung deep is faltung's dark mode.** Every faltung deep plug-in has the layout, the type and the shapes of its
+faltung twin (folded strips, wireframe solids, coloured lines, chevrons and tracklists) on the dark counterpart of
+the twin's colour field: mustard becomes a dark olive, the pale papers go near black with their tint kept, and the
+strips, lines and fills keep their hues a little dimmer. (Up to 1.1.0 it had a look of its own, a mirrored tree on a
+record sleeve. Sounds, parameters, presets, plug-in ids and saved sessions are unchanged.) Before and after:
+[mockup/dark/index.html](mockup/dark/index.html).
 
 Build: `cmake --build build --target faltung_deep_all faltungDeepTest`; `./build/faltungDeepTest_artefacts/Release/faltungDeepTest`.
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Builds the faltung manual: manual.html (A4, the plug-ins' own look) → "faltung Manual.pdf" via Chrome.
 Parameter tables come from params.json (faltungTest --dump-params), pictures from img/ (faltungTest --screenshots)."""
-import html, json, os, subprocess
+import html, json, os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 P = {p['code']: p for p in json.load(open(os.path.join(HERE, 'params.json')))}
-FONTS = os.path.join(ROOT, 'Resources', 'fonts')
+FONTS = '../../Resources/fonts'   # (relative: the html sits in docs/manual)
 VERSION = '1.1.0'
 
 GROUND = {'kt1': '#c9b53b', 'kt2': '#f4f2ec', 'bd1': '#b88a26', 'sd2': '#9cc788', 'rm3': '#8ec3e6', 'hh4': '#8d9bd6', 'cp6': '#a9bccf',
@@ -238,7 +238,19 @@ lines, stdio's chevrons and tracklists. The pictures are not decoration: they ar
 ''.join(f'<tr><td class="n">{c}</td><td>{e(P[c]["name"])}</td><td>{t}</td><td>{e(P[c]["blurb"])}</td></tr>' for c, t in
         [('kt1', 'drum machine'), ('kt2', 'drum machine'), ('bd1', 'module'), ('sd2', 'module'), ('rm3', 'module'), ('hh4', 'module'), ('cp6', 'module'),
          ('pc7', 'module'), ('cl8', 'module'), ('tm9', 'module'), ('mc3', 'effect'), ('dl4', 'effect'), ('rv5', 'effect'), ('sw6', 'effect'),
-         ('fl7', 'effect'), ('gl8', 'effect'), ('wb1', 'synth'), ('ms0', 'mastering')]) + '</table></section>')
+         ('fl7', 'effect'), ('gl8', 'effect'), ('wb1', 'synth'), ('ms0', 'mastering')]) + '''</table>
+<h3>the rest of the bundle</h3>
+<p>Five more plug-ins come with faltung, in the same look, each with its own manual in the download:</p>
+<table class="params"><tr><th>name</th><th>what it is</th><th>manual</th></tr>
+<tr><td class="n">Partials</td><td>additive / subtractive synthesizer with image and sound resynthesis</td><td>Partials Manual.pdf</td></tr>
+<tr><td class="n">Cloudfin</td><td>floating multi-effect: smear, pitch, formant, grains, delay, reverb, compander in any order</td><td>Cloudfin Manual.pdf</td></tr>
+<tr><td class="n">ConvoSolution</td><td>dual true-stereo convolution reverb with three lfos and a modulation matrix</td><td>convosolution Manual.pdf</td></tr>
+<tr><td class="n">ObliqSound</td><td>polyphonic synthesizer and field-recording instrument with a pin matrix and swarm modulation</td><td>obliqsound Manual.pdf</td></tr>
+<tr><td class="n">ObliqSonic</td><td>ObliqSound as a sound source for third-order Ambisonics (16 channels)</td><td>obliqsound Manual.pdf</td></tr></table>
+<h3>faltung deep: the dark mode</h3>
+<p><b>faltung deep</b> is the deep house twin of this suite — the same engines, retuned and re-preset, seventeen plug-ins named
+<i>faltung deep …</i> that install beside these. It is drawn as faltung's dark mode: the same layout, type and shapes on the dark
+counterpart of each plug-in's colour field. Its manual is <i>faltung deep Manual.pdf</i>.</p></section>''')
 
 add('''<section class="page"><h2 id="install">installing</h2>
 <p>Each plug-in comes as VST3, Audio Unit and VST2, plus a standalone app. On this Mac they are already installed:</p>
@@ -712,10 +724,10 @@ anti-aliased (ADAA) saturation, per-engine loudness calibration.</li>
 </section>''')
 
 CSS = f'''
-@font-face {{ font-family: Inter; src: url("file://{FONTS}/Inter-Regular.ttf"); font-weight: 400; }}
-@font-face {{ font-family: Inter; src: url("file://{FONTS}/Inter-Medium.ttf"); font-weight: 600; }}
-@font-face {{ font-family: Plex; src: url("file://{FONTS}/IBMPlexMono-Regular.ttf"); font-weight: 400; }}
-@font-face {{ font-family: Plex; src: url("file://{FONTS}/IBMPlexMono-Medium.ttf"); font-weight: 600; }}
+@font-face {{ font-family: Inter; src: url("{FONTS}/Inter-Regular.ttf"); font-weight: 400; }}
+@font-face {{ font-family: Inter; src: url("{FONTS}/Inter-Medium.ttf"); font-weight: 600; }}
+@font-face {{ font-family: Plex; src: url("{FONTS}/IBMPlexMono-Regular.ttf"); font-weight: 400; }}
+@font-face {{ font-family: Plex; src: url("{FONTS}/IBMPlexMono-Medium.ttf"); font-weight: 600; }}
 @page {{ size: A4; margin: 16mm 15mm 16mm 15mm; @bottom-right {{ content: counter(page); font: 8pt Plex; }} }}
 html {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
 body {{ font: 9.4pt/1.5 Inter, Helvetica, sans-serif; color: #1d1c15; margin: 0; }}
@@ -740,7 +752,7 @@ img.shot.half {{ width: 60%; }}
 .crop.right {{ float: right; margin: 2pt 0 6pt 10pt; }}
 .presets {{ font: 8pt Plex; margin-top: 8pt; }} .presets span {{ background: #1d1c15; color: #fff; padding: 1px 5px; margin-right: 6px; }}
 .small {{ font-size: 8pt; color: #555; }}
-ol.toc {{ font: 10pt Plex; line-height: 1.9; }}
+ol.toc {{ font: 10pt Plex; line-height: 1.9; padding-left: 24pt; }}
 ul, ol {{ padding-left: 14pt; }} li {{ margin: 2pt 0; }}
 .dark {{ background: #2f4a52; padding: 8pt; }} svg.flow {{ width: 100%; }}
 .cover {{ position: relative; height: 262mm; overflow: hidden; background: #fbfcfc; }}
@@ -762,9 +774,12 @@ open(os.path.join(HERE, 'ms0.html'), 'w').write(ms_page)
 page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>faltung manual</title><style>{CSS}</style></head><body>{"".join(doc)}</body></html>'
 open(os.path.join(HERE, 'manual.html'), 'w').write(page)
 chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-pdf = os.path.join(HERE, 'faltung Manual.pdf')
-subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files',
-                f'--print-to-pdf={pdf}', 'file://' + os.path.join(HERE, 'manual.html')], check=True, capture_output=True)
-subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files',
-                f'--print-to-pdf={os.path.join(HERE, "ms0 master Manual.pdf")}', 'file://' + os.path.join(HERE, 'ms0.html')], check=True, capture_output=True)
-print(pdf)
+def to_pdf(html_name, pdf_name):
+    pdf = os.path.join(HERE, pdf_name)
+    if os.path.exists(pdf): os.remove(pdf)
+    subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files',
+                    f'--print-to-pdf={pdf}', 'file://' + os.path.join(HERE, html_name)], capture_output=True)   # chrome may exit non-zero on teardown
+    assert os.path.exists(pdf) and os.path.getsize(pdf) > 100000, 'no pdf written: ' + pdf_name
+    print(pdf)
+to_pdf('manual.html', 'faltung Manual.pdf')
+if '--no-ms0' not in sys.argv: to_pdf('ms0.html', 'ms0 master Manual.pdf')

@@ -202,8 +202,8 @@ P('That puts the plug-ins in their system folders and the apps in <b>/Applicatio
 TABLE([['item', 'where it goes'],
        ['ObliqSound.vst3, ObliqSonic.vst3', 'macOS: ~/Library/Audio/Plug-Ins/VST3/<br/>Windows: C:\\Program Files\\Common Files\\VST3\\<br/>Linux: ~/.vst3/'],
        ['ObliqSound.component, ObliqSonic.component (Audio Units, macOS only)', '~/Library/Audio/Plug-Ins/Components/'],
-       ['ObliqSound.vst (VST2; a .dll on Windows, a .so on Linux)', 'your VST2 folder (macOS: ~/Library/Audio/Plug-Ins/VST/)'],
-       ['desktop apps', 'macOS: ObliqSound.app and ObliqSonic.app in /Applications/faltung/<br/>Windows and Linux: a folder holding the program and its Resources folder; keep the two together, anywhere you like'],
+       ['ObliqSound.vst, ObliqSonic.vst (VST2; a .dll on Windows, a .so on Linux)', 'your VST2 folder (macOS: ~/Library/Audio/Plug-Ins/VST/). On Windows and Linux copy the <b>ObliqSound Resources</b> / <b>ObliqSonic Resources</b> folder with it, into the same folder'],
+       ['desktop apps', 'macOS: ObliqSound.app and ObliqSonic.app in /Applications/<br/>Windows and Linux: a folder holding the program and its <b>ObliqSound Resources</b> (or <b>ObliqSonic Resources</b>) folder; keep the two together, anywhere you like'],
        ['factory presets', 'inside each plug-in'],
        ['your presets', 'presets.json in a folder named after the instrument, in<br/>macOS: ~/Library/Application Support/<br/>Windows: AppData\\Roaming\\<br/>Linux: ~/.config/']],
       [70, 100], lower=())

@@ -6,7 +6,7 @@ import html, os, shutil, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUNDLE = os.path.abspath(os.path.join(HERE, '..', '..', '..'))      # the faltung repository
-FONTS = os.path.join(BUNDLE, 'Resources', 'fonts')
+FONTS = '../../../Resources/fonts'                                     # (relative: the html sits in convosolution/docs/manual)
 VERSION = '1.1.0'
 GROUND, INK, ACCENT = '#6e80c8', '#1d1c15', '#f6c590'                 # the plug-in's field, its ink, the peach of its chips
 e = html.escape
@@ -227,10 +227,10 @@ The ECR+ is a product of Tasty Chips Electronics; convosolution is not affiliate
 ''')
 
 css = f'''
-@font-face {{ font-family: Inter; src: url('file://{FONTS}/Inter-Regular.ttf'); font-weight: 400; }}
-@font-face {{ font-family: Inter; src: url('file://{FONTS}/Inter-Medium.ttf'); font-weight: 600; }}
-@font-face {{ font-family: Plex; src: url('file://{FONTS}/IBMPlexMono-Regular.ttf'); font-weight: 400; }}
-@font-face {{ font-family: Plex; src: url('file://{FONTS}/IBMPlexMono-Medium.ttf'); font-weight: 600; }}
+@font-face {{ font-family: Inter; src: url('{FONTS}/Inter-Regular.ttf'); font-weight: 400; }}
+@font-face {{ font-family: Inter; src: url('{FONTS}/Inter-Medium.ttf'); font-weight: 600; }}
+@font-face {{ font-family: Plex; src: url('{FONTS}/IBMPlexMono-Regular.ttf'); font-weight: 400; }}
+@font-face {{ font-family: Plex; src: url('{FONTS}/IBMPlexMono-Medium.ttf'); font-weight: 600; }}
 @page {{ size: A4; margin: 16mm 16mm 18mm 16mm; }}
 @page :first {{ margin: 0; }}
 html {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
@@ -271,5 +271,6 @@ open(out_html, 'w', encoding='utf-8').write(page)
 pdf = os.path.join(HERE, 'convosolution Manual.pdf')
 chrome = next((c for c in ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', shutil.which('google-chrome'), shutil.which('chromium')) if c and os.path.exists(c)), None)
 if chrome is None: sys.exit('Chrome not found: open manual.html and print it to PDF by hand')
-subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files', f'--print-to-pdf={pdf}', 'file://' + out_html], check=True, capture_output=True)
+subprocess.run([chrome, '--headless=new', '--disable-gpu', '--no-pdf-header-footer', '--allow-file-access-from-files', f'--print-to-pdf={pdf}', 'file://' + out_html], capture_output=True)   # chrome may exit non-zero on teardown
+assert os.path.getsize(pdf) > 100000, 'no pdf written'
 print('wrote', pdf)
