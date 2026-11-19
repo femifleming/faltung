@@ -204,6 +204,15 @@ juce::AudioProcessorEditor* StudioProcessor::createEditor() { return new StudioE
 
 void StudioProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
+    // a host may set parameters and ask for the state before any audio block has run (REAPER does, before a render):
+    // what it set belongs in the state, or a restore would put the old values back for the first block
+    for (auto& br : bridges)
+    {
+        const float hv = br.host->getValue();
+        if (std::abs (hv - br.lastHost) <= 1.0e-6f) continue;
+        Device* d = br.trackSel == -200 ? session.global.get() : (session.trackAt (br.trackSel) ? session.trackAt (br.trackSel)->mixer.get() : nullptr);
+        if (d && std::abs (hv - d->baseValue (br.param)) > 1.0e-6f) d->setBase (br.param, hv);   // (the next block finds it done)
+    }
     auto x = session.save();
     copyXmlToBinary (*x, dest);
 }

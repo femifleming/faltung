@@ -140,6 +140,15 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         for (auto& t : tracks) allOff (*t);
         for (auto& t : tracks) if (mode.load() == (int) PlayMode::Session) { t->pendingPattern.store (t->pattern.load()); t->pendingAt.store (0.0); }
     }
+    // a host that jumps (a render that starts over, a loop, a click on its ruler) without stopping: levels, pans and
+    // sends go straight to their values instead of gliding from where the old place left them
+    if (host && wasPlaying && std::abs (ppq - expectedPpq) > 0.01)
+    {
+        for (auto& t : tracks) t->snapMixer = true;
+        for (auto& r : returns) r->snapMixer = true;
+        master->snapMixer = true;
+    }
+    expectedPpq = ppq + (double) n / sr * (host ? h.bpm : (double) tempo()) / 60.0;
     if (playing && ! wasPlaying)
     {
         // every start begins the same way: the steps' chance, the modulators and the drift start over, so a host that
@@ -148,6 +157,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         {
             t.rng.seed ((uint32_t) (t.uid * 7919 + 13)); t.evoRng.seed ((uint32_t) (t.uid * 104729 + 7));
             t.flip.fill (0); t.drift.fill (0.0f); t.evoPass = -1; t.prevFired = false;
+            t.snapMixer = true;   // levels, pans and sends start where they are set, not on the way there from before the stop
             for (auto& m : t.modState) m = ModState();
         };
         for (auto& t : tracks) fresh (*t);
