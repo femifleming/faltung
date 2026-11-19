@@ -12,10 +12,10 @@ namespace
 
     struct KnobRow { Knob id; const char* name; const char* shiftName; bool bipolar; };
     const KnobRow rows[8] = {
-        { Knob::Width,    "width",    "pitch",       true  },
-        { Knob::Xfade,    "crossfade", "slew",       false },
-        { Knob::Predelay, "predelay", "hpf",         false },
-        { Knob::Pos,      "position", "input level", false },
+        { Knob::Width,    "stereo width", "pitch",       true  },
+        { Knob::Xfade,    "crossfade",    "slew time",   false },
+        { Knob::Predelay, "predelay",     "hpf cutoff",  false },
+        { Knob::Pos,      "position",     "input level", false },
         { Knob::Dry,      "dry",      nullptr,       false },
         { Knob::Wet,      "wet",      nullptr,       false },
         { Knob::Attack,   "attack",   nullptr,       false },
@@ -54,8 +54,19 @@ namespace
             g.setColour (accent.withAlpha (dragging ? 1.0f : 0.92f));
             g.fillPath (fal::ui::skewRect ({ a, cy - h * 0.5f, e - a, h }));
         }
+        if (bipolar) { g.setColour (ink.withAlpha (0.7f)); g.fillRect (t.getCentreX(), cy - 6.5f, 1.0f, 13.0f); }   // the centre mark
         g.setColour (white);
         g.fillRect (t.getX() + t.getWidth() * v - 1.0f, cy - 5.5f, 2.0f, 11.0f);
+    }
+
+    // which convolver is in front: "a" on a white chip, "b" on an accent one (they were two colours on the old page)
+    void abMark (juce::Graphics& g, juce::Rectangle<float> r, int fg, float size = 11.0f)
+    {
+        const juce::Rectangle<float> c (r.getRight() - 16.0f, r.getCentreY() - 6.0f, 13.0f, 12.0f);
+        g.setColour (fg == 0 ? white : accent);
+        g.fillPath (fal::ui::skewRect (c, 0.3f));
+        g.setColour (ink); g.setFont (fal::ui::mono (size, true));
+        g.drawText (fg == 0 ? "a" : "b", c.translated (2.0f, 0.0f), juce::Justification::centred, false);
     }
 
     void text (juce::Graphics& g, const juce::String& t, juce::Rectangle<float> r, const juce::Font& f, juce::Colour c,
@@ -193,6 +204,7 @@ void EcrEditor::drawResponse (juce::Graphics& g, juce::Rectangle<float> plot, in
     g.fillPath (face);
     g.setColour (white);
     g.strokePath (face, juce::PathStrokeType (small < 1.0f ? 1.5f : 2.0f));
+    if (attack > 0.0) g.fillRect (xa - 0.5f, top, 1.0f, bot - top);   // where the response starts, while the attack leans away from it
 }
 
 // pop-ups (stored, read patch..., no recording to store): a skewed chip in the middle
@@ -224,8 +236,8 @@ void EcrEditor::drawScreen (juce::Graphics& g, juce::Rectangle<float> r)
     {
         const auto& list = proc.library.entries();
         const int n = (int) list.size(), sel = juce::jlimit (0, juce::jmax (0, n - 1), proc.ui->chooserIndex());
-        text (g, n > 0 ? list[(size_t) sel].folder.toLowerCase() : juce::String ("no responses"), { x0, r.getY() + 3.0f, w - 20.0f, 16.0f }, mono (11.0f, true), ink);
-        text (g, ab, { x0, r.getY() + 3.0f, w, 16.0f }, mono (11.0f, true), white, juce::Justification::centredRight);
+        text (g, "index of /" + (n > 0 ? list[(size_t) sel].folder.toLowerCase() : juce::String()), { x0, r.getY() + 3.0f, w - 20.0f, 16.0f }, mono (11.0f, true), ink);
+        abMark (g, { x0, r.getY() + 3.0f, w, 16.0f }, fg);
         rule (g, x0, r.getY() + 22.0f, w);
         const int visible = 10, first = juce::jlimit (0, juce::jmax (0, n - visible), sel - 4);
         for (int i = 0; i < visible && first + i < n; ++i)
@@ -236,7 +248,7 @@ void EcrEditor::drawScreen (juce::Graphics& g, juce::Rectangle<float> r)
             const bool here = first + i == sel;
             if (here) chip (g, { x0, y + 1.0f, w - 8.0f, 18.0f }, accent);
             if (e.hasPatch) chip (g, { x0 + 4.0f, y + 7.0f, 8.0f, 6.0f }, here ? ink : accent, 0.55f);   // a patch is saved with it
-            text (g, name, { x0 + 18.0f, y, w - 24.0f, 20.0f }, mono (11.0f, here), ink);
+            text (g, name, { x0 + 18.0f, y, w - 24.0f, 20.0f }, mono (11.0f, here || e.hasPatch), ink);   // (medium: a patch is saved with it)
         }
         rule (g, x0, r.getBottom() - 20.0f, w);
         text (g, juce::String (sel + 1) + " of " + juce::String (n) + (first + visible < n ? U(" \xc2\xb7 more below") : juce::String()),
@@ -264,7 +276,7 @@ void EcrEditor::drawScreen (juce::Graphics& g, juce::Rectangle<float> r)
     {
         auto src = proc.responseSource (fg);
         text (g, proc.ui->currentMessage().toLowerCase(), { x0, r.getY() + 3.0f, w - 60.0f, 16.0f }, mono (11.0f, true), ink);
-        text (g, ab, { x0, r.getY() + 3.0f, w, 16.0f }, mono (11.0f, true), white, juce::Justification::centredRight);
+        abMark (g, { x0, r.getY() + 3.0f, w, 16.0f }, fg);
         if (proc.clipping.load())
         {
             // the wet sum is being held back
@@ -365,16 +377,30 @@ void EcrEditor::drawPage (juce::Graphics& g)
         for (int l = 0; l < kNumLfos; ++l)
             drawLfoFigure (g, { img.getX() + (float) (l % 2) * half, img.getY() + (float) (l / 2) * half, half, half }, l);
         const juce::Rectangle<float> thumb (img.getX() + half, img.getY() + half, half, half);
+        // the display, small: its message line (the value of whatever is being touched), a / b, clip, the response,
+        // "recording" and the response's name or "loading..."
         auto src = proc.responseSource (fg);
-        text (g, ab + U (" \xc2\xb7 ") + (src != nullptr ? src->name.upToLastOccurrenceOf (".", false, false).toLowerCase() : juce::String ("no response")),
-              { thumb.getX() + 4.0f, thumb.getY() + 2.0f, thumb.getWidth() - 8.0f, 12.0f }, mono (10.0f), ink);
-        drawResponse (g, thumb.reduced (6.0f).withTrimmedTop (14.0f).withTrimmedBottom (8.0f), fg);
+        const float tx0 = thumb.getX() + 4.0f, tw0 = thumb.getWidth() - 8.0f;
+        text (g, proc.ui->currentMessage().toLowerCase(), { tx0, thumb.getY() + 2.0f, tw0 - (proc.clipping.load() ? 44.0f : 18.0f), 12.0f }, mono (10.0f, true), ink);
+        abMark (g, { tx0, thumb.getY() + 2.0f, tw0, 12.0f }, fg, 9.5f);
+        if (proc.clipping.load())
+        {
+            const juce::Rectangle<float> c (thumb.getRight() - 48.0f, thumb.getY() + 3.0f, 24.0f, 10.0f);
+            chip (g, c, white);
+            text (g, "clip", c, mono (8.5f, true), ink, juce::Justification::centred, false);
+        }
+        const auto tplot = thumb.reduced (6.0f).withTrimmedTop (14.0f).withTrimmedBottom (14.0f);
+        drawResponse (g, tplot, fg);
+        if (proc.isRecording() && (juce::Time::getMillisecondCounter() / 400) % 2 == 0)
+            text (g, "recording", tplot, mono (11.0f, true), white, juce::Justification::centred, false);
+        text (g, proc.isLoading (fg) ? juce::String ("loading...") : (src != nullptr ? src->name.toLowerCase() : juce::String ("no response")),
+              { tx0, thumb.getBottom() - 14.0f, tw0, 12.0f }, mono (9.5f), ink);
         drawPopup (g, img);
     }
     else
         drawScreen (g, img);
     hits.push_back ({ img, { Hit::Screen } });
-    text (g, figures ? U ("the lfos at work \xc2\xb7 the response: drag to browse") : U ("drag: browse \xc2\xb7 click: a / b \xc2\xb7 hold: read the patch"),
+    text (g, figures ? U ("the lfos at work \xc2\xb7 the response: drag to browse") : U ("drag or scroll \xc2\xb7 click: a / b \xc2\xb7 hold: patch"),
           { 12.0f, 310.0f, 262.0f, 14.0f }, mono (10.0f), ink.withAlpha (0.7f), juce::Justification::centredLeft, false);
 
     // links: the four buttons, the select encoder, the folder
@@ -435,6 +461,11 @@ void EcrEditor::drawPage (juce::Graphics& g)
             const juce::Rectangle<float> shapeBox (tx + 36.0f, y, 64.0f, rh);
             text (g, juce::String (lfoShapeName (shape)).toLowerCase(), shapeBox.withTrimmedLeft (2.0f), mono (11.0f, true), ink);
             rule (g, shapeBox.getX() + 2.0f, shapeBox.getBottom() - 3.0f, shapeBox.getWidth() - 8.0f);
+            {   // (a list opens here)
+                const float ax = shapeBox.getRight() - 12.0f, ay = shapeBox.getCentreY() - 1.0f;
+                juce::Path tri; tri.addTriangle (ax - 3.0f, ay - 2.0f, ax + 3.0f, ay - 2.0f, ax, ay + 2.5f);
+                g.setColour (ink.withAlpha (0.8f)); g.fillPath (tri);
+            }
             hits.push_back ({ shapeBox, { Hit::LfoShape, l } });
 
             const juce::Rectangle<float> track (tx + 106.0f, y, 76.0f, rh);
@@ -474,9 +505,15 @@ void EcrEditor::drawPage (juce::Graphics& g)
                     g.setColour (v > 0 ? accent : accent.darker (0.5f));
                     g.fillRect (r.getX() - 4.0f, v > 0 ? r.getCentreY() - len : r.getCentreY(), r.getWidth() + skewD + 8.0f, len);
                 }
+                else
+                {
+                    g.setColour (ink.withAlpha (0.45f));   // nothing routed here
+                    g.fillRect (r.getCentreX() + skewD * 0.5f - 2.5f, r.getCentreY(), 5.0f, 1.0f);
+                }
                 g.setColour (ink.withAlpha (0.35f));
                 g.strokePath (cell, juce::PathStrokeType (1.0f));
-                hits.push_back ({ r, { Hit::Cell, l, d } });
+                Target ct { Hit::Cell, l, d }; ct.skew = skewD;
+                hits.push_back ({ r, ct });
             }
         }
         text (g, U ("drag a cell up or down \xc2\xb7 double-click to clear"), { tx, my + hh + mh * 3.0f + 6.0f, tw, 14.0f }, mono (10.0f), ink.withAlpha (0.7f), juce::Justification::centredLeft, false);
@@ -507,7 +544,11 @@ void EcrEditor::paint (juce::Graphics& g)
 EcrEditor::Target EcrEditor::hitTest (juce::Point<float> p) const
 {
     for (auto it = hits.rbegin(); it != hits.rend(); ++it)
-        if (it->first.contains (p)) return it->second;
+    {
+        // a skewed chip leans to the right toward its top edge: test the point in the chip's own slanted frame
+        const float lean = it->second.skew > 0.0f ? it->second.skew * (1.0f - juce::jlimit (0.0f, 1.0f, (p.y - it->first.getY()) / it->first.getHeight())) : 0.0f;
+        if (it->first.contains (p.x - lean, p.y)) return it->second;
+    }
     return {};
 }
 

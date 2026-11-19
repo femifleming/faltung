@@ -31,7 +31,7 @@ public:
 
 private:
     enum class Hit { None, Knob, Screen, Button, Prev, Next, Push, Folder, Tab, LfoShape, LfoRate, Cell };
-    struct Target { Hit type = Hit::None; int index = 0, sub = 0; float width = 100.0f; };
+    struct Target { Hit type = Hit::None; int index = 0, sub = 0; float width = 100.0f; float skew = 0.0f; /* top edge leans this far right */ };
 
     void timerCallback() override;
     Target hitTest (juce::Point<float> pagePos) const;

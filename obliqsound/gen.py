@@ -742,7 +742,7 @@ if SONIC:
 # ---- Ge'ez (Ethiopic) numerals for the sampler squares and the LCD readout, drawn as 2x art
 from PIL import ImageFont
 ETH_FONT = ImageFont.truetype('/System/Library/Fonts/Supplemental/KefaIII.ttf', 24)
-LAT_FONT = ImageFont.truetype(ROOT + 'src/Tahoma Bold.ttf', 20)
+LAT_FONT = ImageFont.truetype('/System/Library/Fonts/Supplemental/Tahoma Bold.ttf', 20)   # (the system's copy; the font is not kept in the repository)
 ETH_FILES = []
 for k_ in range(1, len(names) + 1):
     t_ = ethiopic(k_)

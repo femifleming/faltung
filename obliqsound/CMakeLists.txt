@@ -121,6 +121,7 @@ function(obliq_resources NAME)
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/samples" "${R}/samples"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/plugin/Resources/${NAME}/layout.json"
                                          "${CMAKE_CURRENT_SOURCE_DIR}/plugin/Resources/${NAME}/presets.json"
+                                         "${CMAKE_CURRENT_SOURCE_DIR}/plugin/Resources/geez.png"
                                          "${CMAKE_CURRENT_SOURCE_DIR}/docs/manual/obliqsound Manual.pdf" "${R}/"
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OblqUGens> ${STOCK_FILES} "${R}/plugins/"
         COMMENT "${NAME}: staging the run-time resources"
@@ -128,13 +129,14 @@ function(obliq_resources NAME)
     add_dependencies(${NAME}Resources OblqUGens ${STOCK_TARGETS})
 endfunction()
 # copies the staged resources into a built target. Bundles (every macOS format, every VST3) keep them in
-# Contents/Resources; a bare program or library (Windows / Linux apps, LV2, VST2) in a Resources folder beside it.
+# Contents/Resources; a bare program or library (Windows / Linux apps, LV2, VST2) in a "<Name> Resources" folder
+# beside it (named after the product, so both VST2s can sit in one plug-in folder).
 function(obliq_give_resources T NAME IS_BUNDLE)
     set(R ${CMAKE_CURRENT_BINARY_DIR}/res/${NAME})
     if(IS_BUNDLE)
         set(DEST "$<TARGET_FILE_DIR:${T}>/../Resources")
     else()
-        set(DEST "$<TARGET_FILE_DIR:${T}>/Resources")
+        set(DEST "$<TARGET_FILE_DIR:${T}>/${NAME} Resources")
     endif()
     add_custom_command(TARGET ${T} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${R}" "${DEST}"

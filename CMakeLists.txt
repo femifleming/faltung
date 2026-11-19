@@ -200,3 +200,21 @@ if(FALTUNG_BUILD_TESTS)
         target_link_libraries(faltungDeepTest PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
     endif()
 endif()
+
+# Windows gives a program's main thread 1 MB of stack (macOS / Linux: 8 MB). The tests keep whole processors as
+# locals of main(), which grew past it in 1.1.0: every test program gets the same 8 MB everywhere.
+if(MSVC)
+    foreach(T faltungTest faltungDeepTest faltungHostCheck PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
+              ObliqSoundTest ObliqSonicTest obliq_smoke)
+        if(TARGET ${T})
+            target_link_options(${T} PRIVATE /STACK:8388608)
+        endif()
+    endforeach()
+elseif(MINGW)
+    foreach(T faltungTest faltungDeepTest faltungHostCheck PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
+              ObliqSoundTest ObliqSonicTest obliq_smoke)
+        if(TARGET ${T})
+            target_link_options(${T} PRIVATE -Wl,--stack,8388608)
+        endif()
+    endforeach()
+endif()

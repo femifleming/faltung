@@ -76,6 +76,8 @@ private:
     int page = 0, pending = -1, tickCount = 0, fade = 0;
     enum { kFade = 5 };
     juce::Image layerMain, layerPage; int layerChange = -1, layerPageNo = -1; float layerScale = 0;
+    juce::Image geezSheet;                         // the 26 Ge'ez numerals of the sampler squares, as masks (Resources/geez.png)
+    bool drawGeez (juce::Graphics&, int n, float cx, float cy, float h) const;
 
     // interaction
     int dragItem = -1, hoverItem = -1; float dragStart = 0; juce::Point<float> dragPos, mousePos;

@@ -173,13 +173,16 @@ bool ScEngine::sync (int timeoutMs)
 {
     const int before = doneCount.load();
     send (OscMsg ("/sync").i (1));
-    for (int waited = 0; waited < timeoutMs; waited += 2)
+    // by the clock: on a busy machine (a session opening, a build running) the helper thread can take seconds
+    // to get its turn, and giving up early leaves the instrument without its SynthDefs or recordings
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds (timeoutMs);
+    for (;;)
     {
         pump (1);                                                    // let the engine hand work to its helper thread
         if (doneCount.load() != before) return true;
+        if (std::chrono::steady_clock::now() >= until) return false;
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
     }
-    return false;
 }
 
 bool ScEngine::loadDefs (const std::string& dir)

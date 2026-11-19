@@ -23,7 +23,7 @@ folded pastel strips, Oval's coloured lines, stdio's pale chevrons and tracklist
 drawn from the parameters and move as you change them.
 
 Formats: VST3, AU, VST2 and standalone on macOS; VST3, VST2 and standalone on Windows; VST3, LV2, VST2
-and standalone on Linux. (ObliqSound and ObliqSonic on Windows and Linux keep a `Resources` folder beside the program and the VST2: move them together.)
+and standalone on Linux. (ObliqSound and ObliqSonic on Windows and Linux keep an `ObliqSound Resources` / `ObliqSonic Resources` folder beside the program and the VST2: move them together.)
 
 ## The plug-ins
 

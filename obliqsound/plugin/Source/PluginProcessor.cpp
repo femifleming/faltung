@@ -22,11 +22,16 @@ namespace
 juce::File ObliqProcessor::resourceDir()
 {
     // macOS bundles and every VST3: <bundle>/Contents/<binary folder>/<binary>, resources in Contents/Resources.
-    // The Windows and Linux desktop apps: a Resources folder beside the program.
+    // The Windows and Linux desktop apps, LV2 and VST2: a resources folder beside the program.
     const auto exe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
     const auto inBundle = exe.getParentDirectory().getParentDirectory().getChildFile ("Resources");
+    // A bare VST2 (.dll / .so) shares its folder with other plug-ins, so its resources carry the product's name:
+    // "ObliqSound Resources" beside the binary (a plain "Resources" folder, as before 2.3, is still found).
+    const auto named = exe.getParentDirectory().getChildFile (JucePlugin_Name " Resources");
     const auto beside = exe.getParentDirectory().getChildFile ("Resources");
-    return (! inBundle.getChildFile ("layout.json").existsAsFile() && beside.getChildFile ("layout.json").existsAsFile()) ? beside : inBundle;
+    if (inBundle.getChildFile ("layout.json").existsAsFile()) return inBundle;
+    if (named.getChildFile ("layout.json").existsAsFile()) return named;
+    return beside.getChildFile ("layout.json").existsAsFile() ? beside : inBundle;
 }
 
 ObliqProcessor::ObliqProcessor()

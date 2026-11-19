@@ -27,8 +27,8 @@ and a standalone app, for macOS, Windows and Linux.
 
 convosolution comes with the faltung bundle: `brew install --cask femifleming/tap/faltung`,
 or `faltung-macOS.zip` / `faltung-Windows.zip` / `faltung-Linux.tar.gz` from the
-[faltung releases page](https://github.com/femifleming/faltung/releases), with
-`INSTALL.txt` inside. `ConvoSolution-IRs.zip` on the same page is the full
+[faltung releases page](https://github.com/femifleming/faltung/releases).
+`ConvoSolution-IRs.zip` on the same page is the full
 response library (140 spaces); eight are built into the plug-in.
 
 ## Using it

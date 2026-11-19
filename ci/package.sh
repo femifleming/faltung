@@ -31,14 +31,14 @@ product() {   # product <folder name> <target> <file name>
         Windows)
             cp "$A/Standalone/$file.exe" "$P/"
             [ -f "$A/VST/$file.dll" ] && cp "$A/VST/$file.dll" "$P/" || true
-            # ObliqSound / ObliqSonic: the program and the VST2 read a Resources folder beside them
-            [ -d "$A/Standalone/Resources" ] && cp -R "$A/Standalone/Resources" "$P/" || true ;;
+            # ObliqSound / ObliqSonic: the program and the VST2 read an "<Name> Resources" folder beside them
+            [ -d "$A/Standalone/$file Resources" ] && cp -R "$A/Standalone/$file Resources" "$P/" || true ;;
         Linux)
             cp "$A/Standalone/$file" "$P/"
             [ -d "$A/LV2/$file.lv2" ] && cp -R "$A/LV2/$file.lv2" "$P/" || true
             [ -f "$A/VST/lib$file.so" ] && cp "$A/VST/lib$file.so" "$P/$file.so" || true
             [ -f "$A/VST/$file.so" ] && cp "$A/VST/$file.so" "$P/" || true
-            [ -d "$A/Standalone/Resources" ] && cp -R "$A/Standalone/Resources" "$P/" || true ;;
+            [ -d "$A/Standalone/$file Resources" ] && cp -R "$A/Standalone/$file Resources" "$P/" || true ;;
     esac
     return 0   # optional formats above may be missing; that is not a failure
 }

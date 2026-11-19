@@ -14,7 +14,7 @@ Part of the <a href="https://github.com/femifleming/faltung">faltung</a> bundle:
 
 ## Part of faltung
 
-ObliqSound and ObliqSonic live in this folder of the faltung repository and ship with the bundle: `brew install --cask femifleming/tap/faltung` on a Mac (the apps land in `/Applications/faltung`), or `faltung-macOS.zip`, `faltung-Windows.zip` and `faltung-Linux.tar.gz` from the [faltung releases](https://github.com/femifleming/faltung/releases), which hold an `ObliqSound/` and an `ObliqSonic/` folder with the app, the AU, the VST3 and the VST2. The old stand-alone obliqsound casks and zips are gone. On Windows and Linux the apps keep a `Resources` folder beside the program: keep the two together.
+ObliqSound and ObliqSonic live in this folder of the faltung repository and ship with the bundle: `brew install --cask femifleming/tap/faltung` on a Mac (the apps land in `/Applications`), or `faltung-macOS.zip`, `faltung-Windows.zip` and `faltung-Linux.tar.gz` from the [faltung releases](https://github.com/femifleming/faltung/releases), which hold an `ObliqSound/` and an `ObliqSonic/` folder with the app, the AU, the VST3 and the VST2. The old stand-alone obliqsound casks and zips are gone. On Windows and Linux the apps and the VST2s keep an `ObliqSound Resources` / `ObliqSonic Resources` folder beside them: keep the two together.
 
 ## What they are
 

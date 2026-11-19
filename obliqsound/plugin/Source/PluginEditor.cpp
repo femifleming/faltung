@@ -59,6 +59,8 @@ ObliqPanel::ObliqPanel (ObliqProcessor& p) : proc (p), params (p.params)
    #endif
     ink = fal::ui::inkFor (ground); edge = fal::ui::edgeFor (ground);
     build();
+    geezSheet = juce::ImageFileFormat::loadFrom (ObliqProcessor::resourceDir().getChildFile ("geez.png"));
+    if (geezSheet.isValid() && (geezSheet.getWidth() != 64 || geezSheet.getHeight() != 24 * 26)) geezSheet = {};
     setOpaque (true);
     setWantsKeyboardFocus (true);
     lfoH[0].assign (256, 0.0f); lfoH[1].assign (256, 0.0f);
@@ -180,6 +182,7 @@ Rectangle<float> ObliqPanel::tabFace (int i) const { return items[(size_t) tabIt
 bool ObliqPanel::covered (int i) const
 {
     const auto& it = items[(size_t) i];
+    if (page < 0 || page >= (int) pageBoard.size()) return false;
     return it.page < 0 && pageBoard[(size_t) page] && i < pageStart[(size_t) page] && pageBounds[(size_t) page].intersects (it.r);
 }
 
@@ -253,6 +256,16 @@ void ObliqPanel::drawVSlider (juce::Graphics& g, Rectangle<float> r, int param, 
     g.fillRect (cx - 5.5f, bot - th * n - 1.0f, 11.0f, 2.0f);
 }
 
+// one Ge'ez numeral (1..26) from the strip of masks, in the current colour, h high and centred on (cx, cy)
+bool ObliqPanel::drawGeez (juce::Graphics& g, int n, float cx, float cy, float h) const
+{
+    if (! geezSheet.isValid() || n < 1 || n > 26) return false;
+    const float w = h * 64.0f / 24.0f;
+    g.drawImage (geezSheet, juce::roundToInt (cx - w * 0.5f), juce::roundToInt (cy - h * 0.5f), juce::roundToInt (w), juce::roundToInt (h),
+                 0, 24 * (n - 1), 64, 24, true);
+    return true;
+}
+
 void ObliqPanel::drawPin (juce::Graphics& g, Rectangle<float> r, float amount)
 {
     const Rectangle<float> c (r.getX() + 1.5f, r.getY() + 1.0f, r.getWidth() - 3.0f, r.getHeight() - 2.0f);
@@ -260,7 +273,8 @@ void ObliqPanel::drawPin (juce::Graphics& g, Rectangle<float> r, float amount)
     if (std::abs (amount) >= 0.005f)
     {   // the filled part of the chip: up from the centre for a positive pin, down for an inverted one
         const float cy = c.getCentreY(), half = c.getHeight() * 0.5f;
-        const float ya = amount > 0 ? cy - half * amount : cy, yb = amount > 0 ? cy : cy + half * -amount;
+        const float len = std::max (2.0f, half * std::abs (amount));          // (a small amount still shows as a band)
+        const float ya = amount > 0 ? cy - len : cy, yb = amount > 0 ? cy : cy + len;
         auto off = [&] (float y) { return (c.getBottom() - y) / c.getHeight() * d; };
         juce::Path p;
         p.startNewSubPath (c.getX() + off (yb), yb); p.lineTo (c.getRight() + off (yb), yb);
@@ -293,22 +307,33 @@ void ObliqPanel::drawItem (juce::Graphics& g, const Item& it)
                 g.setColour (ink); g.strokePath (p, juce::PathStrokeType (1.0f));
             }
             else if (it.dyn == dSampLabel)
-            {   // the Ge'ez number of a sampler square (from a system font with Ethiopic glyphs; a plain number without one)
-                static const bool haveGeez = mono (11.0f).findSuitableFontForText (geez (10)).getTypefaceName() != mono (11.0f).getTypefaceName();
+            {   // the Ge'ez number of a sampler square: the instrument's own numeral art (geez.png), the same on every system
                 g.setColour (ink.withAlpha (v.sampler.load() == it.dynIndex ? 1.0f : 0.55f));
-                g.setFont (mono (haveGeez ? 11.0f : 9.0f));
-                g.drawText (haveGeez ? geez (it.dynIndex) : String (it.dynIndex), r.expanded (4.0f, 2.0f), juce::Justification::centred, false);
+                if (! drawGeez (g, it.dynIndex, r.getCentreX(), r.getCentreY(), 12.0f))
+                {   // (without the art: a system font with Ethiopic glyphs, or a plain number)
+                    static const bool haveGeez = mono (11.0f).findSuitableFontForText (geez (10)).getTypefaceName() != mono (11.0f).getTypefaceName();
+                    g.setFont (mono (haveGeez ? 11.0f : 9.0f));
+                    g.drawText (haveGeez ? geez (it.dynIndex) : String (it.dynIndex), r.expanded (4.0f, 2.0f), juce::Justification::centred, false);
+                }
             }
             else if (it.dyn == dLcd)
             {   // the sampler display: a chip with the chosen square
+                // it reads as the old display did, "obliqsound : <numeral>", with the plain number after it
                 const int n = juce::jlimit (1, 26, v.sampler.load());
-                static const bool haveGeez = mono (10.0f, true).findSuitableFontForText (geez (10)).getTypefaceName() != mono (10.0f, true).getTypefaceName();
-                const String t = haveGeez ? "sampler " + geez (n) + fal::ui::U ("  \xc2\xb7  ") + String (n) : "sampler " + String (n);
                 const auto font = mono (10.0f, true);
-                const float w = juce::GlyphArrangement::getStringWidth (font, t) + 18.0f;
+                const String a = lower (JucePlugin_Name) + " : ", b = fal::ui::U ("  \xc2\xb7  ") + String (n);
+                const float wa = juce::GlyphArrangement::getStringWidth (font, a), wb = juce::GlyphArrangement::getStringWidth (font, b);
+                const float gw = geezSheet.isValid() ? 30.0f : juce::GlyphArrangement::getStringWidth (font, geez (n));
+                const float w = wa + gw + wb + 18.0f;
                 const Rectangle<float> box (r.getCentreX() - w * 0.5f, r.getCentreY() - 7.0f, w, 14.0f);
                 g.setColour (accent); g.fillPath (skewRect (box, 0.35f));
-                g.setColour (ground); g.setFont (font); g.drawText (t, box, juce::Justification::centred, false);
+                g.setColour (ground); g.setFont (font);
+                float x = box.getX() + 9.0f + 2.0f;
+                g.drawText (a, Rectangle<float> (x, box.getY(), wa + 2.0f, box.getHeight()), juce::Justification::centredLeft, false); x += wa;
+                if (! drawGeez (g, n, x + gw * 0.5f, box.getCentreY(), 11.0f))
+                    g.drawText (geez (n), Rectangle<float> (x, box.getY(), gw + 2.0f, box.getHeight()), juce::Justification::centredLeft, false);
+                x += gw;
+                g.setColour (ground); g.drawText (b, Rectangle<float> (x, box.getY(), wb + 2.0f, box.getHeight()), juce::Justification::centredLeft, false);
             }
             else if (it.dyn == dSpec)
             {   // the spectrum strip over PARTIALS: a quiet arc of small frames
@@ -339,8 +364,8 @@ void ObliqPanel::drawItem (juce::Graphics& g, const Item& it)
                 g.setColour (on ? ink : ink.withAlpha (0.45f)); g.strokePath (p, juce::PathStrokeType (1.0f));
             }
             else
-            {   // the toggle: a small parallelogram, filled when on
-                auto p = skewRect ({ r.getCentreX() - 9.0f, r.getCentreY() - 5.0f, 18.0f, 10.0f });
+            {   // the toggle: a small parallelogram, filled when on (16 wide with its lean: rows of them sit 20 apart)
+                auto p = skewRect ({ r.getCentreX() - 8.0f, r.getCentreY() - 4.5f, 11.0f, 9.0f });
                 if (on) { g.setColour (accent); g.fillPath (p); }
                 g.setColour (ink); g.strokePath (p, juce::PathStrokeType (1.0f));
             }
@@ -432,7 +457,7 @@ void ObliqPanel::drawStatic (juce::Graphics& g, bool pageItems)
         if (pageItems != (it.page >= 0)) continue;
         if (it.page >= 0 && it.page != page) continue;
         if (! pageItems && covered ((int) n)) continue;
-        if (it.type == Scope || it.tab || ! it.visible) continue;
+        if (it.type == Scope || it.tab || (! it.visible && it.dyn != dWave)) continue;   // (the WAVE knob chooses which waveform picture shows)
         if (it.dyn == dL1 || it.dyn == dL2 || it.dyn == dFol || it.dyn == dOut || it.dyn == dVLed || it.dyn == dSubLed || it.dyn == dBoid || it.dyn == dLz
             || it.dyn == dSpd || it.dyn == dRadar || it.dyn == dLesA || it.dyn == dLesB || it.dyn == dSpMode) continue;      // drawn every frame
         drawItem (g, it);
@@ -587,7 +612,7 @@ void ObliqPanel::paint (juce::Graphics& g)
     g.setColour (ink.withAlpha (0.8f)); g.setFont (mono (10.0f));
     g.drawText (OBLIQ_SONIC ? "third-order ambisonics" : fal::ui::U ("polyphonic synth \xc2\xb7 field recordings"), Rectangle<float> (300.0f, 30.0f, 360.0f, 12.0f), juce::Justification::centred, false);
     g.setFont (mono (9.0f)); g.drawText ("faltung", Rectangle<float> (858.0f, 36.0f, 62.0f, 10.0f), juce::Justification::centredRight, false);
-    if (! pageBoard[(size_t) page]) { g.setColour (ink.withAlpha (0.25f)); g.fillRect (30.0f, 394.0f, 900.0f, 1.0f); }
+    if (page >= 0 && page < (int) pageBoard.size() && ! pageBoard[(size_t) page]) { g.setColour (ink.withAlpha (0.25f)); g.fillRect (30.0f, 394.0f, 900.0f, 1.0f); }
 
     // the controls are cached at device resolution and only redrawn when something changes
     const float ps = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
@@ -624,7 +649,10 @@ int ObliqPanel::hit (juce::Point<float> p) const
         if (it.type == Image || it.type == Label || it.type == Scope) continue;
         if (it.page >= 0 && it.page != page) continue;
         if (covered (i)) continue;                 // controls under a page's board can't be reached
-        if (it.r.toFloat().contains (p)) return i;
+        auto area = it.r.toFloat();
+        if (it.type == Check && ! it.sampler && ! it.tab)                    // the drawn chip is wider than the old light: all of it takes the click
+            area = area.withSizeKeepingCentre (std::max (area.getWidth(), 17.0f), std::max (area.getHeight(), 11.0f));
+        if (area.contains (p)) return i;
     }
     return -1;
 }

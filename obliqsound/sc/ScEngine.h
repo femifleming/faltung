@@ -73,6 +73,6 @@ private:
     int blockPos = 64;                           // read position in the current block (64 = empty)
     std::atomic<int> doneCount { 0 };
     std::atomic<int> failCount { 0 };
-    bool sync (int timeoutMs = 5000);            // wait until every queued asynchronous command is done
+    bool sync (int timeoutMs = 30000);           // wait (by the clock) until every queued asynchronous command is done
     static void replyFunc (struct ReplyAddress*, char* msg, int size);
 };

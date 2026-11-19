@@ -1,8 +1,8 @@
 # App icon: one Septambres Neau glyph (from ~/Library/Fonts), one colour on one colour.
 #   python3 scripts/mkicon.py "ObliqSound" obliqsound/app/icon.png   (every product of the house: faltung, Partials, Cloudfin, ConvoSolution, ObliqSound ...)
-import sys, json
+import os, sys, json
 from PIL import Image, ImageDraw, ImageFont
-FONT = "/Users/femishonugafleming/Library/Fonts/Septambres Neau.ttf"
+FONT = os.path.expanduser("~/Library/Fonts/Septambres Neau.ttf")
 S = 1024
 ICONS = {  # product: (glyph, letter colour, background)
  "Chloaelis":            ("C", "#d8f3ea", "#0f3d3a"),
