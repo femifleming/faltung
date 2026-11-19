@@ -2125,14 +2125,22 @@ int main (int argc, char** argv)
             const auto folder = tmp.getChildFile ("plug-ins"); folder.createDirectory();
             for (auto& f : { quell, convo, ms0, fm }) if (f.exists()) f.createSymbolicLink (folder.getChildFile (f.getFileName()), true);
             quell.copyDirectoryTo (folder.getChildFile ("crash me.vst3"));   // (a copy: a link would be followed to Quell itself)
+           #if JUCE_WINDOWS
+            _putenv_s ("SNDSTUDIO_SCAN_CRASH_ON", "crash me");
+           #else
             setenv ("SNDSTUDIO_SCAN_CRASH_ON", "crash me", 1);
+           #endif
             Session::scannerExecutable() = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
             StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
             s.knownOverride = tmp.getChildFile ("known plug-ins.xml"); s.known.clear(); s.known.clearBlacklistedFiles();
             const juce::FileSearchPath path (folder.getFullPathName());
             int files = 0;
             const int failed = s.scanPlugins (&path, [&] (const juce::String&) { ++files; return true; });
+           #if JUCE_WINDOWS
+            _putenv_s ("SNDSTUDIO_SCAN_CRASH_ON", "");
+           #else
             unsetenv ("SNDSTUDIO_SCAN_CRASH_ON");
+           #endif
             juce::StringArray names; for (auto& d : s.known.getTypes()) names.add (d.name + (d.isInstrument ? " (instrument)" : ""));
             std::cout << "  scanned " << files << " files in child processes: " << names.joinIntoString (", ") << "; blacklisted: " << s.blacklisted().joinIntoString (", ") << "\n";
             check (failed == 1 && s.blacklisted().size() == 1 && s.blacklisted()[0].contains ("crash me"), "the plug-in that crashed its scan is blacklisted, the studio carried on");
