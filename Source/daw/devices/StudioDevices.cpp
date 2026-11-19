@@ -487,14 +487,16 @@ public:
             renderTo (std::min (n, m.samplePosition));
             if (msg.isNoteOn()) { ToneVoice* free = nullptr; for (auto& v : voices) if (! v.on) { free = &v; break; } if (! free) free = &voices[0]; free->start (msg.getNoteNumber(), msg.getFloatVelocity(), p, (float) sr);
                 if (p.keytrack && Pi (TUNING) > 0) free->hz = tuned (msg.getNoteNumber(), Pi (TUNING));
+                if (p.keytrack && std::abs (bendSemis) > 1.0e-6f) free->hz *= std::exp2 (bendSemis / 12.0f);   // (the pitch lane's degrees between the keys)
                 ph2[(size_t) (free - voices.data())] = 0.0; }
             else if (msg.isNoteOff()) { for (auto& v : voices) if (v.on && v.note == msg.getNoteNumber()) v.release(); }
+            else if (msg.isPitchWheel()) bendSemis = (float) (msg.getPitchWheelValue() - 8192) / 8192.0f * 2.0f;
             else if (msg.isAllNotesOff() || msg.isAllSoundOff()) for (auto& v : voices) v.on = false;
         }
         renderTo (n);
         midi.clear();
     }
-    std::array<ToneVoice, 8> voices;
+    std::array<ToneVoice, 8> voices; float bendSemis = 0.0f;
 };
 
 // ---- data burst generator (instrument) -------------------------------------------------------------------
@@ -705,11 +707,12 @@ public:
                 v.fL.set (cutoff, 0.5f + res * 6.0f, (float) sr); v.fR.set (cutoff, 0.5f + res * 6.0f, (float) sr); v.fL.reset(); v.fR.reset();
                 const double fileRate = s->rate / sr;
                 if (mode == 2) { int from, to; sliceBounds (v.note - 36, from, to); v.start = from; v.end = std::max (from + 16, to); v.rate = fileRate * std::exp2 (pitch / 12.0); }
-                else { v.start = s0; v.end = s1; v.rate = fileRate * std::exp2 ((pitch + (v.note - root)) / 12.0); }
+                else { v.start = s0; v.end = s1; v.rate = fileRate * std::exp2 ((pitch + bendSemis + (v.note - root)) / 12.0); }
                 v.rev = rev; v.pos = v.start;
                 for (auto& o : voices) ++o.age;
             }
             else if (msg.isNoteOff()) { for (auto& v : voices) if (v.on && v.note == msg.getNoteNumber() && (loopNote || mode != 0)) v.env.off(); }
+            else if (msg.isPitchWheel()) bendSemis = (float) (msg.getPitchWheelValue() - 8192) / 8192.0f * 2.0f;
             else if (msg.isAllNotesOff() || msg.isAllSoundOff()) for (auto& v : voices) v.on = false;
         }
         renderTo (n);
@@ -717,7 +720,7 @@ public:
     }
     struct Sampled { juce::String path; juce::AudioBuffer<float> data; double rate = 48000; std::vector<int> onsets; };
     juce::SpinLock lock; std::shared_ptr<Sampled> sample, cur;
-    std::array<Voice, 12> voices;
+    std::array<Voice, 12> voices; float bendSemis = 0.0f;
 };
 
 #include "Spatial.h"

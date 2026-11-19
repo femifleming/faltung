@@ -2177,6 +2177,65 @@ int main (int argc, char** argv)
         check (r2.peak[0] < 1.0e-4f, "and none with the metronome off");
     }
 
+    // ---- 30. the pitch lane: scales and scala tunings; parts drifting out of phase ------------------------------
+    std::cout << "== pitch lane: scales, scala tunings; phase\n";
+    {
+        // reading scala files
+        juce::String err;
+        auto sc = parseScala ("! test.scl\n!\nquarter tones and a 7/4\n 3\n!\n 150.0\n 7/4\n 2/1\n", "test", &err);
+        check (sc && sc->size() == 3 && std::abs (sc->cents[1] - 150.0) < 1.0e-9 && std::abs (sc->cents[2] - 968.826) < 0.01 && std::abs (sc->period - 1200.0) < 1.0e-6 && sc->name == "quarter tones and a 7/4", "a scala file read: cents, ratios, the period");
+        check (sc && std::abs (sc->centsOf (4) - 1350.0) < 1.0e-6 && std::abs (sc->centsOf (-1) - (968.826 - 1200.0)) < 0.01, "degrees wrap at the period, below the root too");
+        check (sc && sc->microtonal() && ! builtinScale (0)->microtonal(), "microtonal told apart");
+        check (! parseScala ("nothing\n5\n100.0\n", "x", &err) && err.isNotEmpty(), "a broken file is refused with a reason");
+        check (builtinScale (0)->nearestDegree (400.0) == 2 && builtinScale (0)->nearestDegree (-100.0) == -1, "a played note finds its degree");
+        // the sound: a tone keyed by the steps, degree 2 of major is e4; degree 1 of the scala file is c4 + 150 cents
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f);
+        auto* t = s.addTrack ("lane"); s.setInstrument (*t, s.createDevice ("st:tone"));
+        { auto* d = t->instrument.get(); auto set = [&] (const char* id, float plain) { const int i = d->paramIndexForId (id); auto* rp = dynamic_cast<juce::RangedAudioParameter*> (d->processor()->getParameters()[i]); d->setBase (i, rp->convertTo0to1 (plain)); }; set ("duration", 400.0f); set ("level", -6.0f); d->setBase (d->paramIndexForId ("keytrack"), 1.0f); }
+        t->rootNote.store (60);
+        auto hz = [&] (int degree) -> double
+        {
+            s.editPattern (*t, 0, [degree] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].pitch = degree; pt.s[0].len = 8.0f; });
+            s.launch (*t, 0);
+            auto r = render (p, 0.5);
+            int cross = 0, first = -1, last = -1; const int from = 2400, to = 2400 + 9600;
+            for (int i = from; i < to; ++i) if (r.out.getSample (0, i - 1) <= 0.0f && r.out.getSample (0, i) > 0.0f) { if (first < 0) first = i; last = i; ++cross; }
+            return cross > 1 ? (cross - 1) * kSr / (double) (last - first) : 0.0;
+        };
+        s.setScale (*t, builtinScale (0));
+        const double e4 = hz (2), c5 = hz (7), b3 = hz (-1);
+        s.setScale (*t, sc);
+        const double q = hz (1), sev = hz (2);
+        s.setScale (*t, nullptr);
+        const double semis = hz (4);
+        std::cout << "  major: degree 2 " << juce::String (e4, 1) << " hz, 7 " << juce::String (c5, 1) << ", -1 " << juce::String (b3, 1) << "; scala: degree 1 " << juce::String (q, 1) << " hz, degree 2 " << juce::String (sev, 1) << "; semitones +4 " << juce::String (semis, 1) << "\n";
+        auto near = [] (double a, double b) { return std::abs (a / b - 1.0) < 0.004; };
+        const double c4 = 261.6256;
+        check (near (e4, c4 * std::exp2 (4.0 / 12)) && near (c5, c4 * 2.0) && near (b3, c4 * std::exp2 (-1.0 / 12)), "major: degrees 2, 7 and -1 are e4, c5 and b3");
+        check (near (q, c4 * std::exp2 (1.5 / 12)) && near (sev, c4 * 7.0 / 4.0), "the scala file's 150 cents and 7/4, between the keys (a pitch bend)");
+        check (near (semis, c4 * std::exp2 (4.0 / 12)), "without a scale the steps are semitones, as before");
+        // the scale is kept with the project
+        s.setScale (*t, sc);
+        StudioProcessor q2; q2.session.load (*s.save(), nullptr);
+        Track* t2 = nullptr; for (auto& x : q2.session.tracks) if (x->name == "lane") t2 = x.get();
+        check (t2 && t2->scale && t2->scale->size() == 3 && std::abs (t2->scale->centsOf (2) - 968.826) < 0.01, "the scale survives save / load");
+
+        // phase: the same one-hit bar on two tracks, one 1% faster: it pulls ahead a little more every bar
+        s.setScale (*t, nullptr);
+        StudioProcessor pp; auto& ss = pp.session; ss.newFromTemplate (0); ss.setTempo (120.0f);
+        auto* a = ss.addTrack ("a"); ss.setInstrument (*a, ss.createDevice ("fal:bd1")); shortHit (*a);
+        auto* b = ss.addTrack ("b"); ss.setInstrument (*b, ss.createDevice ("fal:bd1")); shortHit (*b);
+        for (auto* tr : { a, b }) { ss.editPattern (*tr, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].vel = 1.0f; }); ss.launch (*tr, 0); tr->toMaster.store (false); }
+        ss.multiOut.store (true); a->outChannel.store (3); b->outChannel.store (5); b->phaseRate.store (1.01f);
+        auto r = render (pp, 4.2);
+        const auto oa = onsets (r.out, 2), ob = onsets (r.out, 4);
+        const double bar = 4.0 * spb (120.0);
+        std::cout << "  phase: a at"; for (int x : oa) std::cout << " " << x; std::cout << "; b (1% faster) at"; for (int x : ob) std::cout << " " << x; std::cout << "\n";
+        bool drift = oa.size() >= 4 && ob.size() >= 4;
+        for (size_t k = 0; drift && k < 4; ++k) drift = std::abs ((oa[k] - ob[k]) - k * bar * (1.0 - 1.0 / 1.01)) < 30.0;
+        check (drift, "the faster part is ahead by 1% of a bar more on every bar");
+    }
+
     // ---- 27. hosting the user's own plug-ins: a crash-safe scan, instruments and effects, state, automation, latency ----
     std::cout << "== hosting: scan in child processes, instruments, effects, state, automation, latency\n";
     {

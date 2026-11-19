@@ -722,13 +722,24 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
                 t.hits.fetch_add (1);
             }
             const int smp = juce::jlimit (0, n - 1, (int) ((e - ppq0) * spb));
-            const int note = juce::jlimit (0, 127, st.slice >= 0 ? 36 + st.slice : root + st.pitch);
+            // the pitch lane: a degree of the track's scale (a note and, between the keys, a pitch bend of ±2 semitones)
+            int note = 0; double bend = 0.0;
+            if (st.slice >= 0) note = 36 + st.slice;
+            else if (t.scale) { const double semis = t.scale->centsOf (st.pitch) / 100.0; const int k = (int) std::floor (semis + 0.5); bend = semis - k; note = root + k; }
+            else note = root + st.pitch;
+            note = juce::jlimit (0, 127, note);
             const float vel = juce::jlimit (0.02f, 1.0f, st.vel * (r == 0 ? 1.0f : 0.85f - 0.05f * r));
             double lenBeats = std::max (0.02, (double) st.len) * stepBeats;
             if (r < rat - 1) lenBeats = std::min (lenBeats, own / rat * 0.9);
             const int lenS = std::max (1, (int) (lenBeats * spb));
             // the note, and the notes stacked on it when the step plays a chord
             const int* stack = nullptr; const int extra = st.slice >= 0 ? 0 : chordNotes (st.chord, stack);
+            // (a bend once sent stays with the instrument: back to the centre when the steps are on the keys again)
+            if ((t.scale && t.scale->microtonal()) || std::abs (t.sentBend) > 1.0e-6)
+            {
+                out.addEvent (juce::MidiMessage::pitchWheel (1, juce::jlimit (0, 16383, 8192 + (int) std::lround (bend / 2.0 * 8192.0))), smp);
+                t.sentBend = (float) bend;
+            }
             for (int k = -1; k < extra; ++k)
             {
                 const int nn = k < 0 ? note : juce::jlimit (0, 127, note + stack[k]);

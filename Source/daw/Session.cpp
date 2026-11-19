@@ -710,6 +710,11 @@ void Session::editClips (Track& t, const std::function<void (std::vector<Clip>&)
     { const juce::SpinLock::ScopedLockType sl (lock); t.clips = v; }
     dirty = true;
 }
+void Session::setScale (Track& t, TuningPtr sc)
+{
+    { const juce::SpinLock::ScopedLockType sl (lock); t.scale = std::move (sc); }
+    dirty = true;
+}
 void Session::setChain (Track& t, std::vector<int> c)
 {
     auto v = std::make_shared<const std::vector<int>> (std::move (c));
@@ -1067,7 +1072,7 @@ int Session::collectRecordedNotes()
         {
             if (rn.on)
             {
-                const int step = rn.step; const int pitch = juce::jlimit (-36, 36, rn.note - root); const float vel = juce::jlimit (0.05f, 1.0f, rn.vel), micro = rn.micro;
+                const int step = rn.step; const int pitch = juce::jlimit (-36, 36, t.scale ? t.scale->nearestDegree ((rn.note - root) * 100.0) : rn.note - root); const float vel = juce::jlimit (0.05f, 1.0f, rn.vel), micro = rn.micro;
                 edits[rn.pattern].push_back ([=] (Pattern& p) { auto& st = p.s[(size_t) step]; st.on = true; st.vel = vel; st.pitch = pitch; st.micro = micro; st.len = 0.5f; st.prob = 1.0f; st.slice = -1; });
                 t.held.push_back ({ rn.note, rn.pattern, rn.step, rn.ppq, rn.stepBeats });
                 ++written;
@@ -1136,8 +1141,8 @@ double Session::projectBars() const
 }
 double Session::stepBeatsOf (const Track& t, double bpm) const
 {
-    if (t.freeClock.load (std::memory_order_relaxed)) return std::max (1.0, (double) t.stepMs.load (std::memory_order_relaxed)) / 1000.0 * bpm / 60.0;
-    return 0.25 / speedMul (t.speed.load (std::memory_order_relaxed));
+    if (t.freeClock.load (std::memory_order_relaxed)) return std::max (1.0, (double) t.stepMs.load (std::memory_order_relaxed)) / 1000.0 * bpm / 60.0 / (double) juce::jlimit (0.5f, 2.0f, t.phaseRate.load (std::memory_order_relaxed));
+    return 0.25 / speedMul (t.speed.load (std::memory_order_relaxed)) / (double) juce::jlimit (0.5f, 2.0f, t.phaseRate.load (std::memory_order_relaxed));
 }
 
 // ---- targets --------------------------------------------------------------------------------------

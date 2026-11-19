@@ -56,6 +56,8 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     e.setAttribute ("free", t.freeClock.load() ? 1 : 0); e.setAttribute ("stepMs", t.stepMs.load());
     if (t.evolve.load() > 0.0f) e.setAttribute ("evolve", t.evolve.load());
     if (t.chokeGroup.load() > 0) e.setAttribute ("choke", t.chokeGroup.load());
+    if (std::abs (t.phaseRate.load() - 1.0f) > 1.0e-6f) e.setAttribute ("phase", t.phaseRate.load());
+    if (t.scale) { auto* x = e.createNewChildElement ("scale"); x->setAttribute ("name", t.scale->name); x->setAttribute ("period", t.scale->period); x->setAttribute ("cents", t.scale->text()); }
     e.setAttribute ("solo", t.solo.load() ? 1 : 0); e.setAttribute ("armed", t.armed.load() ? 1 : 0); e.setAttribute ("chainOn", t.chainOn.load() ? 1 : 0);
     e.setAttribute ("width", t.width.load()); e.setAttribute ("toMaster", t.toMaster.load() ? 1 : 0); e.setAttribute ("out", t.outChannel.load()); e.setAttribute ("key", t.keyTrack.load());
     e.setAttribute ("inSrc", t.inputSource.load()); e.setAttribute ("inCh", t.inputChannel.load()); e.setAttribute ("inCount", t.inputCount.load()); e.setAttribute ("monitor", t.monitor.load());
@@ -105,6 +107,15 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     t.swingOffset.store ((float) e.getDoubleAttribute ("swing", 0.0)); t.shiftMs.store ((float) e.getDoubleAttribute ("shift", 0.0)); t.probMul.store ((float) e.getDoubleAttribute ("prob", 1.0));
     t.freeClock.store (e.getIntAttribute ("free", 0) != 0); t.stepMs.store ((float) e.getDoubleAttribute ("stepMs", 125.0));
     t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0)));
+    t.phaseRate.store (juce::jlimit (0.5f, 2.0f, (float) e.getDoubleAttribute ("phase", 1.0)));
+    if (auto* x = e.getChildByName ("scale"))
+    {
+        auto sc = std::make_shared<Tuning>(); sc->name = x->getStringAttribute ("name"); sc->period = x->getDoubleAttribute ("period", 1200.0);
+        sc->cents.clear(); for (auto& c : juce::StringArray::fromTokens (x->getStringAttribute ("cents"), " ", "")) if (c.isNotEmpty()) sc->cents.push_back (c.getDoubleValue());
+        if (sc->cents.empty()) sc->cents.push_back (0.0);
+        setScale (t, sc);
+    }
+    else setScale (t, nullptr);
     t.solo.store (e.getIntAttribute ("solo", 0) != 0); t.armed.store (e.getIntAttribute ("armed", 0) != 0); t.chainOn.store (e.getIntAttribute ("chainOn", 0) != 0);
     t.toMaster.store (e.getIntAttribute ("toMaster", 1) != 0); t.outChannel.store (e.getIntAttribute ("out", 0)); t.keyTrack.store (e.getIntAttribute ("key", 0));
     t.inputSource.store (e.getIntAttribute ("inSrc", -2)); t.inputChannel.store (e.getIntAttribute ("inCh", 1)); t.inputCount.store (e.getIntAttribute ("inCount", 2)); t.monitor.store (e.getIntAttribute ("monitor", (int) Monitor::Auto));

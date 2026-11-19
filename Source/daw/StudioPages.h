@@ -727,10 +727,14 @@ public:
         row (rEvolve, new ValueRow ("evolve", 0.0f, 1.0f, 0.0f, [] (float v) { return v < 0.005f ? juce::String ("off") : juce::String (juce::roundToInt (v * 100)) + "%"; }));
         rEvolve->setTooltip ("on every pass a few steps change or come back: the pattern drifts around what is written. \"freeze\" writes the drift into the pattern");
         row (rChoke, new ValueRow ("choke group", { "off", "a", "b", "c", "d", "e", "f", "g", "h" }, 0));
+        { juce::StringArray sc { "semitones" }; sc.addArray (builtinScaleNames()); sc.add ("a scala file (.scl)..."); row (rScale, new ValueRow ("scale", sc, 0)); }
+        rScale->setTooltip ("the pitch lane's scale: each step's pitch is a degree of it (0 the root). Built-in scales, or any Scala .scl tuning (Colundi sets included): degrees between the keys reach the instrument as a pitch bend");
+        row (rPhase, new ValueRow ("phase", -5.0f, 5.0f, 0.0f, [] (float v) { return std::abs (v) < 0.005f ? juce::String ("in step") : (v > 0 ? "+" : "") + juce::String (v, 2) + "% " + (v > 0 ? "faster" : "slower"); }));
+        rPhase->setTooltip ("this part runs a little faster or slower than the rest, so it drifts out of phase with them and, much later, back in");
         rChoke->setTooltip ("a hit on one track of a group cuts the other tracks of that group (closed hat / open hat, chopped samples)");
         // the step
         row (sVel, new ValueRow ("velocity", 0.0f, 1.0f, 0.8f, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
-        row (sPitch, new ValueRow ("pitch", -36.0f, 36.0f, 0.0f, [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v)) + " st"; }));
+        row (sPitch, new ValueRow ("pitch", -36.0f, 36.0f, 0.0f, [this] (float v) { return pitchText (juce::roundToInt (v)); }));
         row (sProb, new ValueRow ("chance", 0.0f, 1.0f, 1.0f, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
         row (sRatchet, new ValueRow ("ratchet", 1.0f, 8.0f, 1.0f, [] (float v) { return juce::String (juce::roundToInt (v)); }));
         row (sMicro, new ValueRow ("micro", -1.0f, 1.0f, 0.0f, [this] (float v) { return (v > 0 ? "+" : "") + juce::String (v * ctx.s.microMs.load(), 1) + " ms"; }));
@@ -748,7 +752,7 @@ public:
         wire();
         viewport.setViewedComponent (&chain, false); viewport.setScrollBarsShown (true, false); addAndMakeVisible (viewport);
     }
-    ValueRow *rPattern, *rLength, *rSpeed, *rSwing, *rShift, *rProb, *rRoot, *rFree, *rStepMs, *rChain, *rQuant, *rEvolve, *rChoke;
+    ValueRow *rPattern, *rLength, *rSpeed, *rSwing, *rShift, *rProb, *rRoot, *rFree, *rStepMs, *rChain, *rQuant, *rEvolve, *rChoke, *rScale, *rPhase;
     ValueRow *sVel, *sPitch, *sProb, *sRatchet, *sMicro, *sLen, *sDur, *sCond, *sSlide, *sSlice, *sChord, *sRCurve; ValueRow* sLock[kLocks];
     /** a one-line question (the tools that take a text) */
     void ask (const juce::String& title, const juce::String& what, const juce::String& initial, std::function<void (juce::String)> then)
@@ -774,6 +778,26 @@ public:
         rQuant->onChange = [this] (float v) { const int q[4] = { 0, 1, 2, 4 }; ctx.s.launchQuant.store (q[juce::jlimit (0, 3, (int) v)]); };
         rEvolve->onChange = [this] (float v) { if (auto* t = ctx.selected()) { t->evolve.store (v); ctx.s.dirty = true; } };
         rChoke->onChange = [this] (float v) { if (auto* t = ctx.selected()) { t->chokeGroup.store ((int) v); ctx.s.dirty = true; } };
+        rPhase->onChange = [this] (float v) { if (auto* t = ctx.selected()) { t->phaseRate.store (1.0f + (std::abs (v) < 0.005f ? 0.0f : v) / 100.0f); ctx.s.dirty = true; } };
+        rScale->onChange = [this] (float v)
+        {
+            auto* t = ctx.selected(); if (! t) return;
+            const int i = (int) v, nb = builtinScaleNames().size();
+            if (i == 0) ctx.s.setScale (*t, nullptr);
+            else if (i <= nb) ctx.s.setScale (*t, builtinScale (i - 1));
+            else
+            {
+                Track* tp = t;
+                scl = std::make_unique<juce::FileChooser> ("a scala tuning", juce::File::getSpecialLocation (juce::File::userHomeDirectory), "*.scl");
+                scl->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this, tp] (const juce::FileChooser& c)
+                {
+                    const auto f = c.getResult(); juce::String err;
+                    if (f.existsAsFile() && ctx.s.indexOf (tp) >= 0) { if (auto sc = parseScala (f.loadFileAsString(), f.getFileNameWithoutExtension(), &err)) { ctx.s.setScale (*tp, sc); ctx.status ("scale: " + sc->name + " (" + juce::String (sc->size()) + " degrees)"); } else ctx.status (err); }
+                    refresh();
+                });
+            }
+            refresh();
+        };
         sChord->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].chord = (int) v; }); };
         sRCurve->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].rcurve = std::abs (v) < 0.02f ? 0.0f : v; }); };
         sVel->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].vel = v; }); };
@@ -887,6 +911,8 @@ public:
         rSpeed->set ((float) t->speed.load()); rSwing->set (t->swingOffset.load()); rShift->set (t->shiftMs.load()); rProb->set (t->probMul.load()); rRoot->set ((float) t->rootNote.load());
         rFree->set (t->freeClock.load() ? 1.0f : 0.0f); rStepMs->set (t->stepMs.load()); rChain->set (t->chainOn.load() ? 1.0f : 0.0f);
         rEvolve->set (t->evolve.load()); rChoke->set ((float) t->chokeGroup.load());
+        rPhase->set ((t->phaseRate.load() - 1.0f) * 100.0f);
+        { int si = 0; if (t->scale) { si = builtinScaleNames().indexOf (t->scale->name) + 1; if (si <= 0) si = builtinScaleNames().size() + 1; } rScale->set ((float) si); rScale->setTooltip (t->scale ? "scale: " + t->scale->name + " (" + juce::String (t->scale->size()) + " degrees, period " + juce::String (t->scale->period, 1) + " cents)" : juce::String ("steps in semitones")); }
         const int q = ctx.s.launchQuant.load(); rQuant->set (q == 0 ? 0.0f : q == 1 ? 1.0f : q == 2 ? 2.0f : 3.0f);
         const Step st = p ? p->s[(size_t) juce::jlimit (0, kMaxSteps - 1, selectedStep)] : Step();
         sVel->set (st.vel); sPitch->set ((float) st.pitch); sProb->set (st.prob); sRatchet->set ((float) st.ratchet); sMicro->set (st.micro); sLen->set (st.len); sDur->set (st.dur); sCond->set ((float) st.cond); sSlide->set (st.slide ? 1.0f : 0.0f); sSlice->set ((float) st.slice); sChord->set ((float) st.chord); sRCurve->set (st.rcurve);
@@ -904,7 +930,7 @@ public:
         const int w = getWidth();
         // left: track settings; middle: the grid + step; bottom: the chain
         int y = 30;
-        for (auto* r : { rPattern, rLength, rSpeed, rSwing, rShift, rProb, rRoot, rFree, rStepMs, rChain, rQuant, rEvolve, rChoke }) { r->setBounds (8, y, 210, 18); y += 20; }
+        for (auto* r : { rPattern, rLength, rSpeed, rSwing, rShift, rProb, rRoot, rFree, rStepMs, rChain, rQuant, rEvolve, rChoke, rScale, rPhase }) { r->setBounds (8, y, 210, 18); y += 20; }
         const int gx = 236, gw = w - gx - 8;
         int x = gx;
         for (auto* l : { tEuclid, tRotL, tRotR, tRev, tMutate, tHuman, tRandom, tMarkov, tRules, tDouble, tClear, tCopy, tPaste }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 196, lw, 18); x += lw + 2; }
@@ -921,7 +947,19 @@ public:
         for (auto* p : panels) { const int h = p->wanted (cw); p->setBounds (0, cy, cw, h); cy += h + 6; }
         chain.setSize (cw, std::max (cy, 10));
     }
-    juce::Rectangle<float> cell (int i) const { const int gx = 236; const float cw = (float) (getWidth() - gx - 28) / 16.0f; return { gx + (i % 16) * cw + 2.0f, 60.0f + (i / 16) * 0.0f, cw - 4.0f, 118.0f }; }
+    juce::Rectangle<float> cell (int i) const { const int gx = 236; const float cw = (float) (getWidth() - gx - 28) / 16.0f; return { gx + (i % 16) * cw + 2.0f, 60.0f + (i / 16) * 0.0f, cw - 4.0f, 68.0f }; }
+    // ---- the pitch lane: every step's pitch as a degree of the track's scale; drag across it to draw a contour ----
+    static constexpr float laneTop = 134.0f, laneBottom = 178.0f;
+    void laneRange (const Track* t, int& lo, int& hi) const { const int n = t && t->scale ? t->scale->size() : 12; lo = -n; hi = 2 * n; }
+    float laneY (const Track* t, int deg) const { int lo, hi; laneRange (t, lo, hi); const float h = (laneBottom - laneTop) / (float) (hi - lo + 1); return laneBottom - ((float) (juce::jlimit (lo, hi, deg) - lo) + 0.5f) * h; }
+    int laneDegree (const Track* t, float y) const { int lo, hi; laneRange (t, lo, hi); const float h = (laneBottom - laneTop) / (float) (hi - lo + 1); return juce::jlimit (lo, hi, lo + (int) std::floor ((laneBottom - y) / h)); }
+    juce::String pitchText (int p) const
+    {
+        auto* t = ctx.selected();
+        if (t && t->scale) { const double c = t->scale->centsOf (p); return "degree " + juce::String (p) + " (" + (c >= 0 ? "+" : "") + juce::String (c, 0) + " c)"; }
+        return (p > 0 ? "+" : "") + juce::String (p) + " st";
+    }
+    void setLanePitch (int step, int deg) { editStep ([step, deg] (Pattern& p, int) { auto& s = p.s[(size_t) step]; if (! s.on) { s.on = true; s.vel = 0.8f; s.prob = 1.0f; s.ratchet = 1; s.micro = 0; } s.pitch = deg; s.slice = -1; }); }
     void paint (juce::Graphics& g) override
     {
         auto* t = ctx.selected();
@@ -976,8 +1014,25 @@ public:
             if (i == selectedStep) { g.setColour (juce::Colours::white); g.strokePath (ui::skewRect (c.expanded (1.0f), 0.12f), juce::PathStrokeType (1.5f)); }
             if (i == playing) { g.setColour (juce::Colours::white); g.fillRect (c.getX(), c.getBottom() + 2.0f, c.getWidth(), 2.0f); }
         }
+        // the pitch lane
+        {
+            int lo, hi; laneRange (t, lo, hi); const int n = t->scale ? t->scale->size() : 12;
+            const float x0 = cell (0).getX(), x1 = cell (15).getRight();
+            g.setColour (theme.ink.withAlpha (0.05f)); g.fillRect (x0, laneTop, x1 - x0, laneBottom - laneTop);
+            for (int d = lo; d <= hi; d += n) { g.setColour (theme.ink.withAlpha (d == 0 ? 0.45f : 0.2f)); g.fillRect (x0, laneY (t, d), x1 - x0, 1.0f); }
+            g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (8.5f));
+            g.drawText ("pitch lane: " + (t->scale ? t->scale->name : juce::String ("semitones")), (int) x0 + 4, (int) laneTop - 1, 260, 11, juce::Justification::centredLeft, true);
+            for (int k = 0; k < 16; ++k)
+            {
+                const int i = page * 16 + k; if (i >= len || ! p) continue;
+                const Step& st = p->s[(size_t) i]; if (! st.on || st.slice >= 0) continue;
+                const auto c = cell (k);
+                g.setColour (col.withAlpha (0.4f + 0.6f * st.vel)); g.fillRect (c.getX() + 2.0f, laneY (t, st.pitch) - 1.5f, c.getWidth() - 4.0f, 3.0f);
+                if (i == selectedStep) { g.setColour (theme.ink); g.drawText (juce::String (st.pitch), c.withY (laneTop).withHeight (11.0f).toNearestInt(), juce::Justification::centredRight); }
+            }
+        }
         g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (9.5f));
-        g.drawText (ui::U ("click: on / off and select · drag up / down: velocity · drag across: paint · shift-drag: micro · alt-click: chance · right-click: ratchet · right-click a slider below: map an lfo / random / gate, automate, midi, key, macro"), 236, 182, getWidth() - 244, 14, juce::Justification::centredLeft, true);
+        g.drawText (ui::U ("pitch lane: click or drag across it to set the steps' degrees · click: on / off and select · drag up / down: velocity · drag across: paint · shift-drag: micro · alt-click: chance · right-click: ratchet · right-click a slider below: map an lfo / random / gate, automate, midi, key, macro"), 236, 182, getWidth() - 244, 14, juce::Justification::centredLeft, true);
         // the evolving copy: steps that have drifted from what is written carry a mark
         if (t->evolve.load() > 0.0005f)
             for (int k = 0; k < 16; ++k) { const int i = page * 16 + k; if (i < len && (t->flip[(size_t) i] != 0 || t->drift[(size_t) i] != 0.0f)) { g.setColour (juce::Colour (0xffee8e6e)); g.fillRect (cell (k).getX() + 14.0f, 58.0f - 6.0f, 10.0f, 3.0f); } }
@@ -987,6 +1042,12 @@ public:
     {
         auto* t = ctx.selected(); if (! t) return;
         if (e.y >= 34 && e.y < 50 && e.x >= 236) { const int k = (e.x - 236) / 60; auto p = t->patternAt (t->pattern.load()); const int pages = ((p ? p->length : 16) + 15) / 16; if (k >= 0 && k < pages) { page = k; repaint(); } return; }
+        if (e.position.y >= laneTop && e.position.y <= laneBottom)
+        {
+            const int i = stepAt ({ e.position.x, cell (0).getCentreY() });
+            if (i < 0) return;
+            selectedStep = i; mode = Lane; setLanePitch (i, laneDegree (t, e.position.y)); refresh(); return;
+        }
         const int i = stepAt (e.position);
         if (i < 0) return;
         mode = None; downStep = i;
@@ -1007,6 +1068,12 @@ public:
         if (mode == None) return;
         const int dx = e.getDistanceFromDragStartX(), dy = e.getDistanceFromDragStartY();
         if (mode == Pending) { if (std::abs (dy) > 4 && std::abs (dy) > std::abs (dx)) mode = Vertical; else if (std::abs (dx) > 6) mode = Paint; }
+        if (mode == Lane)
+        {
+            auto* t = ctx.selected(); const int i = stepAt ({ e.position.x, cell (0).getCentreY() });
+            if (t && i >= 0) { auto p = t->patternAt (t->pattern.load()); if (i < (p ? p->length : 16)) setLanePitch (i, laneDegree (t, e.position.y)); }
+            refresh(); return;
+        }
         if (mode == Vertical) { const float v = juce::jlimit (0.05f, 1.0f, startVel - dy / 80.0f); const int ds = downStep; editStep ([v, ds] (Pattern& p, int) { p.s[(size_t) ds].on = true; p.s[(size_t) ds].vel = v; }); }
         else if (mode == Micro) { const float v = juce::jlimit (-1.0f, 1.0f, startMicro + dx / (cell (0).getWidth() * 1.4f)); const int ds = downStep; editStep ([v, ds] (Pattern& p, int) { p.s[(size_t) ds].micro = v; }); }
         else if (mode == Paint) { const int i = stepAt ({ e.position.x, cell (0).getCentreY() }); if (i >= 0) { const bool on = paintOn; editStep ([i, on] (Pattern& p, int) { auto& s = p.s[(size_t) i]; if (s.on != on) { s.on = on; if (on) { s.vel = 0.8f; s.prob = 1; s.ratchet = 1; s.micro = 0; } } }); } }
@@ -1020,7 +1087,8 @@ private:
     ui::TextLink *tRatios, *tAccel, *tEven, *tStrict, *tSieve, *tSievePitch, *tCloud, *tFreeze;
     juce::Component chain; juce::Viewport viewport;
     Pattern clip; Rng rng;
-    enum Mode { None, Pending, Vertical, Paint, Micro } mode = None;
+    enum Mode { None, Pending, Vertical, Paint, Micro, Lane } mode = None;
+    std::unique_ptr<juce::FileChooser> scl;
     int downStep = 0; float startVel = 0, startMicro = 0; bool paintOn = true, turnedOn = false;
 };
 

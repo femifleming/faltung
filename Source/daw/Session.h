@@ -5,6 +5,7 @@
 // tryEnter for the whole block (silence if it cannot) and reads everything directly. Pattern, lane, clip,
 // modulator and arrangement edits replace immutable snapshots (shared_ptr) under the same lock.
 #include "Device.h"
+#include "Tuning.h"
 #include "../dsp/Core.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -58,7 +59,10 @@ struct Track
     std::atomic<float> stepMs { 125.0f };
     std::atomic<bool> solo { false }, armed { false }, chainOn { false };
     std::atomic<float> evolve { 0.0f };      // 0 … 1: how readily the pattern drifts from what is written, a little on every pass
-    std::atomic<int> chokeGroup { 0 };       // 0 none, 1 … 8: a hit on one track of a group cuts the others of that group
+    std::atomic<int> chokeGroup { 0 };
+    TuningPtr scale;                         // the pitch lane's scale: steps' pitches are its degrees (null: semitones)
+    std::atomic<float> phaseRate { 1.0f };
+    float sentBend = 0.0f;                   // (audio thread) the pitch bend the instrument last got from the pitch lane   // this part a little faster or slower than the others: it drifts out of phase (and back)       // 0 none, 1 … 8: a hit on one track of a group cuts the others of that group
     // routing
     std::atomic<int> width { 2 };            // the chain / output width, 1 … 64
     std::atomic<bool> toMaster { true };
@@ -279,6 +283,8 @@ public:
     void setPattern (Track&, int index, PatternPtr);
     void editClips (Track&, const std::function<void (std::vector<Clip>&)>&);
     void setChain (Track&, std::vector<int>);
+    /** the scale the pitch lane uses (null: semitones). Steps keep their numbers: they become degrees of the new scale */
+    void setScale (Track&, TuningPtr);
     void editMods (Track&, const std::function<void (std::vector<Modulator>&)>&);
     Modulator* findMod (Track&, int id) const;
     int addModulator (Track&, Modulator m);      // returns its id
