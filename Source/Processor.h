@@ -4,6 +4,7 @@
 #include "dsp/Bass.h"
 #include "dsp/Master.h"
 #include "dsp/AutoMaster.h"
+#include "Ui.h"
 
 namespace fal
 {
@@ -16,7 +17,7 @@ struct LoopSample
     std::vector<int> onsets;        // detected hit positions
 };
 
-class Processor : public juce::AudioProcessor
+class Processor : public juce::AudioProcessor, public ui::ProgramLoader
 {
 public:
     explicit Processor (Pid product);
@@ -40,7 +41,8 @@ public:
     double getTailLengthSeconds() const override;
     int getNumPrograms() override { return std::max (1, (int) presets (pid).size()); }
     int getCurrentProgram() override { return currentProgram; }
-    void setCurrentProgram (int) override;
+    void setCurrentProgram (int) override;      // from the host: re-selecting the current program is a no-op
+    void loadProgram (int) override;            // from the plug-in's own window: always applies the preset
     const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
     void getStateInformation (juce::MemoryBlock&) override;
@@ -114,7 +116,6 @@ private:
     float lastBpm = 120.0f;
     juce::String samplePath;
     int currentProgram = 0;
-    juce::uint32 stateLoadedMs = 0;   // when a state was last restored (see setCurrentProgram)
     Rng rng;
 
     // modules + kit voices

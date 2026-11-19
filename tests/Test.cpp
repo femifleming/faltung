@@ -254,7 +254,7 @@ int main (int argc, char** argv)
                     for (int len = 0; len < 2; ++len)
                     {
                         Processor w (Pid::wb1);
-                        w.setCurrentProgram (pr);
+                        w.loadProgram (pr);
                         FakeHead head; head.bpm = kDeep ? 122 : 140; w.setPlayHead (&head);
                         w.setRateAndBufferSizeDetails (sr, 512); w.prepareToPlay (sr, 512);
                         const double gate = len == 0 ? (kDeep ? 0.5 : 0.35) : 60.0 / (kDeep ? 122.0 : 140.0) * 4.0;
@@ -293,7 +293,7 @@ int main (int argc, char** argv)
             const int len = (int) rd->lengthInSamples; const double sr = rd->sampleRate;
             juce::AudioBuffer<float> in (2, len); rd->read (&in, 0, len, 0, true, true);
             Processor m (Pid::ms0);
-            m.setCurrentProgram (juce::String (argv[i + 2]).getIntValue());
+            m.loadProgram (juce::String (argv[i + 2]).getIntValue());
             m.setRateAndBufferSizeDetails (sr, 512); m.prepareToPlay (sr, 512);
             const int lat = m.getLatencySamples(), total = len + lat;
             juce::AudioBuffer<float> out (2, len), blk (2, 512);
@@ -568,7 +568,7 @@ int main (int argc, char** argv)
         // every preset renders cleanly
         for (int pr = 0; pr < proc->getNumPrograms(); ++pr)
         {
-            proc->setCurrentProgram (pr);
+            proc->loadProgram (pr);
             auto o = render (*proc, pi.kind == Kind::Effect ? &loop : nullptr, 2.0, rt);
             bool ok = true; float pk = o.getMagnitude (0, o.getNumSamples());
             for (int c = 0; c < 2; ++c) for (int k = 0; k < o.getNumSamples(); ++k) ok &= std::isfinite (o.getSample (c, k));
@@ -654,7 +654,7 @@ int main (int argc, char** argv)
             // compare (bypass): with a preset that changes the sound, bypass on → the input, delayed by the latency
             {
                 Processor b (Pid::ms0);
-                b.setCurrentProgram (2);
+                b.loadProgram (2);
                 b.setParam ("dcon", 0.0f); b.setParam ("dither", 0.0f); b.setParam ("trim", 0.0f);
                 b.setParam ("bypass", 1.0f); b.setParam ("match", 0.0f);
                 auto ob = render (b, &loop, 4.0, rt2);
@@ -675,7 +675,7 @@ int main (int argc, char** argv)
             // loudness of the processed signal
             {
                 Processor b (Pid::ms0);
-                b.setCurrentProgram (2);
+                b.loadProgram (2);
                 b.setParam ("dcon", 0.0f); b.setParam ("dither", 0.0f); b.setParam ("trim", 0.0f);
                 b.setParam ("limgain", 8.0f); b.setParam ("ceiling", -1.0f);
                 b.setParam ("bypass", 0.0f); b.setParam ("match", 1.0f);
@@ -1028,7 +1028,7 @@ int main (int argc, char** argv)
         }
 
         // state round trip
-        proc->setCurrentProgram (proc->getNumPrograms() > 1 ? 1 : 0);
+        proc->loadProgram (proc->getNumPrograms() > 1 ? 1 : 0);
         juce::MemoryBlock mb; proc->getStateInformation (mb);
         Processor other ((Pid) i);
         other.setStateInformation (mb.getData(), (int) mb.getSize());
@@ -1054,6 +1054,17 @@ int main (int argc, char** argv)
                 if (std::abs (a - b) >= 1.0e-5f) { kept = false; std::cout << "    " << proc->getParameters()[k]->getName (40) << ": " << a << " -> " << b << "\n"; }
             }
             check (kept, "state survives the host selecting its program after restoring (vst2)");
+            {
+                // REAPER keeping the instance on a VST2 reload sends only "select program n": a plug-in that opened on
+                // its defaults (reporting program 0) must not take preset 0's values from that
+                Processor fresh ((Pid) i);
+                std::vector<float> was;
+                for (auto* prm : fresh.getParameters()) was.push_back (prm->getValue());
+                fresh.setCurrentProgram (fresh.getCurrentProgram());
+                bool same0 = true;
+                for (size_t k = 0; k < was.size(); ++k) same0 &= std::abs (was[k] - fresh.getParameters()[(int) k]->getValue()) < 1.0e-6f;
+                check (same0, "re-selecting the current program from the host changes nothing");
+            }
             host.setCurrentProgram (0);
             check (host.getCurrentProgram() == 0, "another program still loads after a restore");
             some->setValueNotifyingHost (before);
@@ -1063,9 +1074,9 @@ int main (int argc, char** argv)
 
         if (shotDir != juce::File())
         {
-            proc->setCurrentProgram (0);
+            proc->loadProgram (0);
             // "dense experimental", pushed into the limiter, with audio in the scopes and the meters (stopped just after a kick)
-            if (pi.id == Pid::ms0) { proc->setCurrentProgram (2); proc->setParam ("limgain", 9.0f); double r4; render (*proc, &loop, 3.2, r4); }
+            if (pi.id == Pid::ms0) { proc->loadProgram (2); proc->setParam ("limgain", 9.0f); double r4; render (*proc, &loop, 3.2, r4); }
             std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
             ed->setSize (pi.w, pi.h);
             if (auto* fe = dynamic_cast<Editor*> (ed.get())) for (int t = 0; t < 12; ++t) fe->tickForTest();
@@ -1073,7 +1084,7 @@ int main (int argc, char** argv)
                 if (auto* fe = dynamic_cast<Editor*> (ed.get()))
                 {
                     // second picture: the modulation page, after a held note so the scopes have moved
-                    proc->setCurrentProgram (12);   // "neuro movement"
+                    proc->loadProgram (12);   // "neuro movement"
                     double r5; render (*proc, nullptr, 2.0, r5);
                     fe->pageForTest (1);
                     for (int t = 0; t < 200; ++t) { juce::MidiBuffer mb; juce::AudioBuffer<float> blk (2, 512); blk.clear(); if (t == 0) mb.addEvent (juce::MidiMessage::noteOn (1, 33, (juce::uint8) 110), 0); proc->processBlock (blk, mb); fe->tickForTest(); }
@@ -1086,12 +1097,12 @@ int main (int argc, char** argv)
                 if (auto* fe = dynamic_cast<Editor*> (ed.get()))
                 {
                     // second picture: the step features, on the "pitched roll" preset (pitches, a curved ratchet, a clock curve)
-                    proc->setCurrentProgram (proc->getNumPrograms() - 1);
+                    proc->loadProgram (proc->getNumPrograms() - 1);
                     for (int t = 0; t < 6; ++t) fe->tickForTest();
                     juce::Image im2 = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
                     const auto f2 = shotDir.getChildFile ("kt2-steps.png"); f2.deleteFile();
                     juce::FileOutputStream os2 (f2); juce::PNGImageFormat png2; png2.writeImageToStream (im2, os2);
-                    proc->setCurrentProgram (0);
+                    proc->loadProgram (0);
                     for (int t = 0; t < 6; ++t) fe->tickForTest();
                 }
             if (pi.id == Pid::ms0)

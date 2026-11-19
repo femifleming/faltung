@@ -132,6 +132,15 @@ public:
     juce::String text; Theme theme; bool lit = false;
 };
 
+/** A processor whose presets can be loaded explicitly, even the current one again (the host's setCurrentProgram
+    ignores re-selecting the current program, so that restoring a session doesn't put a preset over it) */
+struct ProgramLoader
+{
+    virtual void loadProgram (int) = 0;
+protected:
+    ~ProgramLoader() = default;
+};
+
 // ---- preset bar: ‹ name › ---------------------------------------------------------------------------
 class PresetBar : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
@@ -141,6 +150,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
 private:
     void timerCallback() override { if (p.getCurrentProgram() != shown) { shown = p.getCurrentProgram(); repaint(); } }
+    static void load (juce::AudioProcessor& proc, int i) { if (auto* l = dynamic_cast<ProgramLoader*> (&proc)) l->loadProgram (i); else proc.setCurrentProgram (i); }
     juce::AudioProcessor& p; Theme theme; int shown = -1;
 };
 } // namespace fal::ui

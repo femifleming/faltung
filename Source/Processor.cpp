@@ -107,7 +107,7 @@ Processor::Processor (Pid product)
         sample = s;
     }
     // faltung deep: every plug-in opens on its first (deep house) preset
-    if (kDeep && pid != Pid::ms0 && ! presets (pid).empty()) setCurrentProgram (0);
+    if (kDeep && pid != Pid::ms0 && ! presets (pid).empty()) loadProgram (0);
 }
 
 Processor::~Processor() { if (designer) designer->stopThread (2000); }
@@ -767,12 +767,18 @@ const juce::String Processor::getProgramName (int i)
 
 void Processor::setCurrentProgram (int i)
 {
+    // the host selecting the program that is already current changes nothing: a VST2 host (REAPER) restores a session
+    // as "set the chunk, then select the saved program", and when it keeps the instance it sends only the second step;
+    // either way that must not put the preset's own values over the session's (ms0 and the light plug-ins open on their
+    // defaults while reporting program 0). Picking a preset in the plug-in's own window goes through loadProgram.
+    if (i == currentProgram) return;
+    loadProgram (i);
+}
+
+void Processor::loadProgram (int i)
+{
     const auto& pr = presets (pid);
     if (i < 0 || i >= (int) pr.size()) return;
-    // a VST2 host (REAPER) restores a session as "set the chunk, then select the saved program": that second step
-    // must not put the preset's own values over the ones just restored
-    if (i == currentProgram && stateLoadedMs != 0 && juce::Time::getMillisecondCounter() - stateLoadedMs < 1500) { stateLoadedMs = 0; return; }
-    stateLoadedMs = 0;
     currentProgram = i;
     // a preset is complete: everything it does not mention goes back to its default
     static const juce::StringArray keep { "pattern", "run", "bpm", "master", "loopbeats", "listen", "bypass", "match", "trim", "target", "balance" };
@@ -849,7 +855,6 @@ void Processor::setStateInformation (const void* data, int size)
     xml->deleteAllChildElementsWithTagName ("bank");
     xml->deleteAllChildElementsWithTagName ("sample");
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
-    stateLoadedMs = std::max<juce::uint32> (1, juce::Time::getMillisecondCounter());
 }
 
 // ---- wb1 wub ---------------------------------------------------------------------------------------

@@ -293,11 +293,11 @@ void PresetBar::paint (juce::Graphics& g)
 void PresetBar::mouseDown (const juce::MouseEvent& e)
 {
     const int n = p.getNumPrograms(), cur = p.getCurrentProgram();
-    if (e.x < 18) { p.setCurrentProgram ((cur - 1 + n) % n); return; }
-    if (e.x > getWidth() - 18) { p.setCurrentProgram ((cur + 1) % n); return; }
+    if (e.x < 18) { load (p, (cur - 1 + n) % n); return; }
+    if (e.x > getWidth() - 18) { load (p, (cur + 1) % n); return; }
     juce::PopupMenu m;
     for (int i = 0; i < n; ++i) m.addItem (i + 1, p.getProgramName (i), true, i == cur);
     auto* proc = &p;
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [proc] (int r) { if (r > 0) proc->setCurrentProgram (r - 1); });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [proc] (int r) { if (r > 0) load (*proc, r - 1); });
 }
 } // namespace fal::ui
