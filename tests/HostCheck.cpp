@@ -1,5 +1,6 @@
 // faltungHostCheck — loads the BUILT plug-ins the way a DAW does and checks that they make sound.
 //   faltungHostCheck file.vst3|file.component ...
+//   faltungHostCheck --save-state <plug-in> <file>  /  --load-state <plug-in> <file>   (does a state from one build load in another?)
 // For each file: instantiate (VST3 / AU), stereo main bus, 48 kHz / 512, host transport playing at 122 bpm.
 // Instruments get MIDI (kit notes 36-43, modules / synth: a note every half beat); effects get a drum-like
 // test signal. Prints peak / rms of the main output for: transport playing (no midi), midi notes, and the
@@ -117,6 +118,66 @@ int main (int argc, char** argv)
     fm.addFormat (std::make_unique<juce::AudioUnitPluginFormat>());
    #endif
     auto db = [] (float x) { return juce::String (juce::Decibels::gainToDecibels (x, -150.0f), 1); };
+
+    // faltungHostCheck --save-state <plug-in> <file> : load the plug-in, move its parameters, write its state as a host
+    //                                                    would save it (and the parameter values beside it, <file>.params)
+    // faltungHostCheck --load-state <plug-in> <file> : load the plug-in (e.g. a newer build), restore that state, and
+    //                                                    check every parameter is where it was: old sessions keep loading
+    if (argc == 4 && (juce::String (argv[1]) == "--save-state" || juce::String (argv[1]) == "--load-state"))
+    {
+        const bool saving = juce::String (argv[1]) == "--save-state";
+        const juce::String path (argv[2]);
+        const juce::File stateFile (juce::File::getCurrentWorkingDirectory().getChildFile (argv[3])), valueFile (stateFile.getFullPathName() + ".params");
+        juce::OwnedArray<juce::PluginDescription> found;
+        for (auto* f : fm.getFormats())
+            if (f->fileMightContainThisPluginType (path)) { f->findAllTypesForFile (found, path); if (! found.isEmpty()) break; }
+        if (found.isEmpty()) { std::cout << "FAIL " << path << ": not loadable\n"; return 1; }
+        juce::String err;
+        auto inst = fm.createPluginInstance (*found[0], 48000.0, 512, err);
+        if (! inst) { std::cout << "FAIL " << path << ": " << err << "\n"; return 1; }
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (1500);
+        inst->prepareToPlay (48000.0, 512);
+        auto wanted = [&] (int i) { const auto n = inst->getParameters()[i]->getName (64); return ! n.startsWith ("MIDI CC") && n != "Bypass"; };
+        auto values = [&]
+        {
+            juce::StringArray v;
+            for (int i = 0; i < inst->getParameters().size(); ++i) if (wanted (i)) v.add (juce::String (inst->getParameters()[i]->getValue(), 5));
+            return v;
+        };
+        std::cout << found[0]->name << " " << found[0]->version << " (" << found[0]->pluginFormatName << ", " << path << ")\n";
+        if (saving)
+        {
+            int moved = 0;
+            for (int i = 0; i < inst->getParameters().size(); ++i)
+                if (wanted (i)) { const double x = (i + 1) * 0.37; inst->getParameters()[i]->setValueNotifyingHost ((float) (0.2 + 0.6 * (x - std::floor (x)))); ++moved; }
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (500);
+            juce::MemoryBlock mb; inst->getStateInformation (mb);
+            stateFile.replaceWithData (mb.getData(), mb.getSize());
+            valueFile.replaceWithText (values().joinIntoString ("\n"));
+            std::cout << "  moved " << moved << " parameters, state " << (int) mb.getSize() << " bytes -> " << stateFile.getFullPathName() << "\n";
+            return 0;
+        }
+        juce::MemoryBlock mb; if (! stateFile.loadFileAsData (mb)) { std::cout << "FAIL no state file\n"; return 1; }
+        const auto before = values();
+        inst->setStateInformation (mb.getData(), (int) mb.getSize());
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (2500);     // (past the moment a host's late program change would be ignored)
+        const auto now = values();
+        juce::StringArray saved; saved.addLines (valueFile.loadFileAsString());
+        if (saved.size() != now.size()) { std::cout << "  FAIL " << now.size() << " parameters, the state was saved with " << saved.size() << "\n"; return 1; }
+        float worst = 0, changed = 0; int at = -1;
+        for (int i = 0; i < now.size(); ++i)
+        {
+            const float d = std::abs (now[i].getFloatValue() - saved[i].getFloatValue());
+            if (d > worst) { worst = d; at = i; }
+            changed = std::max (changed, std::abs (now[i].getFloatValue() - before[i].getFloatValue()));
+        }
+        std::cout << "  " << now.size() << " parameters restored, largest difference from the saved values " << juce::String (worst, 5)
+                  << (at >= 0 && worst > 0.002f ? " (parameter " + juce::String (at) + ")" : juce::String()) << "; the state moved them by up to " << juce::String (changed, 3) << " from this build's defaults\n";
+        const bool ok = worst <= 0.002f && changed > 0.05f;
+        std::cout << (ok ? "  ok\n" : "  FAIL the state did not restore\n");
+        return ok ? 0 : 1;
+    }
+
     for (int a = 1; a < argc; ++a)
     {
         const juce::String path (argv[a]);
