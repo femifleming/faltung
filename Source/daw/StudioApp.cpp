@@ -37,19 +37,27 @@ public:
         const auto last = juce::File (settings->getValue ("lastProject"));
         if (last.existsAsFile() && processor->loadProject (last, err)) {}
         else processor->session.newFromTemplate (1);
+        // SNDSTUDIO_SELFTEST=<folder>: the app drives itself once (pages, playback, the outputs, recording) and writes
+        // pictures and a log there, then quits. For checking a build on a real audio device without hands.
+        const auto self = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SELFTEST", {});
+        if (self.isNotEmpty()) { selfTest = std::make_unique<SelfTest> (*this, juce::File (self)); }
     }
     void shutdown() override
     {
+        selfTest.reset();
         juce::MenuBarModel::setMacMainMenu (nullptr);
         deviceManager.removeAudioCallback (this);
         deviceManager.removeMidiInputDeviceCallback ({}, &collector);
-        if (auto x = deviceManager.createStateXml()) settings->setValue ("audio", x.get());
-        if (processor->session.projectFile.existsAsFile()) settings->setValue ("lastProject", processor->session.projectFile.getFullPathName());
-        settings->saveIfNeeded();
+        if (! selfTesting)   // a self-test leaves the user's settings alone
+        {
+            if (auto x = deviceManager.createStateXml()) settings->setValue ("audio", x.get());
+            if (processor->session.projectFile.existsAsFile()) settings->setValue ("lastProject", processor->session.projectFile.getFullPathName());
+            settings->saveIfNeeded();
+        }
         window.reset();
         processor.reset();
     }
-    void systemRequestedQuit() override { if (processor && processor->session.dirty.load()) processor->autosave(); quit(); }
+    void systemRequestedQuit() override { if (processor && processor->session.dirty.load() && ! selfTesting) processor->autosave(); quit(); }
 
     void setClockOut (const juce::String& identifier)
     {
@@ -87,22 +95,21 @@ public:
             processor->processBlock (b, midi);
         }
         for (int c = 0; c < nOut; ++c) juce::FloatVectorOperations::copy (out[c], io.getReadPointer (nIn + c), n);
+        if (selfTesting)   // what the device takes and gives, for the self-test's log
+        {
+            for (int c = 0; c < nOut && c < kOutChannels; ++c) { const auto r = juce::FloatVectorOperations::findMinAndMax (out[c], n); const float pk = std::max (std::abs (r.getStart()), std::abs (r.getEnd())); if (pk > outPeak[(size_t) c].load()) outPeak[(size_t) c].store (pk); }
+            for (int c = 0; c < nIn && c < kOutChannels; ++c) { const auto r = juce::FloatVectorOperations::findMinAndMax (in[c], n); const float pk = std::max (std::abs (r.getStart()), std::abs (r.getEnd())); if (pk > inPeak[(size_t) c].load()) inPeak[(size_t) c].store (pk); }
+            callbacks.fetch_add (1);
+        }
     }
 
     // ---- menu -------------------------------------------------------------------------------------
     juce::StringArray getMenuBarNames() override { return { "file", "audio" }; }
+    StudioEditor* studioEditor() const { return window ? window->studio() : nullptr; }
     juce::PopupMenu getMenuForIndex (int i, const juce::String&) override
     {
         juce::PopupMenu m;
-        if (i == 0)
-        {
-            juce::PopupMenu t; const auto names = Session::templateNames();
-            for (int k = 0; k < names.size(); ++k) t.addItem (100 + k, names[k]);
-            m.addSubMenu ("new from template", t);
-            m.addItem (1, "open..."); m.addItem (2, "save"); m.addItem (3, "save as..."); m.addSeparator();
-            m.addItem (4, "export stems..."); m.addItem (7, "export master..."); m.addItem (5, "export midi..."); m.addSeparator();
-            m.addItem (6, "open the autosave");
-        }
+        if (i == 0) { if (auto* e = studioEditor()) m = e->fileMenu(); }
         else
         {
             m.addItem (10, "audio and midi settings...");
@@ -112,59 +119,19 @@ public:
         }
         return m;
     }
-    void menuItemSelected (int id, int) override
+    void menuItemSelected (int id, int menu) override
     {
-        auto& s = processor->session;
-        if (id >= 100 && id < 200) { s.newFromTemplate (id - 100); return; }
+        if (menu == 0) { if (auto* e = studioEditor()) e->fileAction (id); return; }
         if (id >= 21) { int k = 21; for (auto& d : juce::MidiOutput::getAvailableDevices()) { if (k++ == id) setClockOut (d.identifier); } return; }
-        switch (id)
+        if (id == 20) { setClockOut ({}); return; }
+        if (id == 10)
         {
-            case 1: chooser = std::make_unique<juce::FileChooser> ("open project", StudioProcessor::projectsDir(), "*.fstudio");
-                    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& c)
-                    { if (c.getResult().existsAsFile()) { juce::String err; processor->loadProject (c.getResult(), err); report (err); } });
-                    break;
-            case 2: if (s.projectFile.existsAsFile()) { juce::String err; processor->saveProject (s.projectFile, err); report (err); break; } [[fallthrough]];
-            case 3: chooser = std::make_unique<juce::FileChooser> ("save project", StudioProcessor::projectsDir().getChildFile (s.projectName + ".fstudio"), "*.fstudio");
-                    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting, [this] (const juce::FileChooser& c)
-                    { if (c.getResult() != juce::File()) { juce::String err; processor->saveProject (c.getResult().withFileExtension ("fstudio"), err); report (err); } });
-                    break;
-            case 4: chooser = std::make_unique<juce::FileChooser> ("export stems into a folder", StudioProcessor::projectsDir());
-                    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& c)
-                    {
-                        if (c.getResult() == juce::File()) return;
-                        auto& ss = processor->session; juce::String err;
-                        ss.renderStems (c.getResult().getChildFile (ss.projectName + " stems"), 0.0, ss.projectBars(), nullptr, err);
-                        report (err);
-                    });
-                    break;
-            case 7: chooser = std::make_unique<juce::FileChooser> ("export master", StudioProcessor::projectsDir().getChildFile (s.projectName + ".wav"), "*.wav");
-                    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& c)
-                    {
-                        if (c.getResult() == juce::File()) return;
-                        auto& ss = processor->session; juce::String err; ExportOptions o; o.limit = true;
-                        ss.renderMaster (c.getResult().withFileExtension ("wav"), 0.0, ss.projectBars(), nullptr, err, o); report (err);
-                    });
-                    break;
-            case 5: chooser = std::make_unique<juce::FileChooser> ("export midi", StudioProcessor::projectsDir().getChildFile (s.projectName + ".mid"), "*.mid");
-                    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& c)
-                    {
-                        if (c.getResult() == juce::File()) return;
-                        auto& ss = processor->session; juce::String err; ss.exportMidi (c.getResult().withFileExtension ("mid"), 0.0, ss.projectBars(), err); report (err);
-                    });
-                    break;
-            case 6: { juce::String err; if (processor->autosaveFile().existsAsFile()) processor->loadProject (processor->autosaveFile(), err); report (err); break; }
-            case 10:
-            {
-                auto* sel = new juce::AudioDeviceSelectorComponent (deviceManager, 0, kOutChannels, 2, kOutChannels, true, false, false, false);
-                sel->setSize (560, 640);
-                juce::DialogWindow::LaunchOptions lo;
-                lo.content.setOwned (sel); lo.dialogTitle = "audio and midi settings"; lo.componentToCentreAround = window.get();
-                lo.dialogBackgroundColour = juce::Colour (studioInfo().ground); lo.useNativeTitleBar = true; lo.resizable = true;
-                lo.launchAsync();
-                break;
-            }
-            case 20: setClockOut ({}); break;
-            default: break;
+            auto* sel = new juce::AudioDeviceSelectorComponent (deviceManager, 0, kOutChannels, 2, kOutChannels, true, false, false, false);
+            sel->setSize (560, 640);
+            juce::DialogWindow::LaunchOptions lo;
+            lo.content.setOwned (sel); lo.dialogTitle = "audio and midi settings"; lo.componentToCentreAround = window.get();
+            lo.dialogBackgroundColour = juce::Colour (studioInfo().ground); lo.useNativeTitleBar = true; lo.resizable = true;
+            lo.launchAsync();
         }
     }
     void report (const juce::String& err)
@@ -187,11 +154,113 @@ private:
             setVisible (true);
         }
         ~MainWindow() override { clearContentComponent(); app.processor->editorBeingDeleted (editor.get()); editor.reset(); }
+        StudioEditor* studio() const { return dynamic_cast<StudioEditor*> (editor.get()); }
         void closeButtonPressed() override { app.systemRequestedQuit(); }
     private:
         StudioApp& app;
         std::unique_ptr<juce::AudioProcessorEditor> editor;
     };
+
+    // ---- the self-test ------------------------------------------------------------------------------
+    struct SelfTest : juce::Timer
+    {
+        SelfTest (StudioApp& a, juce::File d) : app (a), dir (std::move (d))
+        {
+            dir.createDirectory(); app.selfTesting = true;
+            log = dir.getChildFile ("selftest.txt"); log.deleteFile();
+            const auto dev = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_DEVICE", {});
+            if (dev.isNotEmpty())
+            {
+                auto setup = app.deviceManager.getAudioDeviceSetup();
+                setup.outputDeviceName = dev; setup.inputDeviceName = dev; setup.useDefaultInputChannels = false; setup.useDefaultOutputChannels = false;
+                setup.inputChannels.setRange (0, kOutChannels, true); setup.outputChannels.setRange (0, kOutChannels, true);
+                const auto err = app.deviceManager.setAudioDeviceSetup (setup, true);
+                say ("device asked for: " + dev + (err.isNotEmpty() ? "  (" + err + ")" : juce::String()));
+            }
+            startTimer (700);
+        }
+        void say (const juce::String& line) { log.appendText (line + "\n"); }
+        void shot (const juce::String& name)
+        {
+            auto* e = app.studioEditor(); if (! e) return;
+            const auto img = e->createComponentSnapshot (e->getLocalBounds(), true, 1.0f);
+            const auto f = dir.getChildFile (name + ".png"); f.deleteFile();
+            juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
+        }
+        void clearPeaks() { for (auto& p : app.outPeak) p.store (0.0f); for (auto& p : app.inPeak) p.store (0.0f); }
+        juce::String peaks (const std::array<std::atomic<float>, kOutChannels>& a, int n) const
+        {
+            juce::String s; for (int c = 0; c < n; ++c) s << (c ? " " : "") << juce::String (juce::Decibels::gainToDecibels (a[(size_t) c].load(), -120.0f), 0);
+            return s;
+        }
+        int lit (const std::array<std::atomic<float>, kOutChannels>& a, int from, int to) const { int k = 0; for (int c = from; c < to; ++c) if (a[(size_t) c].load() > 1.0e-4f) ++k; return k; }
+        void timerCallback() override
+        {
+            auto& s = app.processor->session; auto* e = app.studioEditor();
+            if (! e) { juce::JUCEApplicationBase::quit(); return; }
+            switch (step++)
+            {
+                case 0:
+                    if (auto* d = app.deviceManager.getCurrentAudioDevice())
+                        say ("device: " + d->getName() + "  " + juce::String (d->getCurrentSampleRate(), 0) + " hz  buffer " + juce::String (d->getCurrentBufferSizeSamples()) + "  outputs " + juce::String (d->getActiveOutputChannels().countNumberOfSetBits()) + "  inputs " + juce::String (d->getActiveInputChannels().countNumberOfSetBits()));
+                    else say ("no audio device");
+                    s.newFromTemplate (1); s.launchScene (4);
+                    break;
+                case 1: e->showPage (0); break;
+                case 2: case 3: case 4: case 5: case 6: shot ("app-page-" + juce::String (step - 3)); e->showPage (step - 2); break;
+                case 7: shot ("app-page-5"); e->showPage (0); clearPeaks(); s.play(); break;
+                case 8: case 9: break;
+                case 10:
+                    say ("produce, the starter playing: output channels 1-8 (db) " + peaks (app.outPeak, 8) + "   audio callbacks " + juce::String (app.callbacks.load()));
+                    say ("  the same through the device's inputs 1-8 (a loopback device hears itself) " + peaks (app.inPeak, 8));
+                    shot ("app-session-playing"); e->showPage (3); break;
+                case 11: shot ("app-mix-playing"); s.assignOutputs(); clearPeaks(); break;
+                case 12: case 13: break;
+                case 14:
+                    say ("multi-out, assign all: output channels 1-24 (db) " + peaks (app.outPeak, 24) + "   channels with sound in 3..22: " + juce::String (lit (app.outPeak, 2, 22)));
+                    say ("  inputs 1-24 " + peaks (app.inPeak, 24));
+                    shot ("app-mix-multiout");
+                    s.stop(); s.newFromTemplate (1); s.launchScene (4);
+                    // record the main output back in through inputs 1-2 (needs a loopback device and the microphone permission)
+                    if (auto* t = s.addTrack ("loopback", -1, TrackKind::Audio)) { t->armed.store (true); t->inputSource.store (-2); t->inputChannel.store (1); t->inputCount.store (2); t->monitor.store ((int) Monitor::Off); t->toMaster.store (false); recUid = t->uid; }
+                    s.projectFile = dir.getChildFile ("selftest.fstudio"); s.projectName = "selftest";
+                    s.locate (0.0); s.startRecording(); s.play();
+                    break;
+                case 15: case 16: case 17: case 18: break;
+                case 19:
+                {
+                    s.stopRecording(); s.stop();
+                    auto* t = s.trackByUid (recUid);
+                    if (t && t->aclips->size() == 1 && (*t->aclips)[0].sample)
+                    {
+                        const auto& c = (*t->aclips)[0];
+                        say ("recorded a clip: " + juce::String (c.sample->seconds(), 2) + " s, " + juce::String (c.sample->data.getNumChannels()) + " channels, peak " + juce::String (juce::Decibels::gainToDecibels (c.sample->data.getMagnitude (0, c.sample->data.getNumSamples()), -120.0f), 1) + " db, at bar " + juce::String (c.startBar + 1.0, 3) + "  file " + juce::File (c.path).getFileName());
+                    }
+                    else say ("recording: no clip (" + juce::String (t ? (int) t->aclips->size() : -1) + ")");
+                    e->showPage (1); break;
+                }
+                case 20: shot ("app-arrange-recorded"); s.newFromTemplate (7); s.launchScene (0); s.setWidth (*s.master, 24); if (s.tracks.size() > 4) { s.tracks[3]->mixer->setBase (MP_MUTE, 0.0f); s.tracks[4]->mixer->setBase (MP_MUTE, 1.0f); } clearPeaks(); s.play(); e->showPage (3); break;
+                case 21: case 22: break;
+                case 23:
+                    say ("spatial template, master 24 wide: outputs with sound in 1..24: " + juce::String (lit (app.outPeak, 0, 24)) + ", in 25..128: " + juce::String (lit (app.outPeak, 24, kOutChannels)) + "   master meters moving: " + juce::String ([&] { int k = 0; for (int c = 0; c < 24; ++c) if (s.master->meter[(size_t) c].load() > 1.0e-5f) ++k; return k; }()));
+                    say ("  inputs with sound in 1..24: " + juce::String (lit (app.inPeak, 0, 24)));
+                    shot ("app-mix-spatial"); s.stop(); break;
+                case 24:
+                {
+                    juce::String err; const auto f = dir.getChildFile ("selftest saved.fstudio");
+                    const bool ok = app.processor->saveProject (f, err);
+                    const auto a = s.save()->toString();
+                    const bool ok2 = app.processor->loadProject (f, err);
+                    say ("project saved " + juce::String (ok ? "ok" : "FAILED") + ", reopened " + (ok2 ? "ok" : "FAILED " + err) + ", identical " + (a == s.save()->toString() ? "yes" : "NO"));
+                    break;
+                }
+                default: say ("done"); stopTimer(); juce::JUCEApplicationBase::quit(); break;
+            }
+        }
+        StudioApp& app; juce::File dir, log; int step = 0, recUid = 0;
+    };
+    std::unique_ptr<SelfTest> selfTest; bool selfTesting = false;
+    std::array<std::atomic<float>, kOutChannels> outPeak {}, inPeak {}; std::atomic<int> callbacks { 0 };
 
     std::unique_ptr<StudioProcessor> processor;
     std::unique_ptr<MainWindow> window;

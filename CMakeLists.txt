@@ -172,6 +172,8 @@ function(faltung_studio DEEP)
         VST3_CATEGORIES Instrument
         VST2_CATEGORY kPlugCategSynth
         LV2URI "urn:freakiepie:faltung:sndstudio"
+        MICROPHONE_PERMISSION_ENABLED TRUE
+        MICROPHONE_PERMISSION_TEXT "sndstudio records from your audio inputs."
         COPY_PLUGIN_AFTER_BUILD ${FALTUNG_COPY_AFTER_BUILD})
     target_sources(${T} PRIVATE ${FAL_SOURCES} ${FAL_DAW_SOURCES} Source/daw/StudioApp.cpp Source/daw/StudioEntry.cpp)
     target_compile_definitions(${T} PUBLIC ${FAL_DEFS} ${FAL_HOST_DEFS} FALTUNG_PRODUCT=18 FALTUNG_DEEP=${DEEP}

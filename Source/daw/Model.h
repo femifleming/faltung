@@ -62,21 +62,43 @@ struct Step
     int pitch = 0;           // semitones from the track's root note
     float prob = 1.0f;       // 0..1
     int ratchet = 1;         // 1..8
+    float rcurve = 0.0f;     // the ratchet's hits evenly spaced (0), crowding towards the end (> 0) or spreading out (< 0)
     float micro = 0.0f;      // -1..1 → ± micro range (ms)
     float len = 0.5f;        // note length in steps (0.05 … 16)
+    float dur = 1.0f;        // how long the step itself lasts, as a ratio of the track's step (0.25 … 4): uneven grids
     Cond cond = Cond::Always;
     bool slide = false;      // glide the locked values to the next locked step
     int slice = -1;          // sample slice / one-shot index for sampler tracks (-1 = the note)
+    int chord = 0;           // 0 one note; otherwise the step plays a stack of notes (chordName / chordNotes)
     std::array<Lock, kLocks> locks;
     bool hasLock (int dev, int prm) const { for (auto& l : locks) if (l.param == prm && l.device == dev) return true; return false; }
     Lock* findLock (int dev, int prm) { for (auto& l : locks) if (l.param == prm && l.device == dev) return &l; return nullptr; }
 };
+
+/** the chords a step can stack on its note (semitones above it) */
+inline const char* chordName (int i)
+{
+    static const char* n[10] = { "one note", "octave", "fifth", "minor", "major", "minor 7", "major 7", "minor 9", "sus 4", "stack of fourths" };
+    return n[juce::jlimit (0, 9, i)];
+}
+constexpr int kChords = 10;
+inline int chordNotes (int chord, const int*& notes)
+{
+    static const int t[10][4] = { { 0, 0, 0, 0 }, { 12, 0, 0, 0 }, { 7, 0, 0, 0 }, { 3, 7, 0, 0 }, { 4, 7, 0, 0 }, { 3, 7, 10, 0 }, { 4, 7, 11, 0 }, { 3, 7, 10, 14 }, { 5, 7, 0, 0 }, { 5, 10, 15, 0 } };
+    static const int c[10] = { 0, 1, 1, 2, 2, 3, 3, 4, 2, 3 };
+    const int k = juce::jlimit (0, 9, chord); notes = t[k]; return c[k];
+}
 
 struct Pattern
 {
     int length = 16;         // 1..64
     std::array<Step, kMaxSteps> s;
     bool empty() const { for (auto& st : s) if (st.on) return false; return true; }
+    /** the pattern's length in step units: the sum of its steps' durations (= length when every step lasts 1) */
+    double span() const { double d = 0; for (int i = 0; i < juce::jlimit (1, kMaxSteps, length); ++i) d += juce::jlimit (0.05f, 16.0f, s[(size_t) i].dur); return d; }
+    /** where step i starts inside the pattern, in step units */
+    double startOf (int i) const { double d = 0; for (int k = 0; k < i && k < kMaxSteps; ++k) d += juce::jlimit (0.05f, 16.0f, s[(size_t) k].dur); return d; }
+    bool even() const { for (int i = 0; i < juce::jlimit (1, kMaxSteps, length); ++i) if (std::abs (s[(size_t) i].dur - 1.0f) > 1.0e-6f) return false; return true; }
 };
 using PatternPtr = std::shared_ptr<const Pattern>;
 
@@ -96,10 +118,10 @@ struct AutoLane
 using LanePtr = std::shared_ptr<const AutoLane>;
 
 /** a modulator: one source mapped to one parameter of this track (any number of them per parameter; they add) */
-enum ModSrc { MOD_LFO = 0, MOD_GATE, MOD_RANDOM, MOD_ENV, MOD_FOLLOW, MOD_STEPS, MOD_MACRO, MOD_VEL, MOD_HIT, MOD_CC, MOD_CHAOS, MOD_COUNT };
+enum ModSrc { MOD_LFO = 0, MOD_GATE, MOD_RANDOM, MOD_ENV, MOD_FOLLOW, MOD_STEPS, MOD_MACRO, MOD_VEL, MOD_HIT, MOD_CC, MOD_CHAOS, MOD_FOURSES, MOD_COUNT };
 inline const char* modSrcName (int s)
 {
-    static const char* n[MOD_COUNT] = { "lfo", "random gate", "random", "envelope", "follower", "steps", "macro", "velocity", "per hit", "midi cc", "chaos" };
+    static const char* n[MOD_COUNT] = { "lfo", "random gate", "random", "envelope", "follower", "steps", "macro", "velocity", "per hit", "midi cc", "chaos", "bounce" };
     return n[juce::jlimit (0, MOD_COUNT - 1, s)];
 }
 inline const char* lfoShapeName (int i)
@@ -130,9 +152,12 @@ inline const char* polarityName (int p) { static const char* n[3] = { "bipolar",
 
 struct MacroMap { Target target; float lo = 0, hi = 1; };
 struct MidiMap { int cc = -1; Target target; float lo = 0, hi = 1; };
+/** a computer key that plays a control: toggles it between its ends, or holds it at the top while the key is down */
+struct KeyMap { int key = 0; Target target; bool momentary = false; };
 
-/** audio from one track into another (post-fader), `channels` wide, with channel offsets */
-struct Route { int dst = 0; int channels = 2; int srcOffset = 0, dstOffset = 0; float gain = 1.0f; };
+/** audio from one track into another (post-fader), `channels` wide, with channel offsets. A route that would close a
+    loop is a feedback route: it arrives one buffer late and passes a soft limiter, so the loop cannot run away */
+struct Route { int dst = 0; int channels = 2; int srcOffset = 0, dstOffset = 0; float gain = 1.0f; bool feedback = false; };
 
 /** a sample in memory (loaded on the message thread, shared with the audio thread) */
 struct Sample
@@ -169,9 +194,9 @@ double divisionBeats (int index);
 juce::StringArray divisionNames();
 
 /** speed multipliers of a track's sequencer */
-inline float speedMul (int i) { static const float m[7] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 4.0f }; return m[juce::jlimit (0, 6, i)]; }
-inline const char* speedName (int i) { static const char* n[7] = { "x1/4", "x1/2", "x3/4", "x1", "x3/2", "x2", "x4" }; return n[juce::jlimit (0, 6, i)]; }
-constexpr int kSpeeds = 7;
+inline float speedMul (int i) { static const float m[8] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 4.0f, 8.0f }; return m[juce::jlimit (0, 7, i)]; }
+inline const char* speedName (int i) { static const char* n[8] = { "x1/4", "x1/2", "x3/4", "x1", "x3/2", "x2", "x4", "x8" }; return n[juce::jlimit (0, 7, i)]; }
+constexpr int kSpeeds = 8;
 
 enum class PlayMode : int { Session, Song, Arrange };
 inline const char* playModeName (PlayMode m) { static const char* n[3] = { "session", "song", "arrange" }; return n[juce::jlimit (0, 2, (int) m)]; }

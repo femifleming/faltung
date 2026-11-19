@@ -5,6 +5,7 @@
 #include "../dsp/Fx.h"
 #include "../dsp/Bass.h"
 #include "../dsp/Master.h"
+#include "devices/StudioDevices.h"
 
 namespace fal::daw
 {
@@ -53,6 +54,7 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> Session::getPosition() const
 void Session::prepareTrack (Track& t)
 {
     sizeBuffers (t);
+    t.instDelay.resize ((size_t) std::max (2, t.width.load()));
     for (auto& d : t.instDelay) d.prepare (std::max (1024, t.inDelay + bs + 16));
     t.forEachDevice ([&] (Device& d) { d.setPlayHead (this); d.prepare (sr, bs); });
     t.levelSm.prepare ((float) sr, 15.0f); t.levelSm.snap (1.0f);
@@ -61,6 +63,9 @@ void Session::prepareTrack (Track& t)
     t.nPending = 0; t.snapMixer = true;
     t.rng.seed ((uint32_t) (t.uid * 7919 + 13));
     t.hitEnvT = -1;
+    t.seqMidi.ensureSize (4096);
+    t.evoRng.seed ((uint32_t) (t.uid * 104729 + 7)); t.flip.fill (0); t.drift.fill (0.0f); t.evoPass = -1;
+    t.chokeGain = t.chokeTarget = 1.0f;
 }
 void Session::prepare (double sampleRate, int blockSize)
 {
@@ -204,11 +209,38 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
     for (auto* t : order) t->buf.clear (0, n);
     master->buf.clear (0, n);
     const int sel = selectedTrack.load();
+    // feedback routes: what their source put out one buffer ago arrives now, through a soft limiter
+    for (auto& tp : tracks)
+        for (size_t ri = 0; ri < tp->routes->size() && ri < tp->routeRun.size(); ++ri)
+        {
+            const Route& r = (*tp->routes)[ri];
+            if (! r.feedback) continue;
+            Track* dst = trackByUid (r.dst); auto& run = *tp->routeRun[ri];
+            if (! dst) continue;
+            const int dw = dst->buf.getNumChannels();
+            for (int c = 0; c < r.channels && c < (int) run.delay.size(); ++c)
+            {
+                const int dc = r.dstOffset + c;
+                if (dc >= dw) continue;
+                auto& dl = run.delay[(size_t) c];
+                if (dl.mask < bs + n) continue;
+                float* d = dst->buf.getWritePointer (dc);
+                for (int i = 0; i < n; ++i)
+                {
+                    float x = dl.buf[(size_t) ((dl.w + i - bs) & dl.mask)];
+                    const float a = std::abs (x);
+                    if (a > 0.5f) x = (x < 0 ? -1.0f : 1.0f) * (0.5f + 0.5f * std::tanh ((a - 0.5f) * 2.0f));   // never above 1
+                    d[i] += x;
+                }
+            }
+        }
 
+    // 1. every track's notes for this span, before any audio: a hit on one track of a choke group cuts the others
     for (auto* tp : order)
     {
         Track& t = *tp;
-        scratchMidi.clear();
+        juce::MidiBuffer& scratchMidi = t.seqMidi;
+        scratchMidi.clear(); t.firstHit = -1;
         if (! t.isReturn())
         {
             int index = 0; for (size_t i = 0; i < tracks.size(); ++i) if (tracks[i].get() == &t) { index = (int) i; break; }
@@ -236,11 +268,31 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
             }
         }
         else modulate (t, ppq0, n, bpm);
-        renderTrack (t, n, ppq0, bpm, macros, anySolo, outs, scratchMidi, h, playing);
+        if (t.chokeGroup.load (std::memory_order_relaxed) > 0)
+            for (const auto m : scratchMidi) if (m.getMessage().isNoteOn()) { t.firstHit = m.samplePosition; break; }
     }
+    // 2. the audio, in routing order
+    for (auto* tp : order) renderTrack (*tp, n, ppq0, bpm, macros, anySolo, outs, tp->seqMidi, h, playing);
     modulate (*master, ppq0, n, bpm);
     scratchMidi.clear();
     renderTrack (*master, n, ppq0, bpm, macros, anySolo, outs, scratchMidi, h, playing);
+
+    // the browser's audition: straight to the main pair, past the master chain
+    if (auto* pv = previewNow.get(); pv && pv->sample)
+    {
+        const auto& d = pv->sample->data; const int ns = d.getNumSamples(), nc = d.getNumChannels();
+        const double step = pv->sample->rate / sr; const int first = masterOut.load() - 1;
+        for (int c = 0; c < 2; ++c)
+        {
+            float* o = first + c >= 0 && first + c < kOutChannels ? outs.ch[(size_t) (first + c)] : nullptr;
+            if (! o) continue;
+            const float* src = d.getReadPointer (std::min (c, nc - 1));
+            double pos = pv->pos;
+            for (int i = 0; i < n && pos < ns - 1; ++i, pos += step) o[i] += hermiteAt (src, ns, pos) * pv->gain;
+        }
+        pv->pos += step * n;
+        if (pv->pos >= ns - 1) previewOn.store (false);
+    }
 
     // recording taps
     if (recording.load (std::memory_order_relaxed) && playing)
@@ -297,17 +349,17 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
         if (! t.silent && t.chainOn.load (std::memory_order_relaxed) && ! t.chain->empty())
         {
             const auto& ch = *t.chain;
-            long long total = 0;
-            for (int p : ch) total += t.patternAt (p) ? t.patternAt (p)->length : 16;
+            double total = 0;
+            for (int p : ch) total += t.patternAt (p) ? t.patternAt (p)->span() : 16.0;
             if (total > 0)
             {
-                const long long E = std::max (0LL, (long long) std::floor ((ppq0 - t.anchor) / stepBeats));
-                const long long pass = E / total; long long rem = E % total, cum = 0;
+                const double E = std::max (0.0, (ppq0 - t.anchor) / stepBeats + 1.0e-9);
+                const long long pass = (long long) std::floor (E / total); const double rem = E - (double) pass * total; double cum = 0;
                 size_t k = 0;
-                for (; k < ch.size(); ++k) { const int len = t.patternAt (ch[k]) ? t.patternAt (ch[k])->length : 16; if (rem < cum + len) break; cum += len; }
-                if (k >= ch.size()) k = ch.size() - 1;
+                for (; k < ch.size(); ++k) { const double len = t.patternAt (ch[k]) ? t.patternAt (ch[k])->span() : 16.0; if (rem < cum + len) break; cum += len; }
+                if (k >= ch.size()) { k = ch.size() - 1; cum -= t.patternAt (ch[k]) ? t.patternAt (ch[k])->span() : 16.0; }
                 t.activePattern = ch[k];
-                t.seqAnchor = t.anchor + (double) (pass * total + cum) * stepBeats;
+                t.seqAnchor = t.anchor + ((double) pass * total + cum) * stepBeats;
                 t.loopOffset = pass;
                 t.shownPattern.store (t.activePattern);
                 return;
@@ -353,6 +405,7 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
 void Session::modulate (Track& t, double ppq0, int n, double bpm)
 {
     t.forEachDevice ([] (Device& d) { std::fill (d.modOffset.begin(), d.modOffset.end(), 0.0f); });
+    if (t.isMaster()) std::fill (global->modOffset.begin(), global->modOffset.end(), 0.0f);   // the master's modulators reach the globals (tempo, swing, macros)
     const auto& mods = *t.mods;
     if (mods.empty() || t.modState.size() != mods.size()) return;
     const double dt = n / sr;
@@ -417,10 +470,37 @@ void Session::modulate (Track& t, double ppq0, int n, double bpm)
             case MOD_FOLLOW: u = s.follow = t.showFollow.load (std::memory_order_relaxed); break;
             case MOD_STEPS:
             {
-                const double beats = divisionBeats (m.div);
                 const int len = juce::jlimit (1, kStepMod, m.stepLen);
-                const long long idx = (long long) std::floor (std::max (0.0, ppq0 - t.seqAnchor) / beats);
-                u = m.steps[(size_t) (idx % len)];
+                if (m.sync && std::abs (rate - 1.0f) < 1.0e-4f)
+                {
+                    const long long idx = (long long) std::floor (std::max (0.0, ppq0 - t.seqAnchor) / divisionBeats (m.div));
+                    u = m.steps[(size_t) (idx % len)];
+                }
+                else
+                {
+                    // off the grid: `hz` steps a second (or the division's rate, bent by another modulator)
+                    const double hz = (m.sync ? bpm / 60.0 / divisionBeats (m.div) : (double) m.hz) * rate;
+                    s.ph += (float) (dt * hz / len); s.ph -= std::floor (s.ph);
+                    u = m.steps[(size_t) juce::jlimit (0, len - 1, (int) (s.ph * (float) len))];
+                }
+                break;
+            }
+            case MOD_FOURSES:
+            {
+                // four ramps at unrelated rates, each bouncing between the one below and the one above: none of them repeats
+                // (and each one's speed leans on where another of them is, so they never fall into step)
+                static const float ratio[4] = { 1.0f, 1.37f, 1.93f, 2.71f };
+                const double hz = (m.sync ? bpm / 60.0 / divisionBeats (m.div) : (double) m.hz) * rate;
+                int steps = juce::jlimit (1, 64, (int) std::ceil (dt * hz * 16.0)); const float h = (float) (dt * hz * 2.0) / (float) steps;
+                for (int it = 0; it < steps; ++it)
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        float& x = s.four[(size_t) k]; float& d = s.fourDir[(size_t) k];
+                        x += d * h * ratio[k] * (0.45f + 1.1f * s.four[(size_t) ((k + 2) & 3)]);
+                        const float lo = k > 0 ? s.four[(size_t) k - 1] : 0.0f, hi = k < 3 ? s.four[(size_t) k + 1] : 1.0f;
+                        if (x >= hi) { x = hi; d = -1.0f; } else if (x <= lo) { x = lo; d = 1.0f; }
+                    }
+                u = juce::jlimit (0.0f, 1.0f, s.four[(size_t) juce::jlimit (0, 3, m.macro)]);
                 break;
             }
             case MOD_MACRO: u = global->finalValue (GP_MACRO1 + juce::jlimit (0, kMacros - 1, m.macro)); break;
@@ -436,7 +516,7 @@ void Session::modulate (Track& t, double ppq0, int n, double bpm)
         const float off = m.polarity == 1 ? v * m.depth : m.polarity == 2 ? -v * m.depth : (v * 2.0f - 1.0f) * m.depth;
         if (m.device == -1) { if (m.param >= 0 && m.param < (int) rateMod.size()) rateMod[(size_t) m.param] += off; continue; }
         if (m.param < 0) continue;
-        auto* d = t.device (m.device);
+        auto* d = t.isMaster() && m.device == 0 ? global.get() : t.device (m.device);
         if (! d || m.param >= d->numParams()) continue;
         d->modOffset[(size_t) m.param] += off;
     }
@@ -456,11 +536,13 @@ void Session::applyLocks (Track& t, const Pattern& pat, int si, double e, double
         {
             const int len = juce::jlimit (1, kMaxSteps, pat.length);
             bool found = false;
+            double dist = 0;   // in steps: every step on the way counts with its own duration
             for (int j = 1; j <= len && ! found; ++j)
             {
+                dist += juce::jlimit (0.05f, 16.0f, pat.s[(size_t) ((si + j - 1) % len)].dur);
                 const Step& nx = pat.s[(size_t) ((si + j) % len)];
                 if (! nx.on) continue;
-                for (auto& nl : nx.locks) if (nl.param == l.param && nl.device == l.device) { d->lock (l.param, l.value, true, nl.value, e, e + j * stepBeats); found = true; break; }
+                for (auto& nl : nx.locks) if (nl.param == l.param && nl.device == l.device) { d->lock (l.param, l.value, true, nl.value, e, e + dist * stepBeats); found = true; break; }
             }
             if (! found) d->lock (l.param, l.value, false, l.value, e, e);
         }
@@ -489,18 +571,62 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
     const bool fl = fill.load (std::memory_order_relaxed);
     const int root = t.rootNote.load (std::memory_order_relaxed);
     const double rel0 = ppq0 - t.seqAnchor, rel1 = ppq1 - t.seqAnchor;
-    t.playStep.store (rel0 < 0 ? -1 : (int) (((long long) std::floor (rel0 / stepBeats)) % len));
-    const long long n0 = std::max (0LL, (long long) std::floor (rel0 / stepBeats) - 2), n1 = (long long) std::floor (rel1 / stepBeats) + 2;
-    for (long long N = n0; N <= n1; ++N)
+    // where every step starts, in steps: each step lasts its own duration (1 on an even grid, so step k starts at k)
+    std::array<double, kMaxSteps + 1> at;
+    at[0] = 0.0; for (int i = 0; i < len; ++i) at[(size_t) i + 1] = at[(size_t) i] + (double) juce::jlimit (0.05f, 16.0f, pat.s[(size_t) i].dur);
+    const double span = at[(size_t) len], loopBeats = span * stepBeats;
+    if (rel0 < 0) t.playStep.store (-1);
+    else
     {
-        const long long loop = N / len + t.loopOffset; const int si = (int) (N % len);
-        const Step& st = pat.s[(size_t) si];
+        const double u = std::fmod (rel0 / stepBeats, span);
+        int k = 0; while (k < len - 1 && at[(size_t) k + 1] <= u) ++k;
+        t.playStep.store (k);
+    }
+    // the evolving copy: on every new pass a few steps of the written pattern flip or change weight, and some that had
+    // changed come home again, so the pattern wanders around what is written instead of away from it
+    const float evo = t.evolve.load (std::memory_order_relaxed);
+    if (rel0 >= 0)
+    {
+        const long long now = (long long) std::floor (rel0 / loopBeats) + t.loopOffset;
+        if (now != t.evoPass)
+        {
+            const bool first = t.evoPass < 0;
+            t.evoPass = now;
+            if (evo <= 0.0005f) { t.flip.fill (0); t.drift.fill (0.0f); }
+            else if (! first)
+                for (int i = 0; i < len; ++i)
+                {
+                    if (t.flip[(size_t) i] != 0 || std::abs (t.drift[(size_t) i]) > 0.001f) { if (t.evoRng.uni() < 0.35f) { t.flip[(size_t) i] = 0; t.drift[(size_t) i] = 0.0f; } }
+                    else if (t.evoRng.uni() < evo * 0.2f) { if (t.evoRng.uni() < 0.5f) t.flip[(size_t) i] = 1; else t.drift[(size_t) i] = t.evoRng.bi() * 0.35f; }
+                }
+        }
+    }
+    const long long l0 = std::max (0LL, (long long) std::floor (rel0 / loopBeats) - 1), l1 = (long long) std::floor (rel1 / loopBeats) + 1;
+    for (long long pass = l0; pass <= l1; ++pass)
+    for (int si = 0; si < len; ++si)
+    {
+        const long long loop = pass + t.loopOffset;
+        Step evolved;
+        const Step* sp = &pat.s[(size_t) si];
+        if (evo > 0.0005f && (t.flip[(size_t) si] != 0 || t.drift[(size_t) si] != 0.0f))
+        {
+            evolved = *sp;
+            if (t.flip[(size_t) si] != 0) { evolved.on = ! evolved.on; if (evolved.on) evolved.vel = 0.55f; }
+            evolved.vel = juce::jlimit (0.1f, 1.0f, evolved.vel + t.drift[(size_t) si]);
+            sp = &evolved;
+        }
+        const Step& st = *sp;
         if (! st.on) continue;
-        const double base = t.seqAnchor + (double) N * stepBeats + ((si & 1) ? (sw - 0.5) * 2.0 * stepBeats : 0.0) + (st.micro * micro + shift) * msToPpq;
+        const double own = (at[(size_t) si + 1] - at[(size_t) si]) * stepBeats;   // this step's own length in beats
+        const double base = t.seqAnchor + ((double) pass * span + at[(size_t) si]) * stepBeats + ((si & 1) ? (sw - 0.5) * 2.0 * own : 0.0) + (st.micro * micro + shift) * msToPpq;
+        if (base > ppq1 + own + 1.0 || base + own + 1.0 < ppq0) continue;
         const int rat = juce::jlimit (1, 8, st.ratchet);
         for (int r = 0; r < rat; ++r)
         {
-            const double e = base + r * (stepBeats / rat);
+            // the hits of a ratchet: even, or bent so they speed up towards the end of the step or slow down
+            double ru = (double) r / rat;
+            if (st.rcurve > 0.001f) ru = 1.0 - std::pow (1.0 - ru, 1.0 + 2.0 * st.rcurve); else if (st.rcurve < -0.001f) ru = std::pow (ru, 1.0 - 2.0 * st.rcurve);
+            const double e = base + ru * own;
             if (e < ppq0 - 1.0e-9 || e >= ppq1 - 1.0e-9) continue;
             if (r == 0)
             {
@@ -517,11 +643,17 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
             const int note = juce::jlimit (0, 127, st.slice >= 0 ? 36 + st.slice : root + st.pitch);
             const float vel = juce::jlimit (0.02f, 1.0f, st.vel * (r == 0 ? 1.0f : 0.85f - 0.05f * r));
             double lenBeats = std::max (0.02, (double) st.len) * stepBeats;
-            if (r < rat - 1) lenBeats = std::min (lenBeats, stepBeats / rat * 0.9);
+            if (r < rat - 1) lenBeats = std::min (lenBeats, own / rat * 0.9);
             const int lenS = std::max (1, (int) (lenBeats * spb));
-            out.addEvent (juce::MidiMessage::noteOn (1, note, vel), smp);
-            if (smp + lenS < n) out.addEvent (juce::MidiMessage::noteOff (1, note), smp + lenS);
-            else if (t.nPending < (int) t.pending.size()) t.pending[(size_t) t.nPending++] = { note, smp + lenS - n };
+            // the note, and the notes stacked on it when the step plays a chord
+            const int* stack = nullptr; const int extra = st.slice >= 0 ? 0 : chordNotes (st.chord, stack);
+            for (int k = -1; k < extra; ++k)
+            {
+                const int nn = k < 0 ? note : juce::jlimit (0, 127, note + stack[k]);
+                out.addEvent (juce::MidiMessage::noteOn (1, nn, vel), smp);
+                if (smp + lenS < n) out.addEvent (juce::MidiMessage::noteOff (1, nn), smp + lenS);
+                else if (t.nPending < (int) t.pending.size()) t.pending[(size_t) t.nPending++] = { nn, smp + lenS - n };
+            }
         }
     }
 }
@@ -575,6 +707,7 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
     if (! playing) return;
     const double spb = 60.0 / bpm * sr, ppq1 = ppq0 + n / spb;
     auto* L = t.inst.getWritePointer (0); auto* R = t.inst.getWritePointer (1);
+    const int iw = t.inst.getNumChannels();
     for (size_t ci = 0; ci < t.aclips->size(); ++ci)
     {
         const AudioClip& c = (*t.aclips)[ci];
@@ -616,6 +749,8 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
             {
                 const double srcSec = tOut / sr * ratio;
                 outL = read (srcSec, 0); outR = nch > 1 ? read (srcSec, 1) : outL;
+                // a file wider than stereo (an ambisonic recording, a resampled 24-channel master) plays every channel the track has
+                for (int ch = 2; ch < nch && ch < iw; ++ch) t.inst.getWritePointer (ch)[i] += read (srcSec, ch) * env;
             }
             else
             {
@@ -633,6 +768,7 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
                     const double off = grainOffset (st, c, (int) k, stretch, ratio, fileRate);
                     const double srcSec = gStart / sr / stretch + off / fileRate + w / sr * ratio;
                     outL += read (srcSec, 0) * win; outR += (nch > 1 ? read (srcSec, 1) : read (srcSec, 0)) * win;
+                    for (int ch = 2; ch < nch && ch < iw; ++ch) t.inst.getWritePointer (ch)[i] += read (srcSec, ch) * win * env;
                 }
             }
             L[i] += outL * env; R[i] += outR * env;
@@ -648,22 +784,47 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
     if (! t.isMaster())
     {
         t.inst.clear (0, n);
+        const int iw = t.inst.getNumChannels();
         juce::AudioBuffer<float> ib (t.inst.getArrayOfWritePointers(), 2, n);
-        if (t.kind == TrackKind::Instrument && t.instrument) { t.instrument->apply (macros, ppq0); t.instrument->process (ib, midi); }
+        if (t.kind == TrackKind::Instrument && t.instrument)
+        {
+            // the suite's instruments are stereo; a hosted one may write more channels (up to the track's width)
+            const int ow = t.instrument->kind == Device::Kind::Internal ? 2 : juce::jlimit (2, iw, t.instrument->outWidth);
+            juce::AudioBuffer<float> wide (t.inst.getArrayOfWritePointers(), ow, n);
+            // (the notes are copied: the device clears what it is given, and the choke below wants to see them)
+            scratchMidi.clear(); scratchMidi.addEvents (midi, 0, n, 0);
+            t.instrument->apply (macros, ppq0); t.instrument->process (wide, scratchMidi);
+            if (const int grp = t.chokeGroup.load (std::memory_order_relaxed); grp > 0)
+            {
+                int cut = -1;
+                for (auto& o : tracks) if (o.get() != &t && o->chokeGroup.load (std::memory_order_relaxed) == grp && o->firstHit >= 0 && (cut < 0 || o->firstHit < cut)) cut = o->firstHit;
+                const float k = 1.0f - std::exp (-1.0f / (0.002f * (float) sr));   // 2 ms: a cut, not a click
+                auto next = midi.cbegin(); const auto end = midi.cend();
+                for (int i = 0; i < n; ++i)
+                {
+                    if (i == cut) t.chokeTarget = 0.0f;
+                    while (next != end && (*next).samplePosition <= i) { if ((*next).getMessage().isNoteOn()) { t.chokeTarget = 1.0f; if (i != cut) t.chokeGain = std::max (t.chokeGain, 0.5f); } ++next; }
+                    t.chokeGain += (t.chokeTarget - t.chokeGain) * k;
+                    for (int c = 0; c < ow; ++c) t.inst.getWritePointer (c)[i] *= t.chokeGain;
+                }
+            }
+            else t.chokeGain = t.chokeTarget = 1.0f;
+        }
         else if (t.kind == TrackKind::Audio)
         {
             playClips (t, n, ppq0, bpm, playing);
             const int mon = t.monitor.load (std::memory_order_relaxed);
             if (h.in && h.numIn > 0 && t.inputSource.load() == -2 && (mon == (int) Monitor::In || (mon == (int) Monitor::Auto && t.armed.load (std::memory_order_relaxed))))
             {
-                const int first = t.inputChannel.load() - 1, cnt = std::min (2, t.inputCount.load());
-                for (int c = 0; c < cnt; ++c) { const int ic = first + c; if (ic >= 0 && ic < h.numIn) ib.addFrom (c, 0, h.in[ic], n); }
+                const int first = t.inputChannel.load() - 1, cnt = juce::jlimit (1, iw, t.inputCount.load());
+                for (int c = 0; c < cnt; ++c) { const int ic = first + c; if (ic >= 0 && ic < h.numIn) juce::FloatVectorOperations::add (t.inst.getWritePointer (c), h.in[ic], n); }
                 if (cnt == 1) ib.addFrom (1, 0, ib, 0, 0, n);
             }
         }
+        const int sw = juce::jlimit (1, std::min (iw, w), std::max (2, t.sourceWidth));
         if (t.inDelay > 0)
-            for (int c = 0; c < 2; ++c) { auto* d = ib.getWritePointer (c); for (int i = 0; i < n; ++i) { t.instDelay[(size_t) c].push (d[i]); d[i] = t.instDelay[(size_t) c].readInt (t.inDelay); } }
-        for (int c = 0; c < std::min (2, w); ++c) buf.addFrom (c, 0, ib, c, 0, n);
+            for (int c = 0; c < sw && c < (int) t.instDelay.size(); ++c) { auto* d = t.inst.getWritePointer (c); for (int i = 0; i < n; ++i) { t.instDelay[(size_t) c].push (d[i]); d[i] = t.instDelay[(size_t) c].readInt (t.inDelay); } }
+        for (int c = 0; c < sw; ++c) juce::FloatVectorOperations::add (buf.getWritePointer (c), t.inst.getReadPointer (c), n);
     }
     // 2. the chain
     const bool bypassChain = t.isMaster() && masterBypass.load (std::memory_order_relaxed);
@@ -703,6 +864,7 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
             if (sc >= w || dc >= dw) continue;
             const float* s = buf.getReadPointer (sc); float* d = dst->buf.getWritePointer (dc);
             auto& dl = run.delay[(size_t) c];
+            if (r.feedback) { for (int i = 0; i < n; ++i) dl.push (s[i] * g); continue; }   // read at the top of the next buffer
             if (run.samples > 0) for (int i = 0; i < n; ++i) { dl.push (s[i]); d[i] += dl.readInt (run.samples) * g; }
             else for (int i = 0; i < n; ++i) d[i] += s[i] * g;
         }
@@ -787,9 +949,10 @@ void Session::resetForOffline()
     {
         t.nPending = 0; t.activePattern = -1; t.silent = true; t.lastStepN = -1; t.prevFired = false; t.hitEnvT = -1; t.lastVel = 0; t.lastRandom = 0; t.lastHitPpq = -1e9;
         t.rng.seed ((uint32_t) (t.uid * 7919 + 13));
+        t.evoRng.seed ((uint32_t) (t.uid * 104729 + 7)); t.flip.fill (0); t.drift.fill (0.0f); t.evoPass = -1; t.chokeGain = t.chokeTarget = 1.0f;
         for (auto& m : t.modState) m = ModState();
         for (auto& c : t.clipState) if (c) std::fill (c->off.begin(), c->off.end(), kUnknown);
-        t.forEachDevice ([&] (Device& d) { d.release(); d.prepare (sr, bs); d.unlockAll(); });
+        t.forEachDevice ([&] (Device& d) { d.release(); d.setOffline (true); d.prepare (sr, bs); d.unlockAll(); });
         t.levelSm.snap (t.levelSm.target); t.panSm.snap (t.panSm.target); for (auto& s : t.sendSm) s.snap (s.target); t.snapMixer = true;
         for (auto& d : t.align) d.clear(); for (auto& d : t.instDelay) d.clear(); for (auto& d : t.direct) d.clear();
         for (auto& r : t.routeRun) for (auto& d : r->delay) d.clear();
@@ -860,6 +1023,8 @@ bool Session::renderStems (const juce::File& dir, double fromBar, double toBar, 
     stems.clear();
     for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
     internalPpq.store (savedPpq); running.store (wasRunning);
+    for (auto* t : order) t->forEachDevice ([] (Device& d) { d.setOffline (false); });
+    master->forEachDevice ([] (Device& d) { d.setOffline (false); });
     rendering.store (false);
     if (! ok) error = "cancelled";
     return ok;
@@ -913,6 +1078,8 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
     master->forEachDevice ([] (Device& d) { d.reset(); });
     masterBypass.store (savedBypass);
     internalPpq.store (savedPpq); running.store (wasRunning);
+    for (auto* t : order) t->forEachDevice ([] (Device& d) { d.setOffline (false); });
+    master->forEachDevice ([] (Device& d) { d.setOffline (false); });
     rendering.store (false);
     if (! ok) error = "cancelled";
     return ok;
@@ -931,11 +1098,12 @@ Track* Session::renderProjectToTrack (double fromBar, double toBar, bool preMast
     return t;
 }
 
-Track* Session::renderTrackToTrack (Track& src, double fromBar, double toBar, juce::String& error)
+juce::File Session::renderTrackFile (Track& src, double fromBar, double toBar, juce::String& error)
 {
-    if (! prepared) { error = "audio not running"; return nullptr; }
-    if (toBar <= fromBar) { error = "nothing to render"; return nullptr; }
-    auto f = audioDir().getChildFile (src.name + " bounce " + juce::Time::getCurrentTime().formatted ("%H%M%S") + ".wav");
+    if (! prepared) { error = "audio not running"; return {}; }
+    if (toBar <= fromBar) { error = "nothing to render"; return {}; }
+    auto f = audioDir().getChildFile (juce::File::createLegalFileName (src.name) + " bounce " + juce::Time::getCurrentTime().formatted ("%H%M%S") + ".wav");
+    int k = 2; while (f.existsAsFile()) f = audioDir().getChildFile (juce::File::createLegalFileName (src.name) + " bounce " + juce::String (k++) + ".wav");
     {
         rendering.store (true);
         const juce::SpinLock::ScopedLockType sl (lock);
@@ -944,7 +1112,7 @@ Track* Session::renderTrackToTrack (Track& src, double fromBar, double toBar, ju
         juce::WavAudioFormat wav; f.deleteFile();
         const int ch = src.width.load();
         std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, (unsigned) ch, 32, {}, 0));
-        if (! w) { error = "cannot write"; rendering.store (false); return nullptr; }
+        if (! w) { error = "cannot write"; rendering.store (false); return {}; }
         resetForOffline();
         std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
         Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
@@ -966,13 +1134,43 @@ Track* Session::renderTrackToTrack (Track& src, double fromBar, double toBar, ju
         w.reset();
         for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
         internalPpq.store (savedPpq); running.store (wasRunning);
+        for (auto* t : order) t->forEachDevice ([] (Device& d) { d.setOffline (false); });
+        master->forEachDevice ([] (Device& d) { d.setOffline (false); });
         rendering.store (false);
     }
-    auto* t = addTrack (src.name + " bounce", indexOf (&src) + 1, TrackKind::Audio);
+    return f;
+}
+
+Track* Session::renderTrackToTrack (Track& src, double fromBar, double toBar, juce::String& error)
+{
+    const auto f = renderTrackFile (src, fromBar, toBar, error);
+    if (f == juce::File()) return nullptr;
+    const int at = src.isMaster() || src.isReturn() ? -1 : indexOf (&src) + 1;
+    auto* t = addTrack (src.name + " bounce", at, TrackKind::Audio);
     if (! t) return nullptr;
     if (src.width.load() != 2) setWidth (*t, src.width.load());
     addAudioClip (*t, f, fromBar, &error);
     editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) c.bars = toBar - fromBar; });
+    return t;
+}
+
+Track* Session::renderTrackToSampler (Track& src, double fromBar, double toBar, juce::String& error)
+{
+    const auto f = renderTrackFile (src, fromBar, toBar, error);
+    if (f == juce::File()) return nullptr;
+    auto dev = createDevice ("st:sampler", &error);
+    if (! dev) return nullptr;
+    if (auto* h = dynamic_cast<SampleHolder*> (dev->processor())) h->setSampleFile (f);
+    // slices on the transients, so the steps can play the bounce back in any order
+    const int mode = dev->paramIndexForId ("mode"), slices = dev->paramIndexForId ("slicemode");
+    if (mode >= 0) dev->setBase (mode, 1.0f);
+    if (slices >= 0) dev->setBase (slices, 1.0f);
+    const int at = src.isMaster() || src.isReturn() ? -1 : indexOf (&src) + 1;
+    auto* t = addTrack (src.name + " sampled", at, TrackKind::Instrument);
+    if (! t) return nullptr;
+    setInstrument (*t, std::move (dev));
+    // sixteen steps that play the first sixteen slices in order: a starting point to re-order
+    editPattern (*t, 0, [] (Pattern& p) { p = Pattern(); p.length = 16; for (int i = 0; i < 16; ++i) { p.s[(size_t) i].on = true; p.s[(size_t) i].slice = i; p.s[(size_t) i].len = 1.0f; } });
     return t;
 }
 

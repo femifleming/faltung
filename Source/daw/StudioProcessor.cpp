@@ -51,6 +51,7 @@ StudioProcessor::StudioProcessor()
     // a new instance opens on the starter project so there is sound at once; a host restoring its state replaces it
     session.newFromTemplate (1);
     session.launchScene (4);
+    pushToHost();
     startTimerHz (10);
 }
 StudioProcessor::~StudioProcessor() { stopTimer(); session.onBlock = nullptr; }
@@ -84,6 +85,20 @@ void StudioProcessor::syncFromHost()
     }
 }
 
+// the host-visible parameters take the project's values at once (a new instance, a loaded project): what the host
+// reads when it asks is already what the studio plays, and nothing moves a moment later
+void StudioProcessor::pushToHost()
+{
+    for (auto& b : bridges)
+    {
+        Device* d = b.trackSel == -200 ? session.global.get() : (session.trackAt (b.trackSel) ? session.trackAt (b.trackSel)->mixer.get() : nullptr);
+        const float bv = d ? d->baseValue (b.param) : b.host->getDefaultValue();
+        // the host value first: if the audio thread looks in between it finds the project's value, not a stale one
+        if (std::abs (bv - b.host->getValue()) > 1.0e-6f) b.host->setValueNotifyingHost (bv);
+        b.lastBase = bv; b.lastHost = bv;
+    }
+}
+
 // message thread: strips moved in the studio reach the host (so Live can record them)
 void StudioProcessor::timerCallback()
 {
@@ -94,8 +109,8 @@ void StudioProcessor::timerCallback()
         const float bv = d->baseValue (b.param);
         if (std::abs (bv - b.lastBase) > 1.0e-6f && std::abs (bv - b.host->getValue()) > 1.0e-6f)
         {
-            b.lastBase = bv; b.lastHost = bv;
             b.host->setValueNotifyingHost (bv);
+            b.lastBase = bv; b.lastHost = bv;
         }
     }
     const int lat = session.totalLatency();
@@ -193,7 +208,7 @@ void StudioProcessor::getStateInformation (juce::MemoryBlock& dest)
 }
 void StudioProcessor::setStateInformation (const void* data, int size)
 {
-    if (auto x = getXmlFromBinary (data, size)) { juce::String err; session.load (*x, &err); }
+    if (auto x = getXmlFromBinary (data, size)) { juce::String err; session.load (*x, &err); pushToHost(); }
 }
 
 juce::File StudioProcessor::projectsDir()
@@ -218,6 +233,7 @@ bool StudioProcessor::loadProject (const juce::File& f, juce::String& error)
     session.projectFile = f; session.projectName = f.getFileNameWithoutExtension();
     if (! session.load (*x, &error)) return false;
     session.projectFile = f; session.projectName = f.getFileNameWithoutExtension(); session.dirty = false;
+    pushToHost();
     return true;
 }
 void StudioProcessor::autosave()

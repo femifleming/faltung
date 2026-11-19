@@ -14,11 +14,14 @@ static void saveStep (juce::XmlElement& e, int i, const Step& s)
     if (s.pitch != 0) x->setAttribute ("p", s.pitch);
     if (s.prob < 0.999f) x->setAttribute ("pr", s.prob);
     if (s.ratchet > 1) x->setAttribute ("r", s.ratchet);
+    if (s.rcurve != 0.0f) x->setAttribute ("rc", s.rcurve);
     if (s.micro != 0.0f) x->setAttribute ("m", s.micro);
     if (std::abs (s.len - 0.5f) > 1.0e-4f) x->setAttribute ("l", s.len);
+    if (std::abs (s.dur - 1.0f) > 1.0e-6f) x->setAttribute ("du", s.dur);
     if (s.cond != Cond::Always) x->setAttribute ("c", (int) s.cond);
     if (s.slide) x->setAttribute ("sl", 1);
     if (s.slice >= 0) x->setAttribute ("sc", s.slice);
+    if (s.chord > 0) x->setAttribute ("ch", s.chord);
     for (auto& l : s.locks)
         if (l.param >= 0) { auto* k = x->createNewChildElement ("k"); k->setAttribute ("d", l.device); k->setAttribute ("p", l.param); k->setAttribute ("v", l.value); }
 }
@@ -30,11 +33,14 @@ static Step loadStep (const juce::XmlElement& x)
     s.pitch = x.getIntAttribute ("p", 0);
     s.prob = (float) x.getDoubleAttribute ("pr", 1.0);
     s.ratchet = juce::jlimit (1, 8, x.getIntAttribute ("r", 1));
+    s.rcurve = juce::jlimit (-1.0f, 1.0f, (float) x.getDoubleAttribute ("rc", 0.0));
     s.micro = (float) x.getDoubleAttribute ("m", 0.0);
     s.len = (float) x.getDoubleAttribute ("l", 0.5);
+    s.dur = juce::jlimit (0.05f, 16.0f, (float) x.getDoubleAttribute ("du", 1.0));
     s.cond = (Cond) juce::jlimit (0, (int) Cond::Count - 1, x.getIntAttribute ("c", 0));
     s.slide = x.getIntAttribute ("sl", 0) != 0;
     s.slice = x.getIntAttribute ("sc", -1);
+    s.chord = juce::jlimit (0, kChords - 1, x.getIntAttribute ("ch", 0));
     int n = 0;
     for (auto* k : x.getChildWithTagNameIterator ("k"))
         if (n < kLocks) s.locks[(size_t) n++] = { k->getIntAttribute ("d"), k->getIntAttribute ("p"), (float) k->getDoubleAttribute ("v") };
@@ -48,6 +54,8 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     e.setAttribute ("pattern", t.pattern.load()); e.setAttribute ("speed", t.speed.load()); e.setAttribute ("root", t.rootNote.load());
     e.setAttribute ("swing", t.swingOffset.load()); e.setAttribute ("shift", t.shiftMs.load()); e.setAttribute ("prob", t.probMul.load());
     e.setAttribute ("free", t.freeClock.load() ? 1 : 0); e.setAttribute ("stepMs", t.stepMs.load());
+    if (t.evolve.load() > 0.0f) e.setAttribute ("evolve", t.evolve.load());
+    if (t.chokeGroup.load() > 0) e.setAttribute ("choke", t.chokeGroup.load());
     e.setAttribute ("solo", t.solo.load() ? 1 : 0); e.setAttribute ("armed", t.armed.load() ? 1 : 0); e.setAttribute ("chainOn", t.chainOn.load() ? 1 : 0);
     e.setAttribute ("width", t.width.load()); e.setAttribute ("toMaster", t.toMaster.load() ? 1 : 0); e.setAttribute ("out", t.outChannel.load()); e.setAttribute ("key", t.keyTrack.load());
     e.setAttribute ("inSrc", t.inputSource.load()); e.setAttribute ("inCh", t.inputChannel.load()); e.setAttribute ("inCount", t.inputCount.load()); e.setAttribute ("monitor", t.monitor.load());
@@ -61,7 +69,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         if (! p || p->empty()) continue;
         auto* x = e.createNewChildElement ("pattern");
         x->setAttribute ("i", i); x->setAttribute ("length", p->length);
-        for (int s = 0; s < kMaxSteps; ++s) if (p->s[(size_t) s].on || p->s[(size_t) s].micro != 0.0f) saveStep (*x, s, p->s[(size_t) s]);
+        for (int s = 0; s < kMaxSteps; ++s) if (p->s[(size_t) s].on || p->s[(size_t) s].micro != 0.0f || std::abs (p->s[(size_t) s].dur - 1.0f) > 1.0e-6f) saveStep (*x, s, p->s[(size_t) s]);
     }
     for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); }
     for (auto& c : *t.aclips)
@@ -75,7 +83,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         x->setAttribute ("pitch", c.pitch); x->setAttribute ("mode", c.mode); x->setAttribute ("stretch", c.stretch);
     }
     if (! t.chain->empty()) { juce::StringArray a; for (int p : *t.chain) a.add (juce::String (p)); e.createNewChildElement ("chain")->addTextElement (a.joinIntoString (" ")); }
-    for (auto& r : *t.routes) { auto* x = e.createNewChildElement ("route"); x->setAttribute ("dst", r.dst); x->setAttribute ("ch", r.channels); x->setAttribute ("so", r.srcOffset); x->setAttribute ("do", r.dstOffset); x->setAttribute ("gain", r.gain); }
+    for (auto& r : *t.routes) { auto* x = e.createNewChildElement ("route"); x->setAttribute ("dst", r.dst); x->setAttribute ("ch", r.channels); x->setAttribute ("so", r.srcOffset); x->setAttribute ("do", r.dstOffset); x->setAttribute ("gain", r.gain); if (r.feedback) x->setAttribute ("fb", 1); }
     for (auto& m : *t.mods)
     {
         auto* x = e.createNewChildElement ("mod");
@@ -96,6 +104,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     t.pattern.store (e.getIntAttribute ("pattern", 0)); t.speed.store (e.getIntAttribute ("speed", 3)); t.rootNote.store (e.getIntAttribute ("root", 60));
     t.swingOffset.store ((float) e.getDoubleAttribute ("swing", 0.0)); t.shiftMs.store ((float) e.getDoubleAttribute ("shift", 0.0)); t.probMul.store ((float) e.getDoubleAttribute ("prob", 1.0));
     t.freeClock.store (e.getIntAttribute ("free", 0) != 0); t.stepMs.store ((float) e.getDoubleAttribute ("stepMs", 125.0));
+    t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0)));
     t.solo.store (e.getIntAttribute ("solo", 0) != 0); t.armed.store (e.getIntAttribute ("armed", 0) != 0); t.chainOn.store (e.getIntAttribute ("chainOn", 0) != 0);
     t.toMaster.store (e.getIntAttribute ("toMaster", 1) != 0); t.outChannel.store (e.getIntAttribute ("out", 0)); t.keyTrack.store (e.getIntAttribute ("key", 0));
     t.inputSource.store (e.getIntAttribute ("inSrc", -2)); t.inputChannel.store (e.getIntAttribute ("inCh", 1)); t.inputCount.store (e.getIntAttribute ("inCount", 2)); t.monitor.store (e.getIntAttribute ("monitor", (int) Monitor::Auto));
@@ -204,6 +213,7 @@ std::unique_ptr<juce::XmlElement> Session::save() const
         for (auto& p : l->pts) { auto* q = x->createNewChildElement ("pt"); q->setAttribute ("b", p.beat); q->setAttribute ("v", p.value); if (p.curve != 0.0f) q->setAttribute ("c", p.curve); }
     }
     for (auto& m : *midiMaps) { auto* x = e->createNewChildElement ("midimap"); x->setAttribute ("cc", m.cc); x->setAttribute ("target", m.target.toString()); x->setAttribute ("lo", m.lo); x->setAttribute ("hi", m.hi); }
+    for (auto& m : *keyMaps) { auto* x = e->createNewChildElement ("keymap"); x->setAttribute ("key", m.key); x->setAttribute ("target", m.target.toString()); if (m.momentary) x->setAttribute ("hold", 1); }
     return e;
 }
 
@@ -215,14 +225,18 @@ void Session::clear()
     while (! returns.empty()) removeReturn ((int) returns.size() - 1);
     for (int r = 0; r < 2; ++r) addReturn();
     while (! master->inserts.empty()) removeDevice (*master, master->inserts.back()->uid);
-    { const juce::SpinLock::ScopedLockType sl (lock); master->mixer = Device::makeMixer(); global = Device::makeGlobal(); master->mods = std::make_shared<const std::vector<Modulator>>(); master->modState.clear(); }
+    // the globals and the master's strip stay the same objects (the header's controls are bound to them): only their values start over
+    for (auto* d : { master->mixer.get(), global.get() })
+        for (int i = 0; i < d->numParams(); ++i) { d->setBase (i, d->defaultValue (i)); d->macro[(size_t) i].index.store (-1); d->macro[(size_t) i].lo.store (0.0f); d->macro[(size_t) i].hi.store (1.0f); }
+    { const juce::SpinLock::ScopedLockType sl (lock); master->mods = std::make_shared<const std::vector<Modulator>>(); master->modState.clear(); }
     setWidth (*master, 2);
-    if (prepared) { global->prepare (sr, bs); prepareTrack (*master); }
     for (int i = 0; i < kMacros; ++i) macroNames[(size_t) i] = "macro " + juce::String (i + 1);
     editScenes ([] (std::vector<Scene>& s) { s.assign ((size_t) kScenes, Scene()); for (int i = 0; i < kScenes; ++i) s[(size_t) i].name = juce::String (i + 1); });
     editSong ([] (std::vector<SongEntry>& s) { s.clear(); });
     editMarkers ([] (std::vector<Marker>& m) { m.clear(); });
     editMidiMaps ([] (std::vector<MidiMap>& m) { m.clear(); });
+    editKeyMaps ([] (std::vector<KeyMap>& m) { m.clear(); });
+    stopPreview(); keyLearning.store (0); learning.store (false);
     { const juce::SpinLock::ScopedLockType sl (lock); lanes = std::make_shared<const std::vector<LanePtr>>(); }
     mode.store ((int) PlayMode::Session); loopOn.store (false); loopStart.store (0); loopEnd.store (8); microMs.store (12.0f); masterOut.store (1); launchQuant.store (1);
     multiOut.store (false); masterBypass.store (false); snap.store (true); punch.store (false);
@@ -265,7 +279,18 @@ bool Session::load (const juce::XmlElement& e, juce::String* error)
         if (ti >= (int) tracks.size()) break;
         auto& t = *tracks[(size_t) ti++];
         for (auto* r : x->getChildWithTagNameIterator ("route"))
-            addRoute (t, { r->getIntAttribute ("dst"), r->getIntAttribute ("ch", 2), r->getIntAttribute ("so"), r->getIntAttribute ("do"), (float) r->getDoubleAttribute ("gain", 1.0) });
+            if (r->getIntAttribute ("fb", 0) == 0)
+                addRoute (t, { r->getIntAttribute ("dst"), r->getIntAttribute ("ch", 2), r->getIntAttribute ("so"), r->getIntAttribute ("do"), (float) r->getDoubleAttribute ("gain", 1.0) });
+    }
+    // the feedback routes last: they are the ones that close a loop over the others
+    ti = 0;
+    for (auto* x : e.getChildWithTagNameIterator ("track"))
+    {
+        if (ti >= (int) tracks.size()) break;
+        auto& t = *tracks[(size_t) ti++];
+        for (auto* r : x->getChildWithTagNameIterator ("route"))
+            if (r->getIntAttribute ("fb", 0) != 0)
+                addRoute (t, { r->getIntAttribute ("dst"), r->getIntAttribute ("ch", 2), r->getIntAttribute ("so"), r->getIntAttribute ("do"), (float) r->getDoubleAttribute ("gain", 1.0), true });
     }
     editScenes ([&] (std::vector<Scene>& s)
     {
@@ -291,6 +316,7 @@ bool Session::load (const juce::XmlElement& e, juce::String* error)
         });
     }
     editMidiMaps ([&] (std::vector<MidiMap>& m) { for (auto* x : e.getChildWithTagNameIterator ("midimap")) m.push_back ({ x->getIntAttribute ("cc"), Target::fromString (x->getStringAttribute ("target")), (float) x->getDoubleAttribute ("lo", 0.0), (float) x->getDoubleAttribute ("hi", 1.0) }); });
+    editKeyMaps ([&] (std::vector<KeyMap>& m) { for (auto* x : e.getChildWithTagNameIterator ("keymap")) m.push_back ({ x->getIntAttribute ("key"), Target::fromString (x->getStringAttribute ("target")), x->getIntAttribute ("hold", 0) != 0 }); });
     selectedTrack.store (juce::jlimit (-100, std::max (0, (int) tracks.size() - 1), e.getIntAttribute ("selected", 0)));
     nextUid = std::max (nextUid, e.getIntAttribute ("nextUid", nextUid));
     nextClipId = std::max (nextClipId, e.getIntAttribute ("nextClip", nextClipId));
@@ -304,7 +330,8 @@ bool Session::load (const juce::XmlElement& e, juce::String* error)
 // ---- templates ------------------------------------------------------------------------------------
 juce::StringArray Session::templateNames()
 {
-    return { "empty", kDeep ? "deep house starter" : "microhouse starter", kDeep ? "dub house" : "dub techno", kDeep ? "long form (deep)" : "long form (rominimal)", "multi-out to ableton" };
+    return { "empty", kDeep ? "deep house starter" : "microhouse starter", kDeep ? "dub house" : "dub techno", kDeep ? "long form (deep)" : "long form (rominimal)", "multi-out to ableton",
+             "bass first (half time, 172)", "two-step (garage, 132)", "spatial (encoder, 24 speakers, binaural)", "half-step (140)" };
 }
 
 namespace
@@ -369,7 +396,43 @@ void Session::newFromTemplate (int which)
         return;
     }
     if (which == 4) { newFromTemplate (1); projectName = "multi-out to ableton"; assignOutputs(); masterBypass.store (true); dirty = false; return; }
-    const bool dub = which == 2, longForm = which == 3;
+    if (which == 7)
+    {
+        // the ambisonic session: the starter's tracks behind one encoder each would be a lot to look at, so three sources
+        // (kick, hat, chords) go through encoders at 16 channels into a 24-speaker decoder and a binaural decoder
+        newFromTemplate (0);
+        projectName = templateNames()[7];
+        struct Src { const char* name; const char* type; const char* preset; float az; const char* steps; int root; };
+        const Src src[3] = { { "kick", "fal:bd1", kDeep ? "deep round" : "tok", 0.0f, "X...x...X...x...", 60 }, { "hat", "fal:hh4", kDeep ? "warm hats" : "808 hats", 90.0f, "x.o.x.o.x.o.x.o?", 60 },
+                             { "perc", "fal:pc7", kDeep ? "conga low" : "conga", -120.0f, ".x..?.x....x.?..", 60 } };
+        removeTrack (0);
+        auto* dec = addTrack ("speakers 24"); setWidth (*dec, 24);
+        if (auto d = createDevice ("st:decoder")) { d->setBase (d->paramIndexForId ("layout"), 0.5f); addInsert (*dec, std::move (d)); }
+        auto* bin = addTrack ("binaural"); setWidth (*bin, 16);
+        if (auto d = createDevice ("st:binaural")) addInsert (*bin, std::move (d));
+        for (int i = 0; i < 3; ++i)
+        {
+            auto* t = addTrack (src[i].name, i); t->rootNote.store (src[i].root);
+            auto dev = createDevice (src[i].type);
+            if (dev) { const int p = programNamed (*dev, src[i].preset); if (p >= 0) dev->setProgram (p); }
+            setInstrument (*t, std::move (dev));
+            setWidth (*t, 16); t->toMaster.store (false);
+            if (auto e = createDevice ("st:encoder")) { e->setBase (e->paramIndexForId ("azimuth"), (src[i].az + 180.0f) / 360.0f); addInsert (*t, std::move (e)); }
+            setPattern (*t, 0, std::make_shared<const Pattern> (pat (src[i].steps)));
+            addRoute (*t, { dec->uid, 16, 0, 0, 1.0f }); addRoute (*t, { bin->uid, 16, 0, 0, 1.0f });
+            t->pattern.store (0); t->pendingPattern.store (0); t->pendingAt.store (0.0);
+        }
+        // the hat circles the room: a slow ramp on its encoder's azimuth
+        { auto* t = tracks[1].get(); Modulator m; m.src = MOD_LFO; m.shape = 3; m.div = 16; m.depth = 0.5f; m.polarity = 0; m.device = t->inserts[0]->uid; m.param = t->inserts[0]->paramIndexForId ("azimuth"); addModulator (*t, m); }
+        // arranging on headphones: the master is stereo, the 24-speaker decoder is muted. For the room: master width 24, unmute it, mute the binaural
+        dec->mixer->setBase (MP_MUTE, 1.0f);
+        editScenes ([&] (std::vector<Scene>& s) { s[0].name = "all"; s[0].pattern.assign (tracks.size(), -2); for (int k = 0; k < 3; ++k) s[0].pattern[(size_t) k] = 0; });
+        loopEnd.store (4);
+        rebuildLatency();
+        dirty = false;
+        return;
+    }
+    const bool dub = which == 2, longForm = which == 3, half = which == 5, garage = which == 6, halfStep = which == 8;
     projectName = templateNames()[which];
     std::vector<Def> defs;
     if (kDeep)
@@ -377,7 +440,8 @@ void Session::newFromTemplate (int which)
                  { "clap", "fal:cp6", "soft room clap", 60 }, { "shaker", "fal:hh4", "shaker", 60 }, { "conga", "fal:pc7", "conga low", 60 }, { "stabs", "fal:sb1", "", 48 } };
     else
         defs = { { "kick", "fal:bd1", dub ? "perlon thud" : "tok", 60 }, { "rim", "fal:rm3", "tok", 60 }, { "hat", "fal:hh4", "808 hats", 60 }, { "open hat", "fal:hh4", "808 hats", 70 },
-                 { "clap", "fal:cp6", "tight", 60 }, { "perc", "fal:pc7", "conga", 60 }, { "click", "fal:cl8", "tick", 60 }, { dub ? "chords" : "bass", "fal:wb1", dub ? "neuro stab" : "sub pressure", dub ? 48 : 36 } };
+                 { "clap", "fal:cp6", "tight", 60 }, { "perc", "fal:pc7", "conga", 60 }, { "click", "fal:cl8", "tick", 60 },
+                 { dub ? "chords" : "bass", "fal:wb1", dub ? "neuro stab" : half ? "reese" : garage ? "square pump" : halfStep ? "sub wob" : "sub pressure", dub ? 48 : 36 } };
     if (dub) defs.push_back ({ "sub", "fal:wb1", "sub pressure", 36 });
     std::vector<Track*> tr;
     for (auto& d : defs)
@@ -408,6 +472,26 @@ void Session::newFromTemplate (int which)
         dub ? withPitch (pat ("x.....x...x....."), { 0, 0, 3 }, 1.2f) : withPitch (pat ("x..x..x...x..x.."), { 0, 0, 7, 0, 3, 0 }, 0.9f),
     };
     if (dub) base.push_back (withPitch (pat ("x.......x......."), { 0 }, 3.5f));
+    if (half)
+    {
+        // half time at 172: the kick on one, the clap on three, and the bass line carrying it
+        base[0] = pat ("X.........x....."); base[1] = pat ("......<.......x>"); base[2] = pat ("x.x.x.x.x.x.x.x?"); base[3] = pat ("......x.......x.");
+        base[4] = pat ("........X......."); base[5] = pat (".x....x..?.x....", 12); base[6] = pat ("?..o..?.....o..?", 7);
+        base[7] = withPitch (pat ("x..x..x...x.x..."), { 0, 0, 3, 0, -2 }, 1.4f);
+    }
+    if (halfStep)
+    {
+        // 140, the weight on one and three: a kick, a clap on the three, sparse hats, and the wobbling sub doing the talking
+        base[0] = pat ("X.........o....."); base[1] = pat ("......<........>"); base[2] = pat ("..x...x...x..?x."); base[3] = pat ("..............x.");
+        base[4] = pat ("........X......."); base[5] = pat (".....x.....?....", 12); base[6] = pat ("?.....o......?..", 7);
+        base[7] = withPitch (pat ("x.......x..x...."), { 0, 0, -2 }, 3.0f);
+    }
+    if (garage)
+    {
+        base[0] = pat ("X......x..X....."); base[1] = pat ("..<....x..<...x>"); base[2] = pat ("x.xx.xx.x.xx.xx."); base[3] = pat ("..x...x...x...x.");
+        base[4] = pat ("....X.......X..."); base[5] = pat (".x..?.x....x.?..", 12); base[6] = pat ("?...o.?.....o..?", 7);
+        base[7] = withPitch (pat ("x..x...x..x...x."), { 0, 7, 0, 3, 10 }, 0.7f);
+    }
     const char* fills[9] = { "X...x...X...x.rr", "..<.r.x...<.x.x>", "x.o.x.o.x.o.xrrr", "..x...x...x...xx", "....X.......XXrr", ".x..x.x..x.x.x.x", "?.?.o.?.?.?.o.??", "x..x..x..xx.x.xx", "x.......x...x..." };
     for (size_t i = 0; i < tr.size(); ++i)
     {
@@ -420,6 +504,7 @@ void Session::newFromTemplate (int which)
             setPattern (*tr[i], p, std::make_shared<const Pattern> (v));
         }
     }
+    tr[2]->chokeGroup.store (1); tr[3]->chokeGroup.store (1);   // the closed hat cuts the open one, as on a drum machine
     // returns: dub on 1, room on 2
     returns[0]->name = "dub"; returns[1]->name = "room";
     { auto d = createDevice ("fal:dl4"); if (d) { d->setBase (d->paramIndexForId ("division"), 9.0f / 18.0f); d->setBase (d->paramIndexForId ("feedback"), dub ? 0.62f : 0.5f); d->setBase (d->paramIndexForId ("mix"), 1.0f); addInsert (*returns[0], std::move (d)); } }
@@ -476,6 +561,26 @@ void Session::newFromTemplate (int which)
     editLane ({ 0, 0, GP_MACRO1 + 2 }, [=] (AutoLane& l) { l.pts = { { 0.0, 0.0f, 0.0f }, { songLen * 0.6, 0.0f, 0.0f }, { songLen * 0.72, 0.8f, 0.6f }, { songLen * 0.75, 0.0f, 0.0f } }; });
     for (auto* t : tr) { t->pattern.store (0); t->pendingPattern.store (0); t->pendingAt.store (0.0); }
     if (dub) setTempo (120.0f);
+    if (half)
+    {
+        // the bass is where the track starts: everything else ducks under the kick through a sidechain on it
+        setTempo (172.0f);
+        if (auto d = createDevice ("st:sidechain")) { d->setBase (d->paramIndexForId ("shape"), 0.5f); d->setBase (d->paramIndexForId ("key"), 1.0f); addInsert (*tr[7], std::move (d)); }
+        tr[7]->keyTrack.store (tr[0]->uid);
+        selectedTrack.store (7);
+    }
+    if (halfStep) { setTempo (140.0f); global->setBase (GP_SWING, 0.0f); selectedTrack.store (7); }
+    if (garage)
+    {
+        // shuffled hats, a skipping kick, and a sampler waiting for the vocal to cut up
+        setTempo (132.0f); global->setBase (GP_SWING, 0.48f);
+        auto* v = addTrack ("vocal"); setInstrument (*v, createDevice ("st:sampler"));
+        if (v->instrument) { v->instrument->setBase (v->instrument->paramIndexForId ("mode"), 1.0f); v->instrument->setBase (v->instrument->paramIndexForId ("slicemode"), 1.0f); }
+        v->mixer->setBase (MP_SEND1, 0.55f);
+        setPattern (*v, 0, std::make_shared<const Pattern> ([] { Pattern p = pat ("x..x.x..x.x..x.x"); int k = 0; for (auto& st : p.s) if (st.on) { st.slice = k; k = (k + 3) % 8; st.len = 0.9f; } return p; }()));
+        editScenes ([] (std::vector<Scene>& sc2) { for (size_t i = 2; i < 8; ++i) if (sc2[i].pattern.size() > 8) sc2[i].pattern[8] = 0; });
+        v->pendingPattern.store (0); v->pendingAt.store (0.0);
+    }
     if (! longForm) loopEnd.store (8);
     rebuildLatency();
     dirty = false;

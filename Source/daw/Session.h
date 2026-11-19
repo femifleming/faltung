@@ -11,13 +11,20 @@
 namespace fal::daw
 {
 /** running state of one modulator (one per entry of Track::mods) */
-struct ModState { double cycle = -1; float ph = 0, sh = 0, shPrev = 0, out = 0, gate = 0, env = 0, follow = 0, chaos = 0.37f, walk = 0.5f; double envT = -1; bool init = false; };
+struct ModState
+{
+    double cycle = -1; float ph = 0, sh = 0, shPrev = 0, out = 0, gate = 0, env = 0, follow = 0, chaos = 0.37f, walk = 0.5f; double envT = -1; bool init = false;
+    // fourses: four ramps stacked on top of each other, each turning round where it meets its neighbours
+    std::array<float, 4> four { 0.12f, 0.37f, 0.61f, 0.88f }; std::array<float, 4> fourDir { 1.0f, -1.0f, 1.0f, -1.0f };
+};
 /** running state of one audio clip (the stretcher's grains) */
 constexpr int kGrain = 2048, kHop = 1024;                 // the stretcher's grains
 constexpr float kUnknown = -1.0e9f;
 struct ClipState { int id = -1; std::vector<float> off; };   // per grain: the source shift found by the stretcher
 /** a route's delay (latency compensation between tracks) */
 struct RouteRun { std::vector<DelayLine> delay; int samples = 0; };
+/** the file the browser is auditioning */
+struct Preview { SamplePtr sample; double pos = 0; float gain = 0.7f; };
 
 struct Track
 {
@@ -50,6 +57,8 @@ struct Track
     std::atomic<bool> freeClock { false };   // steps in ms instead of the beat grid
     std::atomic<float> stepMs { 125.0f };
     std::atomic<bool> solo { false }, armed { false }, chainOn { false };
+    std::atomic<float> evolve { 0.0f };      // 0 … 1: how readily the pattern drifts from what is written, a little on every pass
+    std::atomic<int> chokeGroup { 0 };       // 0 none, 1 … 8: a hit on one track of a group cuts the others of that group
     // routing
     std::atomic<int> width { 2 };            // the chain / output width, 1 … 64
     std::atomic<bool> toMaster { true };
@@ -63,15 +72,18 @@ struct Track
     std::atomic<int> monitor { (int) Monitor::Auto };
 
     // runtime (audio thread)
-    juce::AudioBuffer<float> buf, post, inst;        // chain buffer (width), output (width), instrument (2)
+    juce::AudioBuffer<float> buf, post, inst;        // chain buffer (width), output (width), the track's own sources (width, at least 2)
     std::vector<DelayLine> align;                    // width lines: the chain output lands at the same time as every other track
     std::vector<DelayLine> direct;                   // multi-out: the direct channels wait for the returns and the master too
-    std::array<DelayLine, 2> instDelay;              // the instrument / clips wait for routed inputs
+    std::vector<DelayLine> instDelay;                // the instrument / clips wait for routed inputs
     int latency = 0, alignDelay = 0, inDelay = 0, arrival = 0, depth = 0, directExtra = 0;
     struct NoteOff { int note; int left; };
     std::array<NoteOff, 96> pending {}; int nPending = 0;
     double anchor = 0, seqAnchor = 0; long long loopOffset = 0; int activePattern = -1; bool silent = true;
     long long lastStepN = -1; bool prevFired = false; bool snapMixer = false;
+    juce::MidiBuffer seqMidi;                         // this span's notes (sequenced before any track is rendered)
+    int firstHit = -1; float chokeGain = 1.0f, chokeTarget = 1.0f;
+    std::array<juce::uint8, kMaxSteps> flip {}; std::array<float, kMaxSteps> drift {}; long long evoPass = -1; Rng evoRng;   // the evolving copy
     float lastVel = 0, lastRandom = 0; double lastHitPpq = -1e9; float hitEnvT = -1;
     Smooth levelSm, panSm; std::array<Smooth, kReturns> sendSm;
     Rng rng;
@@ -94,8 +106,9 @@ struct Track
     template <typename F> void forEachDevice (F&& f) { if (instrument) f (*instrument); for (auto& d : inserts) f (*d); f (*mixer); }
     bool muted() const { return mixer->baseValue (MP_MUTE) > 0.5f; }
     PatternPtr patternAt (int i) const { return i >= 0 && i < kPatterns ? patterns[(size_t) i] : nullptr; }
-    int outWidth() const;    // what the chain produces (the last device's output width, or 2)
+    int outWidth() const;    // what the chain produces (the last device's output width, or the source width)
     int inWidth() const;     // what the first device reads
+    int sourceWidth = 2;     // what feeds the chain: instrument / clips (2, or a wider file) and the routes into the track
 };
 
 struct HostInfo
@@ -130,6 +143,7 @@ public:
     std::shared_ptr<const std::vector<Marker>> markers;
     std::shared_ptr<const std::vector<LanePtr>> lanes;
     std::shared_ptr<const std::vector<MidiMap>> midiMaps;
+    std::shared_ptr<const std::vector<KeyMap>> keyMaps;
     juce::File browseDir;                           // the browser's folder (the music folder when empty)
     juce::String projectName { "untitled" };
     juce::File projectFile;
@@ -150,6 +164,8 @@ public:
     std::atomic<int> lastCc { -1 };              // last cc number received (for learn)
     std::atomic<bool> learning { false };
     Target learnTarget;
+    std::atomic<int> keyLearning { 0 };          // 0 off, 1 toggle, 2 hold: the next key pressed is mapped to keyLearnTarget
+    Target keyLearnTarget;
 
     // playback position (read by the UI)
     std::atomic<double> playPpq { -1.0 };       // < 0 when stopped
@@ -188,7 +204,8 @@ public:
     void moveInsert (Track&, int from, int to);
     void setWidth (Track&, int width);
     void negotiate (Track&);                     // device widths along the chain
-    bool addRoute (Track& src, Route);           // false on a cycle
+    bool addRoute (Track& src, Route);           // a route that closes a loop becomes a feedback route (one buffer late, limited)
+    bool wouldFeedBack (const Track& src, int dstUid) const { return wouldCycle (src, dstUid); }
     void removeRoute (Track& src, int index);
     void editRoutes (Track& src, const std::function<void (std::vector<Route>&)>&);
     void rebuildLatency();                       // also the processing order and route delays
@@ -213,6 +230,10 @@ public:
     void editSong (const std::function<void (std::vector<SongEntry>&)>&);
     void editMarkers (const std::function<void (std::vector<Marker>&)>&);
     void editMidiMaps (const std::function<void (std::vector<MidiMap>&)>&);
+    void editKeyMaps (const std::function<void (std::vector<KeyMap>&)>&);
+    /** a computer key went down or up (message thread): learn, or play the mapped controls. True when the key was used */
+    bool keyEvent (int keyCode, bool down);
+    void keyLearnStart (const Target& t, bool momentary) { keyLearnTarget = t; keyLearning.store (momentary ? 2 : 1); }
     LanePtr lane (const Target&) const;
     void editLane (const Target&, const std::function<void (AutoLane&)>&);   // creates the lane if needed
     void removeLane (const Target&);
@@ -229,12 +250,26 @@ public:
     // recording
     void startRecording();                           // arms the writers for armed audio tracks; recording follows play
     void stopRecording();                            // finishes the clips
+    /** capture a jam: a new audio track that records the master from now until stopRecording (the take is cut up afterwards) */
+    Track* captureJam();
+    /** write what a track's evolving copy has drifted to into its pattern, and start the drift again from there */
+    void freezeEvolution (Track&);
     bool isRecording() const { return recording.load(); }
     std::unique_ptr<juce::TimeSliceThread> writerThread;
     /** render the whole project (or the loop) offline into a new audio track: "resample project" */
     Track* renderProjectToTrack (double fromBar, double toBar, bool preMaster, juce::String& error);
     /** render one track's output offline into a new audio track */
     Track* renderTrackToTrack (Track& src, double fromBar, double toBar, juce::String& error);
+    /** render one track's output offline and load it into a sampler on a new instrument track (sliced on its transients) */
+    Track* renderTrackToSampler (Track& src, double fromBar, double toBar, juce::String& error);
+    /** the bars a render covers when nothing else is said: the loop when it is on, otherwise the project */
+    void renderRange (double& fromBar, double& toBar) const;
+    /** audition a file through the main output (the browser); stopPreview ends it */
+    bool preview (const juce::File&, juce::String* error = nullptr);
+    void stopPreview();
+    bool previewing() const { return previewOn.load(); }
+    /** the suite's own plug-ins that are installed next to it (Partials, Cloudfin, ConvoSolution …): offered without a scan */
+    static juce::Array<juce::File> suitePlugins();
 
     // ---- transport ---------------------------------------------------------------------------------
     void play(); void stop(); void togglePlay();
@@ -314,6 +349,8 @@ private:
     juce::String uniqueTrackName (const juce::String& base) const;
     static juce::uint32 trackColour (int i);
     void finishRecordings();
+    juce::File renderTrackFile (Track& src, double fromBar, double toBar, juce::String& error);
+    std::shared_ptr<Preview> previewNow, previewOld; std::atomic<bool> previewOn { false };
     void resetForOffline();
     void recomputeIds();
     double grainOffset (ClipState*, const AudioClip&, int k, double stretch, double ratio, double fileRate);

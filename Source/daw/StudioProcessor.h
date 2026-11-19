@@ -55,6 +55,10 @@ private:
     struct Bridge { juce::RangedAudioParameter* host; int trackSel; int param; float lastHost = -1, lastBase = -1; };
     std::vector<Bridge> bridges;
     void buildBridges();
+public:
+    /** the project's strip values into the host-visible parameters, at once */
+    void pushToHost();
+private:
     void syncFromHost();
     void timerCallback() override;
     int lastLatency = -1;

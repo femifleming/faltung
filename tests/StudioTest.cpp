@@ -2,12 +2,13 @@
 //   sndstudioTest [--screenshots dir] [--wav dir] [--vst3 "path/faltung dl4.vst3"]
 #include "daw/StudioProcessor.h"
 #include "daw/StudioEditor.h"
+#include "daw/StudioPages.h"
 #include "daw/devices/StudioDevices.h"
 #include <juce_dsp/juce_dsp.h>
 #include <iostream>
 
-using namespace fal;
 using namespace fal::daw;
+using fal::kDeep; using fal::Rng; using fal::kTwoPi;   // (not all of fal: its kit Pattern would collide with the studio's)
 
 static int failures = 0;
 static void check (bool ok, const juce::String& what) { if (! ok) { ++failures; std::cout << "  FAIL " << what << "\n"; } }
@@ -126,6 +127,54 @@ int main (int argc, char** argv)
         if (a == "--screenshots" && i + 1 < argc) shotDir = juce::File::getCurrentWorkingDirectory().getChildFile (argv[++i]);
         if (a == "--wav" && i + 1 < argc) wavDir = juce::File::getCurrentWorkingDirectory().getChildFile (argv[++i]);
         if (a == "--vst3" && i + 1 < argc) vst3 = juce::File::getCurrentWorkingDirectory().getChildFile (argv[++i]);
+        if (a == "--probe" && i + 3 < argc)
+        {
+            // what a plug-in gets on a track: sndstudioTest --probe "x.vst3" <incoming channels> <track width>
+            Session s; const juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1]));
+            juce::OwnedArray<juce::PluginDescription> found;
+            for (auto* fmt : s.formats.getFormats()) if (fmt->fileMightContainThisPluginType (f.getFullPathName())) fmt->findAllTypesForFile (found, f.getFullPathName());
+            if (found.isEmpty()) { std::cout << "no plug-in in " << f.getFullPathName() << "\n"; return 1; }
+            juce::String err; auto d = s.createHosted (*found[0], &err);
+            if (! d) { std::cout << "cannot load: " << err << "\n"; return 1; }
+            const int in = juce::String (argv[i + 2]).getIntValue(), w = juce::String (argv[i + 3]).getIntValue();
+            std::cout << d->name << ": arrives with " << d->defIn << " in, " << d->defOut << " out";
+            d->configure (in, w);
+            std::cout << "; fed " << in << " on a " << w << "-channel track it reads " << d->inWidth << " and writes " << d->outWidth << " (its buses: " << d->processor()->getTotalNumInputChannels() << " in, " << d->processor()->getTotalNumOutputChannels() << " out)\n";
+            return 0;
+        }
+        if (a == "--dump-params" && i + 1 < argc)
+        {
+            // every device the studio has, with every parameter: for the manual
+            const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (argv[++i]);
+            Session s; juce::Array<juce::var> devs;
+            auto add = [&] (const juce::String& type, const juce::String& family)
+            {
+                auto d = s.createDevice (type); if (! d) return;
+                auto* o = new juce::DynamicObject(); o->setProperty ("type", type); o->setProperty ("name", d->name); o->setProperty ("family", family); o->setProperty ("instrument", d->isInstrument());
+                o->setProperty ("blurb", type.startsWith ("st:") ? studioDeviceBlurb (type) : juce::String());
+                juce::Array<juce::var> presets; for (int k = 0; k < d->numPrograms(); ++k) presets.add (d->programName (k)); o->setProperty ("presets", presets);
+                juce::Array<juce::var> ps;
+                for (int k = 0; k < d->numParams(); ++k)
+                {
+                    auto* q = new juce::DynamicObject(); q->setProperty ("id", d->paramId (k)); q->setProperty ("name", d->paramName (k));
+                    q->setProperty ("min", d->paramText (k, 0.0f)); q->setProperty ("max", d->paramText (k, 1.0f)); q->setProperty ("default", d->paramText (k, d->defaultValue (k)));
+                    if (auto* c = dynamic_cast<juce::AudioParameterChoice*> (d->processor()->getParameters()[k])) { juce::Array<juce::var> ch; for (auto& x : c->choices) ch.add (x); q->setProperty ("choices", ch); }
+                    if (dynamic_cast<juce::AudioParameterBool*> (d->processor()->getParameters()[k])) q->setProperty ("switch", true);
+                    ps.add (juce::var (q));
+                }
+                o->setProperty ("params", ps);
+                devs.add (juce::var (o));
+            };
+            for (auto& t : Session::internalInstrumentTypes()) add (t, "instrument");
+            for (auto& t : Session::internalEffectTypes()) add (t, "effect");
+            for (auto& t : studioDeviceTypes()) add (t, "studio");
+            auto* root = new juce::DynamicObject(); root->setProperty ("suite", kDeep ? "faltung deep" : "faltung"); root->setProperty ("devices", devs);
+            juce::Array<juce::var> tn; for (auto& n : Session::templateNames()) tn.add (n); root->setProperty ("templates", tn);
+            juce::Array<juce::var> dn; for (auto& n : divisionNames()) dn.add (n); root->setProperty ("divisions", dn);
+            out.replaceWithText (juce::JSON::toString (juce::var (root)));
+            std::cout << devs.size() << " devices written to " << out.getFullPathName() << "\n";
+            return 0;
+        }
     }
     if (shotDir != juce::File()) shotDir.createDirectory();
     if (wavDir != juce::File()) wavDir.createDirectory();
@@ -500,7 +549,8 @@ int main (int argc, char** argv)
         auto c = onsets (r2.out, 6), a2 = onsets (r2.out, 2);
         std::cout << "  routed copy through another sw6: " << (c.empty() ? -1 : c[0]) << " vs source " << (a2.empty() ? -1 : a2[0]) << ", total latency " << s.totalLatency() << "\n";
         check (! c.empty() && ! a2.empty() && std::abs (c[0] - a2[0]) <= 3, "route compensated");
-        check (! s.addRoute (*t3, { s.tracks[0]->uid, 2, 0, 0, 1.0f }), "a cycle is refused");
+        check (s.addRoute (*t3, { s.tracks[0]->uid, 2, 0, 0, 1.0f }) && (*t3->routes)[0].feedback, "a route that closes a loop becomes a feedback route");
+        check (! s.addRoute (*t3, { t3->uid, 2, 0, 0, 1.0f }), "a track cannot route into itself");
     }
 
     // ---- 8. spatial: widths, routes, the master width ----------------------------------------------------
@@ -900,6 +950,19 @@ int main (int argc, char** argv)
     std::cout << "== studio devices\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        // the suite's two machines as instruments on a track (their own sequencers follow the studio's clock)
+        for (auto* type : { "fal:kt1", "fal:kt2" })
+        {
+            s.newFromTemplate (0);
+            juce::String err; auto d = s.createDevice (type, &err);
+            check (d != nullptr && d->isInstrument(), juce::String (type) + " is an instrument: " + err);
+            if (! d) continue;
+            s.setInstrument (*s.tracks[0], std::move (d));
+            s.editPattern (*s.tracks[0], 0, [] (Pattern& pt) { pt = Pattern(); for (int k = 0; k < 16; k += 4) pt.s[(size_t) k].on = true; }); s.launch (*s.tracks[0], 0);
+            auto r = render (p, 2.0);
+            std::cout << "  " << type << " on a track: peak " << db (r.peak[0]) << "\n";
+        }
+        s.newFromTemplate (0);
         auto make = [&] (const char* type) { juce::String err; auto d = s.createDevice (type, &err); check (d != nullptr, juce::String ("create ") + type + ": " + err); if (d) d->prepare (kSr, kBs); return d; };
         auto setPlain = [] (Device& d, const char* id, float plain)
         {
@@ -1011,7 +1074,893 @@ int main (int argc, char** argv)
           setPlain (*d, "mode", 2); setPlain (*d, "slices", 4); auto sl = play (36 + 1); check (sl.getMagnitude (0, 100, 2000) > 0.2f, "sampler slice 2 plays"); }
     }
 
-    // ---- 15. screenshots ----------------------------------------------------------------------------------
+    // ---- 15. uneven grids, off-grid modulators, the tempo as a target ----------------------------------------
+    std::cout << "== uneven steps + free modulators\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& t = *s.tracks[0]; shortHit (t); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        // four steps lasting 1, 0.5, 1.5 and 1 sixteenths: hits at 0, 1, 1.5 and 3 sixteenths; the loop is 4 sixteenths
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 4; for (int i = 0; i < 4; ++i) { pt.s[(size_t) i].on = true; pt.s[(size_t) i].vel = 1; } pt.s[1].dur = 0.5f; pt.s[2].dur = 1.5f; });
+        s.launch (t, 0);
+        auto r = render (p, 0.5); auto on = onsets (r.out, 0, 0.05f, 1500);
+        const double six = 0.25 * spb (120);
+        std::cout << "  step times 1 / 0.5 / 1.5 / 1: hits at"; for (int o : on) std::cout << " " << o; std::cout << "  (expected 0 " << (int) six << " " << (int) (1.5 * six) << " " << (int) (3 * six) << " " << (int) (4 * six) << " ...)\n";
+        check (on.size() == 8, "uneven pattern: eight hits in two beats");
+        if (on.size() >= 5) { check (std::abs (on[1] - (int) six) <= 2 && std::abs (on[2] - (int) (1.5 * six)) <= 2 && std::abs (on[3] - (int) (3.0 * six)) <= 2, "every step starts after the durations before it"); check (std::abs (on[4] - (int) (4.0 * six)) <= 2, "the loop is the sum of the step times"); }
+        check ((*t.patterns[0]).span() == 4.0 && ! (*t.patterns[0]).even(), "pattern span");
+        // a slide across uneven steps lands on the later step's time
+        auto x = s.save(); StudioProcessor q; q.session.load (*x, nullptr);
+        check (q.session.tracks[0]->patternAt (0) && std::abs (q.session.tracks[0]->patternAt (0)->s[2].dur - 1.5f) < 1.0e-6f, "step times survive save / load");
+        // speed x8: 1/128 notes
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[8].on = true; });
+        t.speed.store (7);
+        auto r8 = render (p, 0.25); auto on8 = onsets (r8.out, 0, 0.05f, 3000);
+        check (on8.size() >= 2 && std::abs (on8[1] - (int) (8 * 0.25 / 8.0 * spb (120))) <= 2, "speed x8: steps of a 1/128 note");
+        t.speed.store (3);
+        // a step modulator off the grid: 4 steps a second, whatever the tempo
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; });
+        Modulator m; m.src = MOD_STEPS; m.sync = false; m.hz = 4.0f; m.stepLen = 4; m.steps = { 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; m.depth = 1.0f; m.polarity = 1; m.device = 0; m.param = MP_PAN;
+        t.mixer->setBase (MP_PAN, 0.0f);
+        s.addModulator (t, m);
+        auto countFlips = [&] (float bpm) { s.setTempo (bpm); int flips = 0; float last = -1; render (p, bpm / 60.0 * 2.0 / 4.0, [&] (int, double) { const float v = t.mixer->finalValue (MP_PAN); if (last >= 0 && ((v > 0.5f) != (last > 0.5f))) ++flips; last = v; }); return flips; };
+        const int f120 = countFlips (120.0f), f90 = countFlips (90.0f);
+        std::cout << "  free step modulator at 4 hz over 2 s: " << f120 << " flips at 120 bpm, " << f90 << " at 90 bpm (expected 7 or 8 both)\n";
+        check (f120 >= 6 && f120 <= 9 && std::abs (f120 - f90) <= 1, "free step modulator ignores the tempo");
+        s.editMods (t, [] (std::vector<Modulator>& v) { v.clear(); });
+        // the master's modulators reach the globals: an lfo on the tempo
+        s.setTempo (120.0f);
+        Modulator tm; tm.src = MOD_LFO; tm.shape = 3; tm.sync = false; tm.hz = 0.5f; tm.depth = 0.25f; tm.polarity = 1; tm.device = 0; tm.param = GP_TEMPO;
+        s.addModulator (*s.master, tm);
+        float lo = 1e9f, hi = 0;
+        render (p, 2.0, [&] (int, double) { lo = std::min (lo, s.tempo()); hi = std::max (hi, s.tempo()); });
+        std::cout << "  an lfo on the tempo: " << lo << " ... " << hi << " bpm\n";
+        check (hi > lo + 15.0f && lo >= 119.0f, "tempo is a modulator target");
+        check (s.targetName ({ 0, 0, GP_TEMPO }).contains ("tempo"), "global target name");
+        s.editMods (*s.master, [] (std::vector<Modulator>& v) { v.clear(); });
+    }
+
+    // ---- 16. one gesture: mapping modulators, lanes and keys from a control --------------------------------
+    std::cout << "== mapping from a control\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& t = *s.tracks[0]; auto* inst = t.instrument.get(); const int tune = inst->paramIndexForId ("tune");
+        const int a = ParamMenu::act (s, t, *inst, tune, ParamMenu::Lfo), b = ParamMenu::act (s, t, *inst, tune, ParamMenu::Random);
+        const int c = ParamMenu::act (s, t, *inst, tune, ParamMenu::Slewed), d = ParamMenu::act (s, t, *inst, tune, ParamMenu::Gate);
+        check (t.mods->size() == 4 && a > 0 && b > 0 && c > 0 && d > 0, "four modulators mapped, one gesture each");
+        if (t.mods->size() == 4)
+        {
+            check ((*t.mods)[0].src == MOD_LFO && (*t.mods)[1].src == MOD_RANDOM && (*t.mods)[1].slew == 0.0f && (*t.mods)[2].src == MOD_RANDOM && (*t.mods)[2].slew > 0.2f && (*t.mods)[3].src == MOD_GATE, "lfo, random, slewed random, random gate");
+            for (auto& m : *t.mods) check (m.device == inst->uid && m.param == tune, "mapped to the control that was clicked");
+        }
+        // the popup edits the shape and the rate of the one just made
+        { ModPopup pop (s, t, a); pop.choose (MOD_LFO, 4); check (s.findMod (t, a) && s.findMod (t, a)->shape == 4, "the popup sets the shape"); }
+        // the steps of a step modulator are drawn in the popup
+        {
+            const int st = ParamMenu::act (s, t, *inst, tune, ParamMenu::Steps);
+            ModPopup pop (s, t, st); pop.setSize (300, 400); pop.resized();
+            const auto box = pop.stepArea();
+            check (! box.isEmpty(), "the step editor is shown for a step modulator");
+            const juce::Point<float> at ((float) box.getX() + 2.0f, (float) box.getY() + 1.0f);
+            pop.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, &pop, &pop, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
+            check (s.findMod (t, st) && s.findMod (t, st)->steps[0] > 0.9f, "drawing in the popup sets a step");
+        }
+        s.editMods (t, [] (std::vector<Modulator>& v) { v.clear(); });
+        ParamMenu::act (s, t, *t.mixer, MP_SEND1, ParamMenu::Lane);
+        check (s.lane (s.targetFor (t, *t.mixer, MP_SEND1)) != nullptr, "an automation lane for a send, from the control");
+        // keys: learn "k" as a toggle of the mute, "j" as a hold of send 1
+        ParamMenu::act (s, t, *t.mixer, MP_MUTE, ParamMenu::KeyToggle);
+        check (s.keyEvent ('k', true), "key learned"); s.keyEvent ('k', false);
+        ParamMenu::act (s, t, *t.mixer, MP_SEND1, ParamMenu::KeyHold);
+        s.keyEvent ('j', true); s.keyEvent ('j', false);
+        check (s.keyMaps->size() == 2, "two key maps");
+        t.mixer->setBase (MP_SEND1, 0.0f);
+        s.keyEvent ('k', true); check (t.muted(), "the key mutes"); s.keyEvent ('k', false); check (t.muted(), "a toggle stays");
+        s.keyEvent ('k', true); check (! t.muted(), "and toggles back"); s.keyEvent ('k', false);
+        s.keyEvent ('j', true); check (t.mixer->baseValue (MP_SEND1) > 0.99f, "a held key opens the send"); s.keyEvent ('j', false); check (t.mixer->baseValue (MP_SEND1) < 0.01f, "and closes it on release");
+        check (! s.keyEvent ('q', true), "an unmapped key is left alone");
+        auto x = s.save(); StudioProcessor q; q.session.load (*x, nullptr);
+        check (q.session.keyMaps->size() == 2 && (*q.session.keyMaps)[1].momentary && (*q.session.keyMaps)[0].key == 'k', "key maps survive save / load");
+        // with write on, a played mute lands in a lane
+        s.removeLane (s.targetFor (t, *t.mixer, MP_MUTE));
+        s.autoWrite.store (true);
+        render (p, 1.0, [&] (int blk, double) { if (blk == 20) s.keyEvent ('k', true); if (blk == 40) s.keyEvent ('k', true); });
+        s.autoWrite.store (false);
+        auto l = s.lane (s.targetFor (t, *t.mixer, MP_MUTE));
+        check (l && l->pts.size() >= 2, "key presses are recorded as automation");
+    }
+
+    // ---- 17. the spatial devices, and the workflow with them -------------------------------------------------
+    std::cout << "== spatial devices\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto runWide = [&] (Device& d, int width, std::function<void (juce::AudioBuffer<float>&)> fill, int blocks = 8)
+        {
+            d.prepare (kSr, kBs); juce::AudioBuffer<float> out (width, blocks * kBs); juce::MidiBuffer none;
+            for (int b = 0; b < blocks; ++b) { juce::AudioBuffer<float> blk (width, kBs); blk.clear(); fill (blk); d.apply (nullptr, 0.0); d.process (blk, none); for (int c = 0; c < width; ++c) out.copyFrom (c, b * kBs, blk, c, 0, kBs); }
+            return out;
+        };
+        auto dc = [] (juce::AudioBuffer<float>& b) { for (int i = 0; i < b.getNumSamples(); ++i) b.setSample (0, i, 1.0f); };
+        juce::String err;
+        auto enc = s.createDevice ("st:encoder", &err); check (enc != nullptr, "encoder: " + err);
+        if (enc)
+        {
+            check (enc->configure (2, 16) == 16 && enc->inWidth == 2, "encoder on a 16-channel track: 2 in, 16 out");
+            check (enc->configure (2, 24) == 16, "on a 24-channel track it still makes third order (16)");
+            check (enc->configure (2, 64) == 64 && enc->configure (1, 9) == 9 && enc->inWidth == 1, "seventh order on 64 channels; mono in, second order on 9");
+            enc->configure (2, 16);
+            auto set = [&] (const char* id, float plain) { const int i = enc->paramIndexForId (id); auto* rp = dynamic_cast<juce::RangedAudioParameter*> (enc->processor()->getParameters()[i]); enc->setBase (i, rp->convertTo0to1 (plain)); };
+            set ("width", 0.0f); set ("azimuth", 0.0f);
+            auto front = runWide (*enc, 16, dc);
+            const int last = front.getNumSamples() - 1;
+            std::cout << "  encoder, a source in front: w " << front.getSample (0, last) << "  y " << front.getSample (1, last) << "  z " << front.getSample (2, last) << "  x " << front.getSample (3, last) << "\n";
+            check (std::abs (front.getSample (0, last) - 1.0f) < 1.0e-3f && std::abs (front.getSample (3, last) - 1.0f) < 1.0e-3f && std::abs (front.getSample (1, last)) < 1.0e-3f && std::abs (front.getSample (2, last)) < 1.0e-3f, "front: w = x = 1, y = z = 0 (acn / sn3d)");
+            set ("azimuth", 90.0f);
+            auto left = runWide (*enc, 16, dc);
+            check (std::abs (left.getSample (1, last) - 1.0f) < 1.0e-3f && std::abs (left.getSample (3, last)) < 1.0e-3f, "90 degrees left: y = 1, x = 0");
+            // second order, acn 4 (xy term): sqrt(3)/2 sin(2 az) cos^2(el) → 0 at 90°, and acn 8: sqrt(3)/2 cos(2 az) → -0.866
+            check (std::abs (left.getSample (8, last) + 0.8660254f) < 1.0e-3f, "second order term");
+            set ("elevation", 90.0f);
+            auto up = runWide (*enc, 16, dc);
+            check (std::abs (up.getSample (2, last) - 1.0f) < 1.0e-3f && std::abs (up.getSample (1, last)) < 1.0e-3f, "straight up: z = 1");
+        }
+        // decoder: a ring of eight, the source at 90° left comes out of the speaker at 90° left
+        auto dec = s.createDevice ("st:decoder", &err);
+        if (dec && enc)
+        {
+            check (dec->configure (16, 8) == 8 && dec->inWidth == 16, "decoder on an 8-channel track fed 16: 16 in, 8 out");
+            auto setE = [&] (const char* id, float plain) { const int i = enc->paramIndexForId (id); auto* rp = dynamic_cast<juce::RangedAudioParameter*> (enc->processor()->getParameters()[i]); enc->setBase (i, rp->convertTo0to1 (plain)); };
+            setE ("elevation", 0.0f); setE ("azimuth", 90.0f); enc->configure (2, 16);
+            dec->setBase (dec->paramIndexForId ("direction"), 0.0f);   // anticlockwise: speaker k at k * 45° to the left
+            enc->prepare (kSr, kBs); dec->prepare (kSr, kBs);
+            juce::AudioBuffer<float> blk (16, kBs); juce::MidiBuffer none; float pk[8] = {};
+            for (int b = 0; b < 8; ++b) { blk.clear(); for (int i = 0; i < kBs; ++i) blk.setSample (0, i, 1.0f); enc->apply (nullptr, 0.0); enc->process (blk, none); dec->apply (nullptr, 0.0); dec->process (blk, none); for (int c = 0; c < 8; ++c) pk[c] = blk.getMagnitude (c, 0, kBs); }
+            std::cout << "  decoder, ring of 8, source at 90 left:"; for (float v : pk) std::cout << " " << juce::String (v, 2); std::cout << "\n";
+            int best = 0; for (int c = 1; c < 8; ++c) if (pk[c] > pk[best]) best = c;
+            check (best == 2, "the loudest speaker is the one at 90 degrees");
+            check (pk[6] < pk[2] * 0.2f, "the opposite speaker is quiet");
+            float e = 0; for (float v : pk) e += v * v;
+            check (std::abs (e - 1.0f) < 0.15f, "unity power over the ring");
+            check (dec->configure (16, 24) == 24, "24 speakers on a 24-channel track");
+        }
+        // binaural: a source on the left is louder and earlier in the left ear
+        auto bin = s.createDevice ("st:binaural", &err);
+        if (bin && enc)
+        {
+            check (bin->configure (16, 16) == 2 && bin->inWidth == 16, "binaural on a 16-channel track: 16 in, 2 out");
+            enc->prepare (kSr, kBs); bin->prepare (kSr, kBs);
+            juce::AudioBuffer<float> out (2, 8 * kBs); juce::AudioBuffer<float> blk (16, kBs); juce::MidiBuffer none; Rng rn; rn.seed (3);
+            for (int b = 0; b < 8; ++b) { blk.clear(); for (int i = 0; i < kBs; ++i) blk.setSample (0, i, b == 0 && i == 100 ? 1.0f : 0.0f); enc->apply (nullptr, 0.0); enc->process (blk, none); bin->apply (nullptr, 0.0); bin->process (blk, none); out.copyFrom (0, b * kBs, blk, 0, 0, kBs); out.copyFrom (1, b * kBs, blk, 1, 0, kBs); check (blk.getMagnitude (2, 0, kBs) < 1.0e-9f, "binaural clears the ambisonic channels"); }
+            auto energy = [&] (int ch) { double e = 0; for (int i = 0; i < out.getNumSamples(); ++i) e += out.getSample (ch, i) * out.getSample (ch, i); return e; };
+            auto first = [&] (int ch) { float m = out.getMagnitude (ch, 0, out.getNumSamples()); for (int i = 0; i < out.getNumSamples(); ++i) if (std::abs (out.getSample (ch, i)) > m * 0.5f) return i; return -1; };
+            std::cout << "  binaural, source at 90 left: left ear " << db ((float) std::sqrt (energy (0))) << " from sample " << first (0) << ", right ear " << db ((float) std::sqrt (energy (1))) << " from sample " << first (1) << "\n";
+            check (energy (0) > energy (1) * 1.5, "louder in the left ear");
+            check (first (1) > first (0), "and earlier");
+        }
+    }
+    std::cout << "== spatial workflow with the studio's own devices, through the mixer page\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+        auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        se->showPage (3); se->tickForTest();
+        auto* mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        check (mix != nullptr, "the mix page");
+        // "i make a new channel that defaults stereo, i change it to be a 16 ch track, i tell it to not send audio to the master"
+        // (a hat: bright enough for the head's shadow to show which side it is on)
+        auto& encT = *s.tracks[0]; s.setInstrument (encT, s.createDevice ("fal:hh4")); s.setTempo (120.0f);
+        s.editPattern (encT, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[8].on = true; }); s.launch (encT, 0);
+        check (encT.width.load() == 2, "a new track is stereo");
+        auto* es = mix->stripFor (encT);
+        es->setWidth (16); es->toMaster.onClick();
+        check (encT.width.load() == 16 && ! encT.toMaster.load(), "16 channels, not to the master");
+        auto* e = s.addInsert (encT, s.createDevice ("st:encoder"));
+        e->setBase (e->paramIndexForId ("azimuth"), (90.0f + 180.0f) / 360.0f);
+        check (e->inWidth == 2 && e->outWidth == 16 && encT.outWidth() == 16 && encT.inWidth() == 2, "stereo in, 16 out on that track");
+        // "i make another channel that will be my decoder channel. i set that channel to 24"
+        auto* decT = s.addTrack ("decoder"); se->tickForTest(); mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        mix->stripFor (*decT)->setWidth (24);
+        auto* d = s.addInsert (*decT, s.createDevice ("st:decoder"));
+        // "i drag the route icon from the 16ch track to the 24 ch track and a popup shows me how many channels i want to route, i say 16"
+        se->tickForTest(); mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        es = mix->stripFor (encT); auto* ds = mix->stripFor (*decT);
+        check (es && ds && es->route.isVisible(), "the route icon is on the strip");
+        {
+            auto& h = es->route;
+            const auto now = juce::Time::getCurrentTime(); auto src = juce::Desktop::getInstance().getMainMouseSource();
+            const juce::Point<float> down (8.0f, 8.0f);
+            const auto target = (ds->getScreenBounds().getCentre() - h.getScreenPosition()).toFloat();
+            h.mouseDown (juce::MouseEvent (src, down, juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, &h, &h, now, down, now, 1, false));
+            h.mouseDrag (juce::MouseEvent (src, target, juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, &h, &h, now, down, now, 1, true));
+            check (ds->dropTarget, "the strip under the cable lights up");
+            h.mouseUp (juce::MouseEvent (src, target, juce::ModifierKeys(), 0, 0, 0, 0, 0, &h, &h, now, down, now, 1, true));
+        }
+        auto* pop = mix->routePopup();
+        check (pop != nullptr && pop->isVisible(), "dropping the route icon on another strip opens the channel popup");
+        if (pop)
+        {
+            check (&pop->src == &encT && &pop->dst == decT && pop->suggestion() == 16, "the popup is for encoder > decoder and suggests 16 channels");
+            if (shotDir != juce::File()) { for (int k = 0; k < 3; ++k) se->tickForTest(); juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f); const auto f = shotDir.getChildFile ("sndstudio-route.png"); f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os); }
+            check (pop->choose (16), "16 chosen");
+        }
+        check (encT.routes->size() == 1 && (*encT.routes)[0].dst == decT->uid && (*encT.routes)[0].channels == 16 && ! (*encT.routes)[0].feedback, "the encoder is routed to the decoder over 16 channels");
+        check (d->inWidth == 16 && d->outWidth == 24 && decT->inWidth() == 16 && decT->outWidth() == 24, "the decoder reads the 16 routed channels and feeds 24 speakers");
+        check (decT->toMaster.load(), "the decoder goes to the master");
+        // "i open the master channel and make sure the number of output channels is set to 24 and the vu meters show 24"
+        mix->rebuild(); auto* ms = mix->stripFor (*s.master);
+        ms->setWidth (24);
+        check (s.master->width.load() == 24, "the master is 24 channels wide");
+        float masterMeters[24] = {}; int lit = 0;
+        auto r = render (p, 1.0, [&] (int, double) { for (int c = 0; c < 24; ++c) masterMeters[c] = std::max (masterMeters[c], s.master->meter[(size_t) c].load()); });
+        for (float v : masterMeters) if (v > 1.0e-4f) ++lit;
+        int outsLit = 0; for (int c = 0; c < 24; ++c) if (r.peak[(size_t) c] > 1.0e-4f) ++outsLit;
+        std::cout << "  encoder (16) > decoder (24) > master (24): " << lit << " of 24 master meters move, " << outsLit << " of 24 device channels carry sound, channel 25 " << db (r.peak[24]) << "\n";
+        check (lit >= 20 && outsLit >= 20, "24 meters on the master, 24 channels out");
+        check (r.peak[24] < 1.0e-9f, "nothing beyond the master's 24 channels");
+        // "i place a third channel and set it to 16 channels, i route my encoder track also to this channel over 16 channels and place a binaural decoder"
+        auto* binT = s.addTrack ("binaural"); se->tickForTest(); mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        mix->stripFor (*binT)->setWidth (16);
+        auto* b = s.addInsert (*binT, s.createDevice ("st:binaural"));
+        mix->askRoute (encT, *binT, { 300, 300 });
+        check (mix->routePopup() && mix->routePopup()->suggestion() == 16 && mix->routePopup()->choose (16), "encoder > binaural over 16 channels");
+        check (b->inWidth == 16 && b->outWidth == 2 && binT->outWidth() == 2, "16 in, only 2 out of the binaural track");
+        // "i can set my master out back to 2 channels, mute my 24ch decoder, and work on the arrangement in stereo binaural"
+        mix->rebuild(); mix->stripFor (*s.master)->setWidth (2); mix->stripFor (*decT)->mute.onClick();
+        check (s.master->width.load() == 2 && decT->muted(), "master back to 2 channels, the decoder muted");
+        auto rb = render (p, 1.0);
+        const float l = rb.out.getRMSLevel (0, 0, rb.out.getNumSamples()), rr = rb.out.getRMSLevel (1, 0, rb.out.getNumSamples());
+        std::cout << "  binaural on a stereo master, the source at 90 left: L " << db (l) << "  R " << db (rr) << "  channel 3 " << db (rb.peak[2]) << "\n";
+        check (l > 1.0e-3f && l > rr * 1.2f && rb.peak[2] < 1.0e-9f, "stereo binaural on the master, the image to the left");
+        // the project carries all of it
+        auto x = s.save(); StudioProcessor q; juce::String e2; q.session.load (*x, &e2);
+        check (q.session.tracks.size() == 3 && q.session.tracks[0]->width.load() == 16 && q.session.tracks[0]->routes->size() == 2 && q.session.tracks[1]->inserts.size() == 1 && q.session.tracks[1]->inserts[0]->inWidth == 16 && q.session.tracks[1]->inserts[0]->outWidth == 24 && q.session.tracks[2]->inserts[0]->outWidth == 2, "the spatial session reloads: " + e2);
+        // a stereo effect on the 16-channel track leaves channels 3 … 16 alone
+        s.addInsert (encT, s.createDevice ("fal:fl7"));
+        check (encT.outWidth() == 16, "a stereo device after the encoder keeps the 16 channels");
+        float m16 = 0; render (p, 0.5, [&] (int, double) { m16 = std::max (m16, encT.meter[8].load()); });
+        check (m16 > 1.0e-4f, "and they still carry sound");
+        // a stereo file on the 16-channel track is the encoder's input
+        juce::AudioBuffer<float> st2 (2, 24000); for (int i = 0; i < 24000; ++i) { st2.setSample (0, i, 0.4f * std::sin (i * 0.05f)); st2.setSample (1, i, 0.4f * std::sin (i * 0.031f)); }
+        auto wf = tmp.getChildFile ("stereo for the encoder.wav"); writeWav (wf, st2);
+        auto* at = s.addTrack ("clip", -1, TrackKind::Audio); s.setWidth (*at, 16); at->toMaster.store (false);
+        s.addAudioClip (*at, wf, 0.0); auto* ae = s.addInsert (*at, s.createDevice ("st:encoder"));
+        check (ae->inWidth == 2 && ae->outWidth == 16 && at->sourceWidth == 2, "the stereo clip is the encoder's stereo input on the 16-channel track");
+        float w0 = 0, w8 = 0, w14 = 0; render (p, 0.25, [&] (int, double) { w0 = std::max (w0, at->meter[0].load()); w8 = std::max (w8, at->meter[8].load()); w14 = std::max (w14, at->meter[11].load()); });   // (acn 8 and 11: terms that are not zero in the horizontal plane)
+        check (w0 > 0.05f && w8 > 1.0e-3f && w14 > 1.0e-3f, "stereo in, 16 channels out");
+    }
+
+    // ---- 18. widths: routes decide what a chain reads; wide files; feedback routes ---------------------------
+    std::cout << "== widths, wide files, feedback routes\n";
+    {
+        // a device that takes any layout (like a real decoder plug-in): what it reads must follow the routes
+        struct Flex : WideProc { Flex() : WideProc (2, 2) {} bool isBusesLayoutSupported (const BusesLayout& l) const override { return l.getMainInputChannelSet().size() >= 1 && l.getMainOutputChannelSet().size() >= 1; }
+            void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override {} };
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& a = *s.tracks[0]; s.setWidth (a, 16);
+        auto* bT = s.addTrack ("b"); s.setWidth (*bT, 24);
+        auto* f = s.addInsert (*bT, Device::makeFromProcessor (950, std::make_unique<Flex>(), "test:flex", "flex"));
+        check (f->inWidth == 2, "nothing routed in: the device reads the stereo source");
+        s.addRoute (a, { bT->uid, 16, 0, 0, 1.0f });
+        check (f->inWidth == 16 && bT->sourceWidth == 16, "16 channels routed in: the device reads 16");
+        s.removeRoute (a, 0);
+        check (f->inWidth == 2, "route removed: back to stereo");
+        s.addRoute (a, { bT->uid, 4, 0, 8, 1.0f });
+        check (f->inWidth == 12, "4 channels into channel 9: the chain is 12 wide");
+        // feedback: a > b is a normal route, b > a closes the loop
+        s.removeRoute (a, 0); s.setWidth (a, 2); s.setWidth (*bT, 2); s.removeDevice (*bT, 950);
+        shortHit (a); s.setTempo (120.0f);
+        s.editPattern (a, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].vel = 1; }); s.launch (a, 0);
+        check (s.addRoute (a, { bT->uid, 2, 0, 0, 1.0f }), "a > b");
+        s.multiOut.store (true); bT->outChannel.store (5); bT->toMaster.store (false); a.toMaster.store (false);
+        auto dry = render (p, 1.0);
+        check (s.addRoute (*bT, { a.uid, 2, 0, 0, 0.9f }), "b > a is accepted");
+        check ((*bT->routes)[0].feedback && ! (*a.routes)[0].feedback, "and marked as a feedback route");
+        auto wet = render (p, 1.0);
+        float diff = 0, peak = 0; bool finite = true;
+        for (int i = 0; i < wet.out.getNumSamples(); ++i) { diff = std::max (diff, std::abs (wet.out.getSample (4, i) - dry.out.getSample (4, i))); peak = std::max (peak, std::abs (wet.out.getSample (4, i))); finite &= std::isfinite (wet.out.getSample (4, i)); }
+        // the first return arrives one buffer after the hit
+        int firstDiff = -1; for (int i = 0; i < wet.out.getNumSamples() && firstDiff < 0; ++i) if (std::abs (wet.out.getSample (4, i) - dry.out.getSample (4, i)) > 1.0e-5f) firstDiff = i;
+        std::cout << "  feedback loop at 0.9: differs from the dry by " << diff << " from sample " << firstDiff << " (one buffer = " << kBs << "), peak " << db (peak) << "\n";
+        check (finite && diff > 0.01f && std::abs (firstDiff - kBs) <= 8, "the loop feeds back one buffer late");
+        s.editRoutes (*bT, [] (std::vector<Route>& v) { v[0].gain = 4.0f; });
+        check ((*bT->routes)[0].feedback, "still a feedback route after an edit");
+        auto loud = render (p, 4.0);
+        float lp = 0; bool lf = true; for (int i = 0; i < loud.out.getNumSamples(); ++i) { lp = std::max (lp, std::abs (loud.out.getSample (4, i))); lf &= std::isfinite (loud.out.getSample (4, i)); }
+        std::cout << "  the same loop with a gain of 4 (+12 db): peak " << db (lp) << " after 8 s\n";
+        check (lf && lp < 8.0f, "a runaway loop is held by the limiter");
+        auto x = s.save(); StudioProcessor q; q.session.load (*x, nullptr);
+        check (q.session.tracks[1]->routes->size() == 1 && (*q.session.tracks[1]->routes)[0].feedback && ! (*q.session.tracks[0]->routes)[0].feedback, "feedback routes survive save / load");
+        auto again = render (p, 1.0); auto again2 = render (p, 1.0);
+        (void) again; (void) again2;
+        // a four-channel file plays all four channels on a four-channel track
+        s.newFromTemplate (0); s.removeTrack (0); p.prepareToPlay (kSr, kBs);
+        juce::AudioBuffer<float> quad (4, 24000); for (int c = 0; c < 4; ++c) for (int i = 0; i < 24000; ++i) quad.setSample (c, i, 0.1f * (float) (c + 1));
+        auto qf = tmp.getChildFile ("quad.wav"); writeWav (qf, quad);
+        auto* qt = s.addTrack ("quad", -1, TrackKind::Audio); s.setWidth (*qt, 4);
+        check (s.addAudioClip (*qt, qf, 0.0) != nullptr && qt->sourceWidth == 4, "a four-channel clip makes the track's source four wide");
+        s.multiOut.store (true); qt->outChannel.store (9); qt->toMaster.store (false);
+        auto rq = render (p, 0.2);
+        std::cout << "  a 4-channel file on a 4-channel track: " << rq.peak[8] << " " << rq.peak[9] << " " << rq.peak[10] << " " << rq.peak[11] << "\n";
+        check (std::abs (rq.peak[8] - 0.1f) < 0.01f && std::abs (rq.peak[9] - 0.2f) < 0.01f && std::abs (rq.peak[10] - 0.3f) < 0.01f && std::abs (rq.peak[11] - 0.4f) < 0.01f, "every channel of the file plays");
+        s.setWidth (*qt, 2);
+        auto rq2 = render (p, 0.2);
+        check (std::abs (rq2.peak[8] - 0.1f) < 0.01f && rq2.peak[10] < 1.0e-9f, "on a stereo track the first pair plays");
+        // resampling a 4-channel master gives a 4-channel track
+        s.setWidth (*qt, 4); s.setWidth (*s.master, 4); qt->toMaster.store (true); s.multiOut.store (false);
+        s.projectFile = tmp.getChildFile ("wide.fstudio"); s.projectName = "wide";
+        juce::String err; auto* rs = s.renderProjectToTrack (0.0, 0.25, false, err);
+        check (rs && rs->width.load() == 4 && rs->aclips->size() == 1 && (*rs->aclips)[0].sample && (*rs->aclips)[0].sample->data.getNumChannels() == 4, "a 4-channel master resamples into a 4-channel track: " + err);
+    }
+
+    // ---- 19. the browser's audition, bouncing, the file menu, auto master, keys: through the editor --------
+    std::cout << "== the pages, used\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (1);
+        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        s.projectFile = tmp.getChildFile ("pages.fstudio"); s.projectName = "pages";
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+        auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        auto pump = [&] (int blocks) { juce::AudioBuffer<float> blk (kOutChannels, kBs); float pk = 0; for (int b = 0; b < blocks; ++b) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); pk = std::max (pk, blk.getMagnitude (0, 0, kBs)); if (b % 8 == 0) se->tickForTest(); } return pk; };
+        auto click = [] (juce::Component& c, juce::Point<float> at, juce::ModifierKeys mods = juce::ModifierKeys::leftButtonModifier, int clicks = 1)
+        {
+            const auto now = juce::Time::getCurrentTime(); auto src = juce::Desktop::getInstance().getMainMouseSource();
+            c.mouseDown (juce::MouseEvent (src, at, mods, 0, 0, 0, 0, 0, &c, &c, now, at, now, clicks, false));
+            c.mouseUp (juce::MouseEvent (src, at, juce::ModifierKeys(), 0, 0, 0, 0, 0, &c, &c, now, at, now, clicks, false));
+        };
+        // session: a click on a cell launches that pattern on that track
+        se->showPage (0);
+        auto* session = dynamic_cast<SessionPage*> (se->pageComponent (0));
+        s.play(); pump (4);
+        click (*session, { (float) (session->left + 1 * session->colW + 20), (float) (session->top + 2 * session->rowH + 6) });   // rim, scene 3 ("bass in": pattern 1)
+        check (s.tracks[1]->pendingPattern.load() == 0 || s.tracks[1]->pattern.load() == 0, "a cell click launches the scene's pattern on that track");
+        click (*session, { 20.0f, (float) (session->top + 4 * session->rowH + 6) });   // the scene "full"
+        check (s.currentScene.load() == 4, "a click on a scene launches it");
+        check (pump (200) > 0.05f, "and it plays");
+        // seq: a click on a step switches it on, the step's time row makes it uneven
+        se->selectTrack (s.tracks[1].get()); se->showPage (2);
+        auto* seq = dynamic_cast<SeqPage*> (se->pageComponent (2));
+        const int pi = s.tracks[1]->pattern.load();
+        const bool was = s.tracks[1]->patternAt (pi) && s.tracks[1]->patternAt (pi)->s[4].on;
+        click (*seq, seq->cell (4).getCentre());
+        check (s.tracks[1]->patternAt (pi) && s.tracks[1]->patternAt (pi)->s[4].on != was, "a click on a step toggles it");
+        seq->sDur->set (1.5f, true);
+        check (std::abs (s.tracks[1]->patternAt (pi)->s[4].dur - 1.5f) < 1.0e-6f, "the step time row sets the selected step's duration");
+        seq->sDur->set (1.0f, true);
+        // arrange: dropping a file makes an audio track with a clip at that bar; a lane click adds a point
+        juce::AudioBuffer<float> tone (2, 48000); for (int i = 0; i < 48000; ++i) { const float v = 0.3f * std::sin (kTwoPi * 330.0f * i / 48000.0f) * std::exp (-i / 12000.0f); tone.setSample (0, i, v); tone.setSample (1, i, v); }
+        auto tf = tmp.getChildFile ("drop me.wav"); writeWav (tf, tone);
+        se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        const int before = (int) s.tracks.size();
+        arr->dropFile (tf, arr->x (4.0), arr->lanesArea().getBottom() - 4);   // below the lanes: a new audio track
+        check ((int) s.tracks.size() == before + 1 && s.tracks.back()->isAudio() && s.tracks.back()->aclips->size() == 1 && std::abs ((*s.tracks.back()->aclips)[0].startBar - 4.0) < 1.0e-6, "a dropped file becomes a clip on the timeline at that bar");
+        auto* at = s.tracks.back().get();
+        s.addInsert (*at, s.createDevice ("fal:dl4"));   // "and effect them"
+        se->selectTrack (at); se->showPage (1); arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        ParamMenu::act (s, *at, *at->mixer, MP_LEVEL, ParamMenu::Lane);   // "and automate them"
+        const auto aa = arr->autoArea();
+        int row = 0; { const auto tg = arr->laneTargets(); for (int i = 0; i < (int) tg.size(); ++i) if (tg[(size_t) i] == s.targetFor (*at, *at->mixer, MP_LEVEL)) row = i; }
+        click (*arr, { (float) arr->x (6.0), (float) (aa.getY() + 26 + row * 52 + 10) });
+        auto ln = s.lane (s.targetFor (*at, *at->mixer, MP_LEVEL));
+        check (ln && ln->pts.size() == 2 && std::abs (ln->pts[1].beat - 24.0) < 0.01, "a click in the lane adds a point at that bar");
+        // browse: a click auditions the file through the main output
+        se->showPage (5);
+        auto* br = dynamic_cast<BrowsePage*> (se->pageComponent (5));
+        s.stop(); pump (60);
+        const float silent = pump (8);
+        br->clickFile (tf);
+        check (s.previewing(), "a click on a file auditions it");
+        const float heard = pump (20);
+        std::cout << "  audition: stopped " << db (silent) << ", with the file " << db (heard) << "\n";
+        check (heard > 0.05f && silent < heard * 0.2f, "the audition is heard on the main output while stopped");
+        br->clickFile (tf); check (! s.previewing(), "a second click stops it");
+        br->clickFile (tf); pump (200); check (! s.previewing(), "it ends with the file");
+        // mix: bounce a track to audio and to a sampler; the master's bounce renders the project
+        se->showPage (3);
+        auto* mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        s.loopOn.store (true); s.loopStart.store (0); s.loopEnd.store (2);
+        const int n0 = (int) s.tracks.size();
+        mix->stripFor (*s.tracks[0])->bounceTo (1);
+        check ((int) s.tracks.size() == n0 + 1 && s.tracks[1]->isAudio() && s.tracks[1]->aclips->size() == 1 && std::abs ((*s.tracks[1]->aclips)[0].bars - 2.0) < 1.0e-9, "bounce: the kick as a two-bar clip on a new audio track next to it");
+        se->tickForTest(); mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        mix->stripFor (*s.tracks[0])->bounceTo (2);
+        check ((int) s.tracks.size() == n0 + 2 && ! s.tracks[1]->isAudio() && s.tracks[1]->instrument && s.tracks[1]->instrument->typeId == "st:sampler", "bounce to a sampler track");
+        if (s.tracks[1]->instrument) { auto* h = dynamic_cast<SampleHolder*> (s.tracks[1]->instrument->processor()); check (h && h->sampleFile().isNotEmpty() && s.tracks[1]->patternAt (0) && s.tracks[1]->patternAt (0)->s[3].slice == 3, "the sampler holds the bounce, the steps play its slices"); }
+        se->tickForTest(); mix = dynamic_cast<MixPage*> (se->pageComponent (3));
+        const int n1 = (int) s.tracks.size();
+        mix->stripFor (*s.master)->bounceTo (1);
+        check ((int) s.tracks.size() == n1 + 1 && s.tracks.back()->name.startsWith ("resample") && s.tracks.back()->aclips->size() == 1, "the master strip renders the project into a new audio track");
+        // the file menu: the same from there, for the loop
+        const int n2 = (int) s.tracks.size();
+        bool hasRender = false; { auto m = se->fileMenu(); juce::PopupMenu::MenuItemIterator it (m, true); while (it.next()) if (it.getItem().itemID == 30) hasRender = it.getItem().text.contains ("render the project"); }
+        check (hasRender, "the file menu has: render the project into a new audio track");
+        se->fileAction (30);
+        check ((int) s.tracks.size() == n2 + 1 && std::abs ((*s.tracks.back()->aclips)[0].bars - 2.0) < 1.0e-9 && (*s.tracks.back()->aclips)[0].startBar == 0.0, "file > render: the loop, as a clip at the loop start");
+        s.loopOn.store (false);
+        // keys: m mutes the selected track; a learned key comes first
+        se->selectTrack (s.tracks[0].get());
+        se->key (juce::KeyPress ('m', juce::ModifierKeys(), 'm')); check (s.tracks[0]->muted(), "m mutes the selected track");
+        se->key (juce::KeyPress ('m', juce::ModifierKeys(), 'm')); check (! s.tracks[0]->muted(), "and unmutes");
+        // auto master: one click, ms0 listens while the track plays and sets itself
+        if (! kDeep)
+        {
+            Device* ms = nullptr; for (auto& d : s.master->inserts) if (d->typeId == "fal:ms0") ms = d.get();
+            check (ms && ms->bypass.load(), "ms0 is on the master, bypassed");
+            juce::StringArray beforeVals; if (ms) for (int i = 0; i < ms->numParams(); ++i) beforeVals.add (juce::String (ms->baseValue (i), 4));
+            s.launchScene (4);
+            check (se->autoMaster(), "auto master starts");
+            check (ms && ! ms->bypass.load() && s.running.load(), "ms0 is switched in and the transport runs");
+            auto* fp = ms ? dynamic_cast<fal::Processor*> (ms->processor()) : nullptr;
+            int blocks = 0; while (fp && (fp->autoListening() || fp->autoReady()) && blocks < 4000) { pump (8); blocks += 8; }
+            juce::StringArray afterVals; if (ms) for (int i = 0; i < ms->numParams(); ++i) afterVals.add (juce::String (ms->baseValue (i), 4));
+            int changed = 0; for (int i = 0; i < beforeVals.size(); ++i) if (beforeVals[i] != afterVals[i]) ++changed;
+            std::cout << "  auto master: listened for " << juce::String (blocks * kBs / kSr, 1) << " s, changed " << changed << " of " << beforeVals.size() << " ms0 parameters: " << (fp ? fp->autoSummary : juce::String()) << "\n";
+            check (fp && ! fp->autoListening() && changed >= 3 && fp->autoSummary.isNotEmpty(), "ms0 set itself from what it heard");
+            if (ms && fp) { bool same = true; for (int i = 0; i < ms->numParams(); ++i) same &= std::abs (ms->baseValue (i) - fp->getParameters()[i]->getValue()) < 1.0e-5f; check (same, "the studio's values and ms0's agree after auto"); }
+            s.stop();
+        }
+        // bounce to sampler plays
+        s.stop(); pump (30);
+    }
+
+    // ---- 20. templates, fm morph, the suite's own plug-ins ------------------------------------------------------
+    std::cout << "== templates + devices 2\n";
+    {
+        StudioProcessor p; auto& s = p.session;
+        check (Session::templateNames().size() == 9, "nine templates");
+        s.newFromTemplate (5);
+        check (std::abs (s.tempo() - 172.0f) < 0.1f && s.tracks.size() == 8 && s.tracks[7]->inserts.size() == 1 && s.tracks[7]->keyTrack.load() == s.tracks[0]->uid, "bass first: 172 bpm, the bass ducked by the kick");
+        s.newFromTemplate (6);
+        check (std::abs (s.tempo() - 132.0f) < 0.1f && s.swing() > 0.6f && s.tracks.size() == 9 && s.tracks[8]->instrument && s.tracks[8]->instrument->typeId == "st:sampler", "two-step: 132 bpm, swung, a sampler for the vocal");
+        s.newFromTemplate (7);
+        check (s.tracks.size() == 5 && s.tracks[0]->width.load() == 16 && ! s.tracks[0]->toMaster.load() && s.tracks[0]->routes->size() == 2 && s.tracks[3]->width.load() == 24 && s.tracks[4]->outWidth() == 2 && s.master->width.load() == 2, "spatial template: three encoders, a 24-speaker decoder, a binaural track");
+        s.launchScene (0);
+        auto rs = render (p, 2.0);
+        const float l = rs.out.getRMSLevel (0, 0, rs.out.getNumSamples()), r = rs.out.getRMSLevel (1, 0, rs.out.getNumSamples());
+        float d = 0; for (int i = 0; i < rs.out.getNumSamples(); ++i) d = std::max (d, std::abs (rs.out.getSample (0, i) - rs.out.getSample (1, i)));
+        std::cout << "  spatial template on headphones: L " << db (l) << "  R " << db (r) << "  L-R " << db (d) << "\n";
+        check (l > 1.0e-3f && r > 1.0e-3f && d > 1.0e-3f, "binaural stereo with a real image");
+        s.tracks[3]->mixer->setBase (MP_MUTE, 0.0f); s.tracks[4]->mixer->setBase (MP_MUTE, 1.0f); s.setWidth (*s.master, 24);
+        auto r24 = render (p, 2.0); int lit = 0; for (int c = 0; c < 24; ++c) if (r24.peak[(size_t) c] > 1.0e-4f) ++lit;
+        check (lit >= 20, "the same session on 24 speakers");
+        // fm perc: presets, and the morph towards one
+        s.newFromTemplate (0);
+        auto fm = s.createDevice ("st:fm");
+        check (fm && fm->numPrograms() >= 8 && fm->programName (3) == "bell", "fm perc has presets");
+        auto play = [&] { fm->prepare (kSr, kBs); juce::AudioBuffer<float> out (2, 16 * kBs); juce::MidiBuffer m; for (int b = 0; b < 16; ++b) { juce::AudioBuffer<float> blk (2, kBs); blk.clear(); m.clear(); if (b == 0) m.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0); fm->apply (nullptr, 0.0); fm->process (blk, m); out.copyFrom (0, b * kBs, blk, 0, 0, kBs); out.copyFrom (1, b * kBs, blk, 1, 0, kBs); } return out; };
+        auto diffOf = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b) { float d = 0; for (int i = 0; i < a.getNumSamples(); ++i) d = std::max (d, std::abs (a.getSample (0, i) - b.getSample (0, i))); return d; };
+        fm->setProgram (1); auto kick = play();
+        fm->setProgram (3); auto bell = play();
+        fm->setProgram (1); fm->setBase (fm->paramIndexForId ("morphto"), 3.0f / 8.0f); fm->setBase (fm->paramIndexForId ("morph"), 1.0f); auto morphed = play();
+        fm->setBase (fm->paramIndexForId ("morph"), 0.5f); auto half = play();
+        std::cout << "  fm morph kick > bell: at 100% differs from the bell by " << diffOf (morphed, bell) << ", from the kick by " << diffOf (morphed, kick) << "; at 50% from both " << diffOf (half, kick) << " / " << diffOf (half, bell) << "\n";
+        check (diffOf (morphed, bell) < 1.0e-4f && diffOf (morphed, kick) > 0.05f && diffOf (half, kick) > 0.02f && diffOf (half, bell) > 0.02f, "fm preset morph");
+        // the suite's plug-ins that are installed next to it are offered without a scan, and load
+        const auto suite = Session::suitePlugins();
+        std::cout << "  suite plug-ins found:"; for (auto& f : suite) std::cout << " " << f.getFileNameWithoutExtension(); std::cout << (suite.isEmpty() ? " none (not installed here)" : "") << "\n";
+        for (auto& f : suite)
+        {
+            bool listed = false; for (auto& e : s.deviceTypes()) if (e.typeId == "suite:" + f.getFullPathName()) listed = true;
+            check (listed, f.getFileNameWithoutExtension() + " is in the device list");
+            juce::String err; auto d = s.createDevice ("suite:" + f.getFullPathName(), &err);
+            check (d != nullptr, "hosts " + f.getFileNameWithoutExtension() + ": " + err);
+            if (d) std::cout << "    " << d->name << ": " << d->numParams() << " parameters, " << d->inWidth << " in " << d->outWidth << " out, " << (d->isInstrument() ? "instrument" : "effect") << "\n";
+        }
+    }
+
+    // ---- 21. what a new instance opens on; the host's parameters ---------------------------------------------
+    std::cout << "== a new instance\n";
+    {
+        StudioProcessor a, b;
+        check (a.session.save()->toString() == b.session.save()->toString(), "two new instances open on the same project, to the last value");
+        check (a.session.projectName == Session::templateNames()[1], "a new instance opens on the starter");
+        // the host's parameters hold the project's strip values from the first moment
+        bool agree = true;
+        for (int t = 0; t < 8; ++t) for (int prm : { (int) MP_LEVEL, (int) MP_PAN, (int) MP_MUTE, (int) MP_SEND1, (int) MP_SEND1 + 1 })
+            agree &= std::abs (a.apvts.getParameter (StudioProcessor::hostParamId (t, prm))->getValue() - a.session.tracks[(size_t) t]->mixer->baseValue (prm)) < 1.0e-6f;
+        agree &= std::abs (a.apvts.getParameter ("master")->getValue() - a.session.global->baseValue (GP_MASTER)) < 1.0e-6f;
+        check (agree, "host parameters equal the project's strips right after construction");
+        auto ra = render (a, 2.0); auto rb = render (b, 2.0);
+        float md = 0; for (int i = 0; i < ra.out.getNumSamples(); ++i) md = std::max (md, std::abs (ra.out.getSample (0, i) - rb.out.getSample (0, i)) + std::abs (ra.out.getSample (1, i) - rb.out.getSample (1, i)));
+        std::cout << "  two new instances, two bars: largest difference " << md << ", peak " << db (ra.peak[0]) << "\n";
+        check (md < 1.0e-6f && ra.peak[0] > 0.05f, "and sound the same, sample for sample");
+        // the stereo image is a real one (hard-panned and decorrelated parts stay apart)
+        double ll = 0, rr = 0, lr = 0; for (int i = 0; i < ra.out.getNumSamples(); ++i) { const double l = ra.out.getSample (0, i), r = ra.out.getSample (1, i); ll += l * l; rr += r * r; lr += l * r; }
+        const double corr = lr / std::sqrt (ll * rr + 1.0e-20);
+        std::cout << "  left / right correlation of the starter " << corr << " (a centred kick and bass, the rest around them)\n";
+        check (corr < 0.99995 && corr > 0.5, "the output is stereo, not two copies of one channel");
+        // hard left and hard right stay apart all the way out
+        b.apvts.getParameter (StudioProcessor::hostParamId (0, MP_PAN))->setValueNotifyingHost (0.0f); b.apvts.getParameter (StudioProcessor::hostParamId (2, MP_PAN))->setValueNotifyingHost (1.0f);
+        for (int t : { 1, 3, 4, 5, 6, 7 }) b.apvts.getParameter (StudioProcessor::hostParamId (t, MP_MUTE))->setValueNotifyingHost (1.0f);
+        auto rw = render (b, 2.0);
+        ll = rr = lr = 0; for (int i = 0; i < rw.out.getNumSamples(); ++i) { const double l = rw.out.getSample (0, i), r = rw.out.getSample (1, i); ll += l * l; rr += r * r; lr += l * r; }
+        std::cout << "  kick hard left, hat hard right: correlation " << lr / std::sqrt (ll * rr + 1.0e-20) << "\n";
+        check (std::abs (lr / std::sqrt (ll * rr + 1.0e-20)) < 0.3, "hard-panned tracks stay decorrelated at the output");
+        // state through the host: save while it has been playing (modulators mid-flight), a fresh instance, load:
+        // every base value comes back, and from then on the state is the same bytes
+        a.session.tracks[2]->mixer->setBase (MP_PAN, 0.9f); a.session.setMacro (1, 0.77f);
+        juce::MemoryBlock mb; a.getStateInformation (mb);
+        StudioProcessor c; c.setStateInformation (mb.getData(), (int) mb.getSize());
+        juce::MemoryBlock mc; c.getStateInformation (mc);
+        StudioProcessor c2; c2.setStateInformation (mc.getData(), (int) mc.getSize());
+        juce::MemoryBlock mc2; c2.getStateInformation (mc2);
+        int baseDiffs = 0, compared = 0;
+        auto cmp = [&] (Track& x, Track& y) { if (x.inserts.size() != y.inserts.size() || (x.instrument == nullptr) != (y.instrument == nullptr)) { ++baseDiffs; return; }
+            auto dev = [&] (Device& p1, Device& p2) { if (p1.numParams() != p2.numParams()) { ++baseDiffs; return; } for (int i = 0; i < p1.numParams(); ++i) { ++compared; if (std::abs (p1.baseValue (i) - p2.baseValue (i)) > 1.0e-6f) { if (baseDiffs < 3) std::cout << "    base differs: " << x.name << " / " << p1.name << " / " << p1.paramName (i) << "  " << p1.baseValue (i) << " vs " << p2.baseValue (i) << "\n"; ++baseDiffs; } } };
+            dev (*x.mixer, *y.mixer); if (x.instrument) dev (*x.instrument, *y.instrument); for (size_t i = 0; i < x.inserts.size(); ++i) dev (*x.inserts[i], *y.inserts[i]); };
+        for (size_t i = 0; i < a.session.tracks.size() && i < c.session.tracks.size(); ++i) cmp (*a.session.tracks[i], *c.session.tracks[i]);
+        for (size_t i = 0; i < a.session.returns.size(); ++i) cmp (*a.session.returns[i], *c.session.returns[i]);
+        cmp (*a.session.master, *c.session.master);
+        std::cout << "  state of an instance that has been playing, into a fresh one: " << baseDiffs << " of " << compared << " base values differ\n";
+        check (c.session.tracks.size() == a.session.tracks.size() && baseDiffs == 0, "every base value survives the host's save / reload, modulated ones included");
+        check (mc == mc2, "state out, into a fresh instance, out again: the same bytes");
+        check (std::abs (c.apvts.getParameter (StudioProcessor::hostParamId (2, MP_PAN))->getValue() - 0.9f) < 1.0e-6f && std::abs (c.apvts.getParameter ("macro2")->getValue() - 0.77f) < 1.0e-6f, "the host's parameters show the loaded project");
+        // host automation of a macro reaches what the macro is mapped to
+        c.apvts.getParameter ("macro1")->setValueNotifyingHost (1.0f);
+        render (c, 0.25);
+        auto* dl = c.session.returns[0]->inserts[0].get(); const int fb = dl->paramIndexForId ("feedback");
+        check (std::abs (dl->finalValue (fb) - 0.9f) < 0.01f, "a host-automated macro moves its target (the dub feedback)");
+    }
+
+    // ---- 22. real ambisonic plug-ins, when they are installed (IEM, SPARTA) ----------------------------------
+    std::cout << "== hosted ambisonic plug-ins\n";
+    {
+        juce::Array<juce::File> roots; juce::VST3PluginFormat vf; const auto sp = vf.getDefaultLocationsToSearch();
+        auto find = [&] (const juce::String& name) -> juce::File { for (int i = 0; i < sp.getNumPaths(); ++i) { auto f = sp[i].getChildFile (name); if (f.exists()) return f; } return {}; };
+        struct Set { const char* label; juce::String enc, dec, bin; };
+        const Set sets[] = { { "IEM", "IEM 2/StereoEncoder.vst3", "IEM 2/SimpleDecoder.vst3", "IEM 2/BinauralDecoder.vst3" }, { "SPARTA", "sparta_ambiENC.vst3", "sparta_ambiDEC.vst3", "sparta_ambiBIN.vst3" } };
+        int tried = 0;
+        for (auto& set : sets)
+        {
+            const auto ef = find (set.enc), bf = find (set.bin), df = find (set.dec);
+            if (! ef.exists() || ! bf.exists()) continue;
+            ++tried;
+            StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+            auto host = [&] (const juce::File& f) -> std::unique_ptr<Device>
+            {
+                juce::OwnedArray<juce::PluginDescription> found;
+                for (auto* fmt : s.formats.getFormats()) if (fmt->getName() == "VST3" && fmt->fileMightContainThisPluginType (f.getFullPathName())) fmt->findAllTypesForFile (found, f.getFullPathName());
+                if (found.isEmpty()) return nullptr;
+                s.known.addType (*found[0]); juce::String err; return s.createHosted (*found[0], &err);
+            };
+            auto& encT = *s.tracks[0]; s.setInstrument (encT, s.createDevice ("fal:hh4")); s.setTempo (120.0f);
+            s.editPattern (encT, 0, [] (Pattern& pt) { pt = Pattern(); for (int k = 0; k < 16; k += 2) pt.s[(size_t) k].on = true; }); s.launch (encT, 0);
+            s.setWidth (encT, 16); encT.toMaster.store (false);
+            auto ed = host (ef); check (ed != nullptr, juce::String (set.label) + " encoder loads");
+            if (! ed) continue;
+            auto* e = s.addInsert (encT, std::move (ed));
+            std::cout << "  " << set.label << " encoder on a 16-channel track: " << e->inWidth << " in, " << e->outWidth << " out (" << e->numParams() << " parameters)\n";
+            check (e->inWidth == 2 && e->outWidth == 16, juce::String (set.label) + " encoder: stereo in, 16 out");
+            // turn the source to the left
+            for (int i = 0; i < e->numParams(); ++i) { const auto n = e->paramName (i).toLowerCase(); if (n.contains ("azim") && ! n.contains ("mask") && ! n.contains ("lfo")) { e->setBase (i, 0.75f); break; } }
+            auto* binT = s.addTrack ("binaural"); s.setWidth (*binT, 16);
+            auto bd = host (bf); check (bd != nullptr, juce::String (set.label) + " binaural decoder loads");
+            if (! bd) continue;
+            auto* b = s.addInsert (*binT, std::move (bd));
+            check (s.addRoute (encT, { binT->uid, 16, 0, 0, 1.0f }), "route over 16 channels");
+            std::cout << "  " << set.label << " binaural decoder on the 16-channel track fed by the route: " << b->inWidth << " in, " << b->outWidth << " out\n";
+            check (b->inWidth == 16 && b->outWidth == 2 && binT->outWidth() == 2, juce::String (set.label) + " binaural decoder: 16 in, 2 out");
+            float m[4] = {}; float encHi = 0;
+            auto r = render (p, 2.0, [&] (int, double) { for (int c = 0; c < 4; ++c) m[c] = std::max (m[c], encT.meter[(size_t) c].load()); for (int c = 4; c < 16; ++c) encHi = std::max (encHi, encT.meter[(size_t) c].load()); });
+            const float l = r.out.getRMSLevel (0, 0, r.out.getNumSamples()), rr = r.out.getRMSLevel (1, 0, r.out.getNumSamples());
+            std::cout << "    encoder track w y z x: " << db (m[0]) << " " << db (m[1]) << " " << db (m[2]) << " " << db (m[3]) << ", higher orders " << db (encHi) << "; master L " << db (l) << " R " << db (rr) << ", channel 3 " << db (r.peak[2]) << "\n";
+            if (juce::String (set.label) == "SPARTA")
+                std::cout << "    (SPARTA starts its codecs from a timer on the message thread, which this console tool does not run: only its bus layouts are checked here)\n";
+            else
+            {
+                check (m[0] > 1.0e-4f && encHi > 1.0e-5f, juce::String (set.label) + ": the encoder fills the ambisonic channels");
+                check (l > 1.0e-5f && rr > 1.0e-5f && std::abs (l - rr) > 0.02f * std::max (l, rr), juce::String (set.label) + ": binaural stereo on the master, an image off centre");
+            }
+            if (df.exists())
+            {
+                auto* decT = s.addTrack ("speakers"); s.setWidth (*decT, 24);
+                if (auto dd = host (df))
+                {
+                    auto* d = s.addInsert (*decT, std::move (dd)); s.addRoute (encT, { decT->uid, 16, 0, 0, 1.0f });
+                    std::cout << "  " << set.label << " decoder on a 24-channel track fed 16: " << d->inWidth << " in, " << d->outWidth << " out\n";
+                    check (d->inWidth == 16 && d->outWidth == 24, juce::String (set.label) + " decoder reads the 16 routed channels and writes the track's 24");
+                }
+            }
+            // the project reloads with the plug-ins and their widths
+            auto x = s.save(); StudioProcessor q; for (auto& t : s.known.getTypes()) q.session.known.addType (t);
+            juce::String e2; q.session.load (*x, &e2);
+            check (q.session.tracks.size() >= 2 && q.session.tracks[0]->inserts.size() == 1 && q.session.tracks[0]->inserts[0]->outWidth == e->outWidth && q.session.tracks[1]->inserts.size() == 1 && q.session.tracks[1]->inserts[0]->inWidth == b->inWidth, juce::String (set.label) + " session reloads: " + e2);
+        }
+        if (tried == 0) std::cout << "  (no IEM or SPARTA plug-ins installed here: skipped)\n";
+    }
+
+    // ---- 23. methods taken from the artists the studio is made for: tools, devices, engine ---------------------
+    std::cout << "== pattern tools\n";
+    {
+        using namespace fal::daw::tools;
+        auto ons = [] (const Pattern& p) { juce::String s; for (int i = 0; i < p.length; ++i) s << (p.s[(size_t) i].on ? "x" : "."); return s; };
+        Pattern p; p.length = 16; euclid (p, 5, 0);
+        std::cout << "  euclid 5 over 16: " << ons (p) << "\n";
+        check (ons (p) == "x...x..x..x..x..", "euclid");
+        rotate (p, 1); check (ons (p) == ".x...x..x..x..x.", "rotate"); reverse (p); check (ons (p) == ".x..x..x..x...x.", "reverse");
+        Pattern d = p; doubleLength (d); check (d.length == 32 && d.s[17].on == d.s[1].on, "double");
+        // ratios: a triplet next to straight steps
+        Pattern r; r.length = 16; r.s[0].on = r.s[2].on = true;
+        check (ratios (r, "1 1 2/3 2/3 2/3 3/2") && r.length == 6 && std::abs (r.s[2].dur - 2.0f / 3.0f) < 1.0e-6f && std::abs (r.s[5].dur - 1.5f) < 1.0e-6f && std::abs (r.span() - 5.5) < 1.0e-5, "ratios: one step per number, the loop is their sum");
+        check (! ratios (r, "nothing here"), "ratios refuses a text without numbers");
+        Pattern a; a.length = 8; accelerate (a, 0.8f);
+        check (std::abs (a.span() - 8.0) < 1.0e-4 && a.s[7].dur < a.s[0].dur * 0.25f && std::abs (a.s[1].dur / a.s[0].dur - 0.8f) < 1.0e-4f, "accelerate: a constant factor step to step, the loop keeps its length");
+        evenTime (a); check (a.even(), "even");
+        Pattern g; g.length = 4; for (int i = 0; i < 4; ++i) { g.s[(size_t) i].on = true; g.s[(size_t) i].vel = 0.3f + 0.2f * i; g.s[(size_t) i].micro = 0.2f; }
+        strictGrid (g, 2, 0.25f); check (g.s[0].vel == 0.5f && g.s[3].vel == 1.0f && g.s[1].len == 0.25f && g.s[2].micro == 0.0f, "strict: two velocity levels, one note length, no micro-timing");
+        // sieves
+        juce::String members; for (int n = 0; n < 16; ++n) if (sieveHolds ("3@0 | 4@1", n)) members << n << " ";
+        std::cout << "  sieve 3@0 | 4@1 holds: " << members << "\n";
+        check (members == "0 1 3 5 6 9 12 13 15 ", "sieve: union of residue classes");
+        check (sieveHolds ("3@0 & 2@0", 6) && ! sieveHolds ("3@0 & 2@0", 3) && sieveHolds ("!2@0", 5) && ! sieveHolds ("!2@0", 4), "sieve: intersection and complement");
+        Pattern sv; sv.length = 16; check (sieveRhythm (sv, "3@0 | 4@1") && ons (sv) == "xx.x.xx..x..xx.x", "sieve as a rhythm");
+        bool ok = true; sieveHolds ("hello", 0, &ok); check (! ok && ! sieveRhythm (sv, "hello"), "a sieve that cannot be read changes nothing");
+        check (sievePitch (sv, "3@0 | 4@1") && sv.s[0].pitch == 0 && sv.s[1].pitch == 1 && sv.s[3].pitch == 3 && sv.s[5].pitch == 5 && sv.s[6].pitch == 6, "sieve as a scale for the hits");
+        // the cloud: exponential gaps, the loop length kept, the same seed gives the same cloud
+        Rng r1; r1.seed (99); Rng r2; r2.seed (99); Pattern c1, c2; c1.length = c2.length = 32;
+        stochastic (c1, r1, 1.0f, 12); stochastic (c2, r2, 1.0f, 12);
+        float lo = 1e9f, hi = 0; bool same = true, inRange = true; double mean = 0;
+        for (int i = 0; i < 32; ++i) { lo = std::min (lo, c1.s[(size_t) i].dur); hi = std::max (hi, c1.s[(size_t) i].dur); same &= c1.s[(size_t) i].dur == c2.s[(size_t) i].dur && c1.s[(size_t) i].pitch == c2.s[(size_t) i].pitch; inRange &= std::abs (c1.s[(size_t) i].pitch) <= 12; mean += c1.s[(size_t) i].dur; }
+        int shortOnes = 0; for (int i = 0; i < 32; ++i) if (c1.s[(size_t) i].dur < 1.0f) ++shortOnes;
+        std::cout << "  cloud of 32 events: step times " << lo << " ... " << hi << ", " << shortOnes << " shorter than the mean (an exponential law gives about 20)\n";
+        check (std::abs (c1.span() - 32.0) < 1.0e-3 && same && inRange && hi > lo * 4.0f && shortOnes >= 16 && shortOnes <= 26, "stochastic cloud");
+        Rng m; m.seed (5); Pattern mk; mk.length = 16; markov (mk, m); Pattern mu = mk; mutate (mu, m, 0.5f); int changed = 0; for (int i = 0; i < 16; ++i) if (mu.s[(size_t) i].on != mk.s[(size_t) i].on) ++changed;
+        check (changed >= 3 && changed <= 13, "mutate flips some steps");
+        Pattern rw; rw.length = 4; rw.s[0].on = rw.s[1].on = true; rewrite (rw); check (rw.s[0].ratchet == 2 && rw.s[2].on, "rewrite: two hits ratchet, a hit before a rest echoes");
+    }
+    std::cout << "== evolving patterns, choke groups, chords, ratchet curves\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& t = *s.tracks[0]; shortHit (t); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); for (int k : { 0, 4, 8, 12 }) pt.s[(size_t) k].on = true; }); s.launch (t, 0);
+        auto perBar = [&] (const juce::AudioBuffer<float>& b) { std::vector<int> v; const int bar = (int) (4.0 * spb (120)); auto on = onsets (b, 0, 0.03f, 1500); for (int k = 0; k * bar < b.getNumSamples(); ++k) { int c = 0; for (int o : on) if (o >= k * bar && o < (k + 1) * bar) ++c; v.push_back (c); } return v; };
+        auto plain = perBar (render (p, 12.0).out);
+        bool steady = true; for (int c : plain) steady &= c == 4;
+        check (steady, "without evolve every bar is the written pattern");
+        t.evolve.store (1.0f);
+        auto e1 = perBar (render (p, 12.0).out), e2 = perBar (render (p, 12.0).out);
+        std::cout << "  evolve 100%, hits per bar:"; for (int c : e1) std::cout << " " << c; std::cout << "\n";
+        int different = 0; for (int c : e1) if (c != 4) ++different;
+        check (e1[0] == 4 && different >= 3, "evolve: the first pass is as written, later passes drift");
+        check (e1 == e2, "and the drift is the same on every render");
+        int near = 0; for (int c : e1) if (c >= 2 && c <= 9) ++near; check (near == (int) e1.size(), "it stays around the written pattern");
+        // freeze writes the drift down
+        juce::AudioBuffer<float> blk (kOutChannels, kBs); s.locate (0.0); s.play();
+        for (int b = 0; b < 600; ++b) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); }
+        bool anyFlip = false; for (int i = 0; i < 16; ++i) anyFlip |= t.flip[(size_t) i] != 0;
+        const auto before = *t.patternAt (0); s.freezeEvolution (t); const auto after = *t.patternAt (0);
+        int diff = 0; for (int i = 0; i < 16; ++i) if (before.s[(size_t) i].on != after.s[(size_t) i].on) ++diff;
+        check (anyFlip == (diff > 0) && t.flip[3] == 0, "freeze: the drifted steps are in the pattern, the drift starts again");
+        s.stop(); t.evolve.store (0.0f);
+        auto x = s.save(); check (! x->toString().contains ("evolve="), "evolve off is not written"); t.evolve.store (0.4f); t.chokeGroup.store (2);
+        StudioProcessor q; q.session.load (*s.save(), nullptr); check (std::abs (q.session.tracks[0]->evolve.load() - 0.4f) < 1.0e-6f && q.session.tracks[0]->chokeGroup.load() == 2, "evolve and choke group survive save / load");
+        t.evolve.store (0.0f); t.chokeGroup.store (0);
+
+        // choke: a long tone on one track, a kick on another; in one group the kick cuts the tone
+        auto* tone = s.addTrack ("tone"); s.setInstrument (*tone, s.createDevice ("st:tone"));
+        { auto* d = tone->instrument.get(); auto set = [&] (const char* id, float plain) { const int i = d->paramIndexForId (id); auto* rp = dynamic_cast<juce::RangedAudioParameter*> (d->processor()->getParameters()[i]); d->setBase (i, rp->convertTo0to1 (plain)); }; set ("duration", 1500.0f); set ("hz", 440.0f); set ("level", -6.0f); }
+        s.editPattern (*tone, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; }); s.launch (*tone, 0);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[4].on = true; });
+        s.multiOut.store (true); tone->outChannel.store (5); tone->toMaster.store (false);
+        const int beat = (int) spb (120);
+        auto free = render (p, 1.0);
+        tone->chokeGroup.store (3); t.chokeGroup.store (3);
+        auto cut = render (p, 1.0);
+        const float fBefore = free.out.getRMSLevel (4, beat / 2, beat / 4), fAfter = free.out.getRMSLevel (4, beat + beat / 4, beat / 4), cBefore = cut.out.getRMSLevel (4, beat / 2, beat / 4), cAfter = cut.out.getRMSLevel (4, beat + beat / 4, beat / 4);
+        std::cout << "  a tone, and a kick one beat later: the tone after the kick " << db (fAfter) << " ungrouped, " << db (cAfter) << " in one choke group (before the kick " << db (cBefore) << ")\n";
+        check (fAfter > fBefore * 0.8f && cBefore > fBefore * 0.9f && cAfter < cBefore * 0.01f, "a hit on one track of a choke group cuts the other");
+        const float click = [&] { float m = 0; for (int i = beat - 200; i < beat + 600; ++i) m = std::max (m, std::abs (cut.out.getSample (4, i) - cut.out.getSample (4, i - 1))); return m; }();
+        check (click < 0.06f, "the cut is a short fade, not a click");
+        auto again = render (p, 2.0);
+        check (again.out.getRMSLevel (4, 4 * beat + beat / 2, beat / 4) > cBefore * 0.9f, "the cut track opens again on its own next hit");
+        tone->chokeGroup.store (0); t.chokeGroup.store (0);
+        // a chord on a step: the tone plays the note and the notes stacked on it
+        { auto* d = tone->instrument.get(); d->setBase (d->paramIndexForId ("keytrack"), 1.0f); }
+        s.editPattern (*tone, 0, [] (Pattern& pt) { pt.s[0].chord = 2; pt.s[0].len = 8.0f; });   // a fifth
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); });
+        auto ch = render (p, 1.0);
+        auto level = [&] (const juce::AudioBuffer<float>& b, int chn, double hz) { double re = 0, im = 0; const int N = 24000; for (int i = 0; i < N; ++i) { const double w = 0.5 - 0.5 * std::cos (kTwoPi * i / (N - 1)); re += b.getSample (chn, 2000 + i) * w * std::cos (kTwoPi * hz * i / kSr); im += b.getSample (chn, 2000 + i) * w * std::sin (kTwoPi * hz * i / kSr); } return (float) (std::sqrt (re * re + im * im) / (N * 0.25)); };
+        const double c4 = 261.6256, g4 = c4 * std::exp2 (7.0 / 12.0);
+        std::cout << "  a step with the chord \"fifth\": " << db (level (ch.out, 4, c4)) << " at c, " << db (level (ch.out, 4, g4)) << " at g, " << db (level (ch.out, 4, c4 * std::exp2 (4.0 / 12.0))) << " at e\n";
+        check (level (ch.out, 4, c4) > 0.1f && level (ch.out, 4, g4) > 0.1f && level (ch.out, 4, c4 * std::exp2 (4.0 / 12.0)) < 0.01f, "a chord on a step stacks its notes");
+        // just tuning: the major third of a 5-limit scale is 5/4, not the equal one
+        { auto* d = tone->instrument.get(); d->setBase (d->paramIndexForId ("tuning"), 1.0f / 3.0f); }
+        s.editPattern (*tone, 0, [] (Pattern& pt) { pt.s[0].chord = 0; pt.s[0].pitch = 4; });
+        auto ju = render (p, 1.0);
+        const double third = [&] { int n = 0; const int from = 2000, len = 60000; for (int i = from + 1; i < from + len; ++i) if (ju.out.getSample (4, i - 1) < 0 && ju.out.getSample (4, i) >= 0) ++n; return n * kSr / (double) len; }();
+        std::cout << "  the third in 5-limit tuning: " << third << " hz (5/4 above c is " << c4 * 1.25 << ", the equal third " << c4 * std::exp2 (4.0 / 12.0) << ")\n";
+        check (std::abs (third - c4 * 1.25) < 0.7, "tuning: key-tracked notes in just intonation");
+        { auto* d = tone->instrument.get(); d->setBase (d->paramIndexForId ("tuning"), 0.0f); d->setBase (d->paramIndexForId ("keytrack"), 0.0f); }
+        // a pair of tones 40 hz apart, one per channel: nothing at 40 hz comes out of the device itself
+        { auto* d = tone->instrument.get(); auto set = [&] (const char* id, float plain) { const int i = d->paramIndexForId (id); auto* rp = dynamic_cast<juce::RangedAudioParameter*> (d->processor()->getParameters()[i]); d->setBase (i, rp->convertTo0to1 (plain)); }; set ("hz", 1000.0f); set ("pair", 1.0f); set ("difference", 40.0f); set ("apart", 1.0f); }
+        s.editPattern (*tone, 0, [] (Pattern& pt) { pt.s[0].pitch = 0; });
+        auto pr = render (p, 1.0);
+        std::cout << "  second tone 40 hz away, apart: left " << db (level (pr.out, 4, 1000.0)) << " at 1000 and " << db (level (pr.out, 4, 1040.0)) << " at 1040; right " << db (level (pr.out, 5, 1000.0)) << " and " << db (level (pr.out, 5, 1040.0)) << "; at 40 hz " << db (level (pr.out, 4, 40.0)) << "\n";
+        check (level (pr.out, 4, 1000.0) > 0.2f && level (pr.out, 4, 1040.0) < 0.01f && level (pr.out, 5, 1040.0) > 0.2f && level (pr.out, 5, 1000.0) < 0.01f && level (pr.out, 4, 40.0) < 0.002f, "a pair of pure tones, one per channel, no difference tone in the signal");
+        // ratchet curves: four hits in a step, even / speeding up / slowing down
+        s.removeTrack (1); s.multiOut.store (false);
+        t.speed.store (0);   // a long step (a whole beat) so the hits are well apart
+        auto gaps = [&] (float curve) { s.editPattern (t, 0, [curve] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].ratchet = 4; pt.s[0].rcurve = curve; pt.s[0].vel = 1; }); auto on = onsets (render (p, 0.5).out, 0, 0.12f, 2500); std::vector<int> gp; for (size_t i = 1; i < on.size() && i < 4; ++i) gp.push_back (on[i] - on[i - 1]); return gp; };
+        auto ge = gaps (0.0f), gu = gaps (0.3f), gd = gaps (-0.3f);
+        std::cout << "  ratchet 4 in one beat, gaps: even"; for (int v : ge) std::cout << " " << v; std::cout << " · speeding up"; for (int v : gu) std::cout << " " << v; std::cout << " · slowing"; for (int v : gd) std::cout << " " << v; std::cout << "\n";
+        check (ge.size() == 3 && std::abs (ge[0] - ge[2]) <= 2 && gu.size() == 3 && gu[0] > gu[1] + 1000 && gu[1] > gu[2] + 1000 && gd.size() == 3 && gd[0] + 1000 < gd[1] && gd[1] + 1000 < gd[2], "ratchet curve");
+        t.speed.store (3);
+        // the bounce modulator: four values that keep their order and do not repeat
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; });
+        std::vector<float> v0, v3;
+        { Modulator m0; m0.src = MOD_FOURSES; m0.sync = false; m0.hz = 3.0f; m0.depth = 1.0f; m0.polarity = 1; m0.macro = 0; m0.device = 0; m0.param = MP_PAN; s.addModulator (t, m0);
+          Modulator m3 = m0; m3.macro = 3; m3.param = MP_SEND1; s.addModulator (t, m3); t.mixer->setBase (MP_PAN, 0.0f); t.mixer->setBase (MP_SEND1, 0.0f); }
+        render (p, 8.0, [&] (int, double) { v0.push_back (t.mixer->finalValue (MP_PAN)); v3.push_back (t.mixer->finalValue (MP_SEND1)); });
+        bool ordered = true; float lo0 = 1, hi0 = 0, lo3 = 1, hi3 = 0; for (size_t i = 0; i < v0.size(); ++i) { ordered &= v0[i] <= v3[i] + 1.0e-4f; lo0 = std::min (lo0, v0[i]); hi0 = std::max (hi0, v0[i]); lo3 = std::min (lo3, v3[i]); hi3 = std::max (hi3, v3[i]); }
+        // does the second half repeat the first at any lag? (a plain lfo would)
+        double bestErr = 1e9; const size_t half = v0.size() / 2;
+        for (size_t lag = 40; lag < half; ++lag) { double e = 0; size_t cnt = 0; for (size_t i = 0; i + lag < v0.size() && cnt < 400; ++i, ++cnt) e += std::abs (v0[i] - v0[i + lag]); bestErr = std::min (bestErr, e / (double) std::max<size_t> (1, cnt)); }
+        std::cout << "  bounce: the lowest of the four moves over " << lo0 << " ... " << hi0 << ", the highest " << lo3 << " ... " << hi3 << "; closest self-repeat differs by " << bestErr << " on average\n";
+        check (ordered && hi0 - lo0 > 0.1f && hi3 - lo3 > 0.1f && bestErr > 0.04 * (hi0 - lo0), "bounce: four related values, each inside its neighbours, never repeating");
+        s.editMods (t, [] (std::vector<Modulator>& v) { v.clear(); });
+        // the tempo on a lane
+        s.editLane ({ 0, 0, GP_TEMPO }, [] (AutoLane& l) { l.pts = { { 0.0, tempoToNorm (100.0f), 0.0f }, { 16.0, tempoToNorm (160.0f), 0.0f } }; });
+        float t0 = 0, t1 = 0; render (p, 2.0, [&] (int b, double) { if (b == 1) t0 = s.tempo(); t1 = s.tempo(); });
+        check (t0 < 104.0f && t1 > 120.0f, "the tempo follows an automation lane");
+        s.removeLane ({ 0, 0, GP_TEMPO });
+        // midi clock from the standalone: 24 to the beat, a start and a stop
+        int clocks = 0, starts = 0, stops = 0;
+        p.midiClockOut = [&] (const juce::MidiMessage& m) { if (m.isMidiClock()) ++clocks; if (m.isMidiStart()) ++starts; if (m.isMidiStop()) ++stops; };
+        s.setTempo (120.0f); render (p, 1.0);
+        { juce::AudioBuffer<float> b2 (kOutChannels, kBs); juce::MidiBuffer m; b2.clear(); p.processBlock (b2, m); }
+        p.midiClockOut = nullptr;
+        std::cout << "  midi clock over one bar: " << clocks << " clocks, " << starts << " start, " << stops << " stop\n";
+        check (std::abs (clocks - 96) <= 1 && starts == 1 && stops == 1, "midi clock out: 24 to the beat");
+        s.newFromTemplate (8); check (std::abs (s.tempo() - 140.0f) < 0.1f && s.tracks.size() == 8, "the half-step template");
+    }
+    std::cout << "== skip, wear, line\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto setP = [] (Device& d, const char* id, float plain) { const int i = d.paramIndexForId (id); check (i >= 0, juce::String ("parameter ") + id); if (i < 0) return; auto* rp = dynamic_cast<juce::RangedAudioParameter*> (d.processor()->getParameters()[i]); d.setBase (i, rp->convertTo0to1 (plain)); };
+        // skip: a file whose samples say where they are (a slow ramp on a carrier), so jumps can be seen
+        const int N = 96000; juce::AudioBuffer<float> file (2, N);
+        for (int i = 0; i < N; ++i) { const float v = 0.5f * std::sin (kTwoPi * 220.0f * i / 48000.0f) * (0.3f + 0.7f * (float) i / N); file.setSample (0, i, v); file.setSample (1, i, v); }
+        auto wf = tmp.getChildFile ("skip source.wav"); writeWav (wf, file);
+        auto sk = s.createDevice ("st:skip"); check (sk != nullptr && sk->isInstrument(), "skip is an instrument");
+        auto* h = dynamic_cast<SampleHolder*> (sk->processor()); check (h && h->setSampleFile (wf), "skip takes a file");
+        auto playSkip = [&] (float intensity, int blocks = 90) { setP (*sk, "intensity", intensity); sk->prepare (kSr, kBs); juce::AudioBuffer<float> out (2, blocks * kBs); juce::MidiBuffer m;
+            for (int b = 0; b < blocks; ++b) { juce::AudioBuffer<float> blk (2, kBs); blk.clear(); m.clear(); if (b == 0) m.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0); sk->apply (nullptr, 0.0); sk->process (blk, m); out.copyFrom (0, b * kBs, blk, 0, 0, kBs); out.copyFrom (1, b * kBs, blk, 1, 0, kBs); } return out; };
+        auto clean = playSkip (0.0f);
+        double num = 0, ea = 0, eb = 0; for (int i = 0; i < clean.getNumSamples() && i < N; ++i) { num += clean.getSample (0, i) * file.getSample (0, i); ea += clean.getSample (0, i) * clean.getSample (0, i); eb += file.getSample (0, i) * file.getSample (0, i); }
+        std::cout << "  skip at intensity 0: correlation with the file " << num / std::sqrt (ea * eb + 1e-12) << "\n";
+        check (num / std::sqrt (ea * eb + 1e-12) > 0.97, "an undamaged disc plays the file");
+        auto broken = playSkip (0.85f), broken2 = playSkip (0.85f);
+        double num2 = 0, ea2 = 0; float d12 = 0; for (int i = 0; i < broken.getNumSamples() && i < N; ++i) { num2 += broken.getSample (0, i) * file.getSample (0, i); ea2 += broken.getSample (0, i) * broken.getSample (0, i); d12 = std::max (d12, std::abs (broken.getSample (0, i) - broken2.getSample (0, i))); }
+        // repeats: the same short stretch of the file comes round again right after itself
+        int repeats = 0; { const int win = 400; for (int at = 2000; at + 14400 < broken.getNumSamples(); at += 1100) for (int lag = 1800; lag < 14000; lag += 3) { double e = 0, en = 0; for (int i = 0; i < win; ++i) { const double a = broken.getSample (0, at + i), b = broken.getSample (0, at + lag + i); e += (a - b) * (a - b); en += a * a + b * b; } if (en > 1.0e-3 && e / en < 1.0e-4) { ++repeats; break; } } }
+        std::cout << "  skip at intensity 85%: correlation with the file " << num2 / std::sqrt (ea2 * eb + 1e-12) << ", stretches that come round again exactly: " << repeats << ", two renders differ by " << d12 << "\n";
+        check (num2 / std::sqrt (ea2 * eb + 1e-12) < 0.6 && ea2 > 0.01 && repeats >= 3, "a damaged one repeats fragments and jumps");
+        check (d12 < 1.0e-6f, "and breaks the same way on every render");
+        // steps address places in the file: the note of slice 9 starts later in the ramp than the note of slice 1
+        auto startLevel = [&] (int note) { setP (*sk, "intensity", 0.0f); sk->prepare (kSr, kBs); juce::AudioBuffer<float> blk (2, kBs); blk.clear(); juce::MidiBuffer m; m.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100), 0); sk->apply (nullptr, 0.0); sk->process (blk, m); return blk.getMagnitude (0, 0, kBs); };
+        check (startLevel (36 + 9) > startLevel (36 + 1) * 1.5f, "the steps' slices are places in the file");
+        // wear: a loop recorded once, then left to go round
+        auto we = s.createDevice ("st:wear"); check (we != nullptr, "wear");
+        setP (*we, "sync", 0.0f); { juce::AudioBuffer<float> sil (2, kBs); sil.clear(); juce::MidiBuffer m; we->prepare (kSr, kBs); we->apply (nullptr, 0.0); we->process (sil, m); }
+        auto runWear = [&] (float wear, float drops)
+        {
+            setP (*we, "time", 256.0f * 1000.0f / 48.0f / 1000.0f * 8.0f * 1.0f); setP (*we, "time", 512.0f * 16.0f / 48.0f);   // 16 blocks exactly
+            setP (*we, "wear", wear); setP (*we, "dropouts", drops); setP (*we, "record", 1.0f); setP (*we, "mix", 1.0f);
+            we->prepare (kSr, kBs); Rng nz; nz.seed (21); std::vector<float> passRms, passHf; juce::MidiBuffer m;
+            for (int pass = 0; pass < 10; ++pass)
+            {
+                double e = 0, eh = 0; float prev = 0;
+                for (int b = 0; b < 16; ++b)
+                {
+                    juce::AudioBuffer<float> blk (2, kBs); blk.clear();
+                    if (pass == 0) for (int i = 0; i < kBs; ++i) { const float v = 0.4f * nz.bi(); blk.setSample (0, i, v); blk.setSample (1, i, v); }
+                    if (pass == 1 && b == 0) setP (*we, "record", 0.0f);
+                    we->apply (nullptr, 0.0); we->process (blk, m);
+                    for (int i = 0; i < kBs; ++i) { const float v = blk.getSample (0, i); e += v * v; eh += (v - prev) * (v - prev); prev = v; }
+                }
+                passRms.push_back ((float) std::sqrt (e / (16.0 * kBs))); passHf.push_back ((float) std::sqrt (eh / (16.0 * kBs)));
+            }
+            return std::make_pair (passRms, passHf);
+        };
+        auto perfect = runWear (0.0f, 0.0f); auto worn = runWear (0.6f, 0.8f);
+        std::cout << "  wear 0: the loop on passes 2 / 5 / 9: " << db (perfect.first[2]) << " " << db (perfect.first[5]) << " " << db (perfect.first[9]) << "\n";
+        std::cout << "  wear 60%: " << db (worn.first[2]) << " " << db (worn.first[5]) << " " << db (worn.first[9]) << "; its highs " << db (worn.second[2]) << " " << db (worn.second[5]) << " " << db (worn.second[9]) << "\n";
+        check (perfect.first[2] > 0.1f && std::abs (perfect.first[9] - perfect.first[2]) < perfect.first[2] * 0.001f, "without wear the loop goes round unchanged");
+        check (worn.first[5] < worn.first[2] * 0.9f && worn.first[9] < worn.first[5] * 0.9f && worn.second[9] / worn.first[9] < worn.second[2] / worn.first[2] * 0.8f, "with wear every pass is quieter and duller than the one before");
+        // line: one line of sound along eight speakers, there and back in one second each way
+        auto li = s.createDevice ("st:line"); check (li != nullptr && li->configure (2, 8) == 8 && li->inWidth == 2, "line on an 8-channel track: 2 in, 8 out");
+        check (li->configure (2, 24) == 24, "24 speakers on a 24-channel track"); li->configure (2, 8);
+        setP (*li, "time", 1.0f); setP (*li, "legato", 1.0f); setP (*li, "rest", 0.0f);
+        auto runLine = [&] (int blocks, std::function<void (int, const float*)> see) { li->prepare (kSr, kBs); juce::MidiBuffer m; for (int b = 0; b < blocks; ++b) { juce::AudioBuffer<float> blk (8, kBs); blk.clear(); for (int i = 0; i < kBs; ++i) blk.setSample (0, i, 0.5f); li->apply (nullptr, 0.0); li->process (blk, m); float pk[8]; for (int c = 0; c < 8; ++c) pk[c] = blk.getMagnitude (c, 0, kBs); see (b, pk); } };
+        std::vector<int> loudest; float worstPower = 0;
+        runLine (188, [&] (int, const float* pk) { int best = 0; float e = 0; for (int c = 0; c < 8; ++c) { if (pk[c] > pk[best]) best = c; e += pk[c] * pk[c]; } loudest.push_back (best); worstPower = std::max (worstPower, std::abs (e - 0.25f)); });
+        std::cout << "  line, there and back over 8 speakers, the loudest every ~1/8 s:"; for (size_t i = 0; i < loudest.size(); i += 12) std::cout << " " << loudest[i] + 1; std::cout << "\n";
+        check (loudest.front() == 0 && loudest[46] >= 3 && loudest[46] <= 4 && loudest[92] >= 6 && loudest[140] >= 3 && loudest[140] <= 4 && loudest[186] <= 1, "the line travels to the last speaker and back");
+        check (worstPower < 0.06f, "equal power on the way");
+        setP (*li, "sieve", 1.0f); bool odd = false; runLine (100, [&] (int, const float* pk) { odd |= pk[1] > 1.0e-6f || pk[3] > 1.0e-6f || pk[5] > 1.0e-6f || pk[7] > 1.0e-6f; });
+        check (! odd, "a sieve leaves speakers out");
+        setP (*li, "sieve", 0.0f); setP (*li, "legato", 0.0f); int two = 0; runLine (90, [&] (int, const float* pk) { int n = 0; for (int c = 0; c < 8; ++c) if (pk[c] > 0.05f) ++n; if (n > 1) ++two; });
+        setP (*li, "legato", 1.0f); int melt = 0; runLine (90, [&] (int, const float* pk) { int n = 0; for (int c = 0; c < 8; ++c) if (pk[c] > 0.05f) ++n; if (n > 1) ++melt; });
+        std::cout << "  blocks with two speakers sounding in one pass: " << two << " with legato 0, " << melt << " with legato 100%\n";
+        check (two <= 16 && melt >= 60, "legato: from a switch between speakers to a melt");
+        // on a track: a hat as a line through eight speakers, the master eight wide
+        s.newFromTemplate (0); auto& t = *s.tracks[0]; s.setInstrument (t, s.createDevice ("fal:hh4")); s.setWidth (t, 8); s.setWidth (*s.master, 8);
+        auto* ld = s.addInsert (t, s.createDevice ("st:line")); setP (*ld, "time", 0.5f); setP (*ld, "figure", 1.0f);
+        check (ld->inWidth == 2 && ld->outWidth == 8 && t.outWidth() == 8, "line on the track: stereo in, the track's 8 out");
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); for (int k = 0; k < 16; ++k) pt.s[(size_t) k].on = true; }); s.launch (t, 0);
+        auto rl = render (p, 2.0); int lit = 0; for (int c = 0; c < 8; ++c) if (rl.peak[(size_t) c] > 1.0e-3f) ++lit;
+        check (lit == 8 && rl.peak[8] < 1.0e-9f, "the hats go round all eight speakers of the master");
+        // the user's own spatializer, when it is installed: found without a scan, stereo in, 16 out on a 16-channel track
+        for (auto& f : Session::suitePlugins())
+        {
+            if (f.getFileNameWithoutExtension() != "Leitner") continue;
+            s.newFromTemplate (0); auto& lt = *s.tracks[0]; s.setInstrument (lt, s.createDevice ("fal:hh4")); s.setWidth (lt, 16); lt.toMaster.store (false);
+            juce::String err; auto dv = s.createDevice ("suite:" + f.getFullPathName(), &err); check (dv != nullptr, "hosts the Leitner plug-in: " + err);
+            if (! dv) break;
+            auto* d = s.addInsert (lt, std::move (dv));
+            auto* bin = s.addTrack ("binaural"); s.setWidth (*bin, 16); s.addInsert (*bin, s.createDevice ("st:binaural")); s.addRoute (lt, { bin->uid, 16, 0, 0, 1.0f });
+            s.editPattern (lt, 0, [] (Pattern& pt) { pt = Pattern(); for (int k = 0; k < 16; ++k) pt.s[(size_t) k].on = true; }); s.launch (lt, 0);
+            float hi = 0; auto r = render (p, 2.0, [&] (int, double) { for (int c = 4; c < 16; ++c) hi = std::max (hi, lt.meter[(size_t) c].load()); });
+            std::cout << "  Leitner on a 16-channel track: " << d->inWidth << " in, " << d->outWidth << " out; higher-order channels " << db (hi) << "; through the binaural track L " << db (r.peak[0]) << " R " << db (r.peak[1]) << "\n";
+            check (d->inWidth == 2 && d->outWidth == 16 && hi > 1.0e-5f && r.peak[0] > 1.0e-5f, "the Leitner plug-in encodes onto the 16-channel track and is heard through the binaural one");
+        }
+    }
+    std::cout << "== arcs, capture, nudge: through the editor\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        p.isStandaloneApp = true; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        s.projectFile = tmp.getChildFile ("arcs.fstudio"); s.projectName = "arcs";
+        auto& t = *s.tracks[0]; s.setInstrument (t, s.createDevice ("st:tone")); s.setTempo (120.0f);
+        auto* d = t.instrument.get(); const int hz = d->paramIndexForId ("hz");
+        d->setBase (d->paramIndexForId ("gate"), 1.0f);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[0].len = 16.0f; }); s.launch (t, 0);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        se->selectTrack (&t); ParamMenu::act (s, t, *d, hz, ParamMenu::Lane); se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        // a drawn arc: shift-drag across the lane from low on the left to high on the right
+        const auto aa = arr->autoArea(); const int y0 = aa.getY() + 26;
+        auto src = juce::Desktop::getInstance().getMainMouseSource(); const auto now = juce::Time::getCurrentTime();
+        const juce::Point<float> a ((float) arr->x (0.0) + 1.0f, (float) (y0 + 44)), b ((float) arr->x (1.0), (float) (y0 + 6));
+        arr->mouseDown (juce::MouseEvent (src, a, juce::ModifierKeys::shiftModifier | juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, arr, arr, now, a, now, 1, false));
+        for (int k = 1; k <= 20; ++k) { const juce::Point<float> q (a.x + (b.x - a.x) * k / 20.0f, a.y + (b.y - a.y) * k / 20.0f); arr->mouseDrag (juce::MouseEvent (src, q, juce::ModifierKeys::shiftModifier | juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, arr, arr, now, a, now, 1, true)); }
+        arr->mouseUp (juce::MouseEvent (src, b, juce::ModifierKeys(), 0, 0, 0, 0, 0, arr, arr, now, a, now, 1, true));
+        auto ln = s.lane (s.targetFor (t, *d, hz));
+        std::cout << "  a freehand arc over one bar: " << (ln ? (int) ln->pts.size() : 0) << " points, from " << (ln && ! ln->pts.empty() ? ln->pts.front().value : -1.0f) << " to " << (ln && ! ln->pts.empty() ? ln->pts.back().value : -1.0f) << "\n";
+        check (ln && ln->pts.size() >= 6 && ln->pts[1].value < 0.2f && ln->pts.back().value > 0.8f && ln->pts[4].value > ln->pts[2].value, "shift-drag draws an arc into the lane");
+        s.editLane (s.targetFor (t, *d, hz), [] (AutoLane& l) { if (! l.pts.empty()) l.pts.erase (l.pts.begin()); });   // (the point the lane started with)
+        // the arc is a glissando of the tone
+        auto r = render (p, 1.0);
+        auto zc = [&] (int from, int len) { int n = 0; for (int i = from + 1; i < from + len; ++i) if ((r.out.getSample (0, i - 1) < 0) != (r.out.getSample (0, i) < 0)) ++n; return n * kSr / (2.0 * len); };
+        const double f1 = zc (6000, 6000), f2 = zc (48000, 6000), f3 = zc (84000, 6000);
+        std::cout << "  the tone under the arc: " << f1 << " hz, " << f2 << " hz, " << f3 << " hz\n";
+        check (f2 > f1 * 1.3 && f3 > f2 * 1.3, "the drawn arc is a glissando");
+        // capture: everything played, into a new track, one click to start and one to stop
+        s.removeLane (s.targetFor (t, *d, hz)); d->setBase (hz, 0.4f);
+        juce::AudioBuffer<float> blk (kOutChannels, kBs);
+        se->captureJam();
+        check (s.isRecording() && s.running.load() && s.tracks.size() == 2 && s.tracks[1]->name == "jam" && s.tracks[1]->armed.load() && s.tracks[1]->inputSource.load() == 0, "capture: a new track records the master, the transport runs");
+        for (int k = 0; k < 190; ++k) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); }
+        se->captureJam();
+        auto* jam = s.tracks.size() > 1 ? s.tracks[1].get() : nullptr;
+        check (! s.isRecording() && jam && jam->aclips->size() == 1 && (*jam->aclips)[0].sample && (*jam->aclips)[0].sample->seconds() > 1.9 && (*jam->aclips)[0].sample->data.getMagnitude (0, (*jam->aclips)[0].sample->data.getNumSamples()) > 0.05f, "the take is a clip with what was played");
+        check (jam && jam->muted() && ! jam->armed.load(), "it comes back muted and disarmed");
+        s.stop();
+        // nudge: the clip last touched moves by 5 ms, off the grid
+        if (jam && jam->aclips->size() == 1)
+        {
+            se->selectTrack (jam); se->showPage (1); arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+            const double before = (*jam->aclips)[0].startBar;
+            const juce::Point<float> at ((float) arr->x (before) + 6.0f, (float) (arr->lanesArea().getY() + 1 * arr->laneH + 12));
+            arr->mouseDown (juce::MouseEvent (src, at, juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, arr, arr, now, at, now, 1, false));
+            arr->mouseUp (juce::MouseEvent (src, at, juce::ModifierKeys(), 0, 0, 0, 0, 0, arr, arr, now, at, now, 1, false));
+            se->key (juce::KeyPress ('.', juce::ModifierKeys(), '.'));
+            const double moved = ((*jam->aclips)[0].startBar - before) * 4.0 * 60.0 / s.tempo();
+            std::cout << "  nudge: the clip moved by " << moved * 1000.0 << " ms\n";
+            check (std::abs (moved - 0.005) < 1.0e-6, "nudging the clip last touched moves it 5 ms");
+        }
+    }
+
+    // ---- 24. screenshots ----------------------------------------------------------------------------------
     if (shotDir != juce::File())
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (1);
@@ -1039,8 +1988,46 @@ int main (int argc, char** argv)
             const auto f = shotDir.getChildFile ("sndstudio-" + juce::String (pg) + ".png"); f.deleteFile();
             juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
         }
+        auto snap = [&] (juce::Component& c, const juce::String& name)
+        {
+            juce::Image img = c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f);
+            const auto f = shotDir.getChildFile (name + ".png"); f.deleteFile();
+            juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
+        };
+        auto run = [&] (int blocks) { for (int b = 0; b < blocks; ++b) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); if (b % 6 == 0 && se) se->tickForTest(); } };
+        if (se)
+        {
+            // the arrangement with a sample on the timeline and its lanes; a modulator's popup; a step with locks
+            const auto sample = s.browseDir.getChildFile ("vocal chop.wav");
+            auto* at = s.addTrack ("vocal", -1, TrackKind::Audio);
+            s.addAudioClip (*at, sample, 8.0); s.addAudioClip (*at, sample, 16.0); s.addAudioClip (*at, sample, 17.0);
+            s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { if (v.size() > 2) { v[1].bars = 1.0; v[2].reverse = true; v[2].pitch = -5.0f; } });
+            s.addInsert (*at, s.createDevice ("fal:dl4")); s.addInsert (*at, s.createDevice ("st:vinyl"));
+            s.editLane (s.targetFor (*at, *at->mixer, MP_LEVEL), [] (AutoLane& l) { l.pts = { { 0.0, 0.3f, 0.0f }, { 32.0, 0.8f, 0.5f }, { 64.0, 0.8f, 0.0f }, { 72.0, 0.2f, -0.5f }, { 96.0, 0.7f, 0.0f } }; });
+            s.editLane (s.targetFor (*at, *at->mixer, MP_SEND1), [] (AutoLane& l) { l.pts = { { 0.0, 0.0f, 0.0f }, { 60.0, 0.0f, 0.0f }, { 64.0, 0.9f, 0.0f }, { 68.0, 0.0f, 0.0f } }; });
+            s.mode.store ((int) PlayMode::Arrange);
+            se->selectTrack (at); se->showPage (1); run (60); snap (*ed, "sndstudio-arrange");
+            s.mode.store ((int) PlayMode::Session);
+            auto& bass = *s.tracks[7];
+            const int cut = bass.instrument->paramIndexForId ("cutoff"), res = bass.instrument->paramIndexForId ("res");
+            s.editPattern (bass, bass.pattern.load(), [&] (Pattern& pt) { pt.s[3].locks[0] = { bass.instrument->uid, cut, 0.8f }; pt.s[3].locks[1] = { bass.instrument->uid, res, 0.7f }; pt.s[3].slide = true; pt.s[6].ratchet = 3; pt.s[10].locks[0] = { bass.instrument->uid, cut, 0.3f }; pt.s[10].prob = 0.5f; pt.s[13].cond = Cond::X2of2; pt.s[13].dur = 1.5f; pt.s[14].dur = 0.5f; });
+            const int mid = ParamMenu::act (s, bass, *bass.instrument, cut, ParamMenu::Slewed);
+            ParamMenu::act (s, bass, *bass.instrument, res, ParamMenu::Gate);
+            se->selectTrack (&bass); se->showPage (2);
+            if (auto* seq = dynamic_cast<SeqPage*> (se->pageComponent (2))) { seq->selectedStep = 3; seq->refresh(); }
+            run (40); snap (*ed, "sndstudio-seq-locks");
+            { ModPopup pop (s, bass, mid); pop.setSize (300, 400); pop.resized(); snap (pop, "sndstudio-modpopup"); }
+            { const int st = ParamMenu::act (s, bass, *bass.instrument, cut, ParamMenu::Steps); ModPopup pop (s, bass, st); pop.setSize (300, 400); pop.resized(); snap (pop, "sndstudio-modpopup-steps"); s.editMods (bass, [st] (std::vector<Modulator>& v) { v.erase (std::remove_if (v.begin(), v.end(), [st] (const Modulator& x) { return x.id == st; }), v.end()); }); }
+            se->showPage (4); run (20); snap (*ed, "sndstudio-mod");
+            // multi-out: every track on its own channels
+            s.assignOutputs(); se->selectTrack (s.tracks[0].get()); se->showPage (3); run (60); snap (*ed, "sndstudio-multiout");
+            // the spatial session: encoders, 24 speakers, binaural
+            s.stop(); s.newFromTemplate (7); s.launchScene (0); s.setWidth (*s.master, 24); s.tracks[3]->mixer->setBase (MP_MUTE, 0.0f);
+            s.play(); se->selectTrack (s.tracks[1].get()); se->showPage (3); run (120); snap (*ed, "sndstudio-spatial");
+            se->showPage (2); run (30); snap (*ed, "sndstudio-spatial-seq");
+        }
         s.stop();
-        std::cout << "  " << pages << " screenshots in " << shotDir.getFullPathName() << "\n";
+        std::cout << "  " << pages << " + 8 screenshots in " << shotDir.getFullPathName() << "\n";
     }
 
     tmp.deleteRecursively();

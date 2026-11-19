@@ -66,16 +66,22 @@ Device* Track::device (int devUid)
     for (auto& d : inserts) if (d->uid == devUid) return d.get();
     return nullptr;
 }
+/** the width of the signal after a device: a device replaces the channels it reads with the ones it writes; channels
+    beyond both pass through untouched (a stereo effect on a 16-channel track leaves 3 … 16 alone) */
+static int widthAfter (int cur, const Device& d)
+{
+    return cur > std::max (d.inWidth, d.outWidth) ? cur : std::max (1, d.outWidth);
+}
 int Track::outWidth() const
 {
-    int w = instrument ? instrument->outWidth : 2;
-    for (auto& d : inserts) if (! d->bypass.load()) w = d->outWidth;
+    int w = sourceWidth;
+    for (auto& d : inserts) if (! d->bypass.load()) w = widthAfter (w, *d);
     return std::min (w, width.load());
 }
 int Track::inWidth() const
 {
-    for (auto& d : inserts) if (! d->bypass.load()) return d->inWidth;
-    return 2;
+    for (auto& d : inserts) if (! d->bypass.load()) return std::min (d->inWidth, width.load());
+    return std::min (sourceWidth, width.load());
 }
 
 // ---- Session --------------------------------------------------------------------------------------
@@ -99,6 +105,7 @@ Session::Session()
     markers = std::make_shared<const std::vector<Marker>>();
     lanes = std::make_shared<const std::vector<LanePtr>>();
     midiMaps = std::make_shared<const std::vector<MidiMap>>();
+    keyMaps = std::make_shared<const std::vector<KeyMap>>();
     for (auto& c : cc) c.store (0.0f);
     loadKnown();
     rebuildLatency();
@@ -193,6 +200,8 @@ void Session::removeTrack (int index)
     for (auto& l : *lanes) if (l->target.track != uid) nl->push_back (l);
     { const juce::SpinLock::ScopedLockType sl (lock); lanes = nl; }
     editMidiMaps ([uid] (std::vector<MidiMap>& m) { m.erase (std::remove_if (m.begin(), m.end(), [uid] (const MidiMap& x) { return x.target.track == uid; }), m.end()); });
+    editKeyMaps ([uid] (std::vector<KeyMap>& m) { m.erase (std::remove_if (m.begin(), m.end(), [uid] (const KeyMap& x) { return x.target.track == uid; }), m.end()); });
+    for (auto& r : *gone->routes) if (auto* d = trackByUid (r.dst)) negotiate (*d);   // they lost an input
     if (selectedTrack.load() >= (int) tracks.size()) selectedTrack.store (std::max (0, (int) tracks.size() - 1));
     rebuildLatency();
     dirty = true;
@@ -267,6 +276,9 @@ juce::StringArray Session::internalInstrumentTypes()
         const auto& pi = info (i);
         if (pi.kind == fal::Kind::Module || pi.kind == fal::Kind::Synth) a.add ("fal:" + juce::String (pi.code));
     }
+    // the two machines as well: the whole kit, or the loop slicer, on one track (their own sequencers follow the studio's clock,
+    // and the track's steps play their voices and slices by note)
+    for (int i = 0; i < kNumProducts; ++i) if (info (i).kind == fal::Kind::Machine) a.add ("fal:" + juce::String (info (i).code));
     return a;
 }
 juce::StringArray Session::internalEffectTypes()
@@ -294,6 +306,12 @@ std::vector<Session::TypeEntry> Session::deviceTypes() const
     std::vector<TypeEntry> v;
     for (auto& t : internalInstrumentTypes()) v.push_back ({ t, typeDisplayName (t), kDeep ? "faltung deep" : "faltung", true });
     for (auto& t : internalEffectTypes()) v.push_back ({ t, typeDisplayName (t), kDeep ? "faltung deep" : "faltung", false });
+    // the suite's own plug-ins that live next to it (hosted, but offered without a scan)
+    for (auto& f : suitePlugins())
+    {
+        const auto n = f.getFileNameWithoutExtension();
+        v.push_back ({ "suite:" + f.getFullPathName(), n, kDeep ? "faltung deep" : "faltung", n == "Partials" || n == "ObliqSound" || n == "ObliqSonic" || n == "openfield" || n == "openprocess" });
+    }
     for (auto& t : studioDeviceTypes()) v.push_back ({ t, studioDeviceName (t), "studio", studioDeviceIsInstrument (t) });
     for (auto& d : known.getTypes()) v.push_back ({ d.pluginFormatName.toLowerCase() + ":" + d.createIdentifierString(), d.name + " (" + d.manufacturerName + ", " + d.pluginFormatName + ")", d.pluginFormatName, d.isInstrument });
     return v;
@@ -316,6 +334,15 @@ std::unique_ptr<Device> Session::createDevice (const juce::String& typeId, juce:
         return d;
     }
     const auto id = typeId.fromFirstOccurrenceOf (":", false, false);
+    if (typeId.startsWith ("suite:"))
+    {
+        // one of the suite's plug-ins by its file: found on the spot, remembered in the known list
+        juce::OwnedArray<juce::PluginDescription> found;
+        for (auto* fmt : formats.getFormats()) if (fmt->getName() == "VST3" && fmt->fileMightContainThisPluginType (id)) fmt->findAllTypesForFile (found, id);
+        if (found.isEmpty()) { if (error) *error = "cannot open " + juce::File (id).getFileName(); return nullptr; }
+        known.addType (*found[0]);
+        return createHosted (*found[0], error);
+    }
     if (auto d = known.getTypeForIdentifierString (id)) return createHosted (*d, error);
     if (error) *error = "plug-in not found: " + id + " (scan your plug-ins in the browser)";
     return nullptr;
@@ -401,9 +428,11 @@ void Session::moveInsert (Track& t, int from, int to)
 void Session::sizeBuffers (Track& t)
 {
     const int w = juce::jlimit (1, kMaxWidth, t.width.load());
-    t.buf.setSize (w, std::max (16, bs), false, false, true); t.post.setSize (w, std::max (16, bs), false, false, true); t.inst.setSize (2, std::max (16, bs), false, false, true);
+    const int iw = std::max (2, w);
+    t.buf.setSize (w, std::max (16, bs), false, false, true); t.post.setSize (w, std::max (16, bs), false, false, true); t.inst.setSize (iw, std::max (16, bs), false, false, true);
     t.buf.clear(); t.post.clear(); t.inst.clear();
     if ((int) t.align.size() != w) { t.align.resize ((size_t) w); for (auto& d : t.align) d.prepare (std::max (1024, t.alignDelay + bs + 16)); }
+    if ((int) t.instDelay.size() != iw) { t.instDelay.resize ((size_t) iw); for (auto& d : t.instDelay) d.prepare (std::max (1024, t.inDelay + bs + 16)); }
 }
 
 void Session::setWidth (Track& t, int w)
@@ -424,9 +453,20 @@ void Session::negotiate (Track& t)
 {
     const juce::SpinLock::ScopedLockType sl (lock);
     const int w = t.width.load();
-    int cur = t.instrument ? t.instrument->configure (0, w) : 2;
-    cur = std::min (cur, w);
-    for (auto& d : t.inserts) { cur = d->configure (cur, w); cur = std::min (std::max (cur, 1), w); }
+    // what feeds the chain: the instrument or the clips (stereo, or as wide as the widest file), the device inputs,
+    // and whatever other tracks route in (an encoder's 16 channels arriving on a decoder track)
+    int cur = t.instrument ? std::max (2, t.instrument->configure (0, w)) : 2;
+    if (t.isAudio())
+    {
+        for (auto& c : *t.aclips) if (c.sample) cur = std::max (cur, c.sample->data.getNumChannels());
+        if (t.inputSource.load() == -2) cur = std::max (cur, t.inputCount.load());
+    }
+    for (auto& s : tracks) for (auto& r : *s->routes) if (r.dst == t.uid) cur = std::max (cur, r.dstOffset + r.channels);
+    if (t.isReturn()) for (auto& s : tracks) cur = std::max (cur, s->width.load());   // sends carry the track's channels
+    if (t.isMaster()) cur = w;
+    cur = juce::jlimit (1, w, cur);
+    t.sourceWidth = cur;
+    for (auto& d : t.inserts) { d->configure (cur, w); cur = juce::jlimit (1, w, widthAfter (cur, *d)); }
 }
 
 bool Session::wouldCycle (const Track& src, int dstUid) const
@@ -440,25 +480,27 @@ bool Session::wouldCycle (const Track& src, int dstUid) const
         if (u == src.uid) return true;
         if (std::find (seen.begin(), seen.end(), u) != seen.end()) continue;
         seen.push_back (u);
-        if (auto* t = self->trackByUid (u)) for (auto& r : *t->routes) stack.push_back (r.dst);
+        if (auto* t = self->trackByUid (u)) for (auto& r : *t->routes) if (! r.feedback) stack.push_back (r.dst);
     }
     return false;
 }
 
 bool Session::addRoute (Track& src, Route r)
 {
-    if (r.dst == src.uid || r.dst == 0 || src.isReturn() || wouldCycle (src, r.dst)) return false;
+    if (r.dst == src.uid || r.dst == 0 || src.isReturn() || src.isMaster()) return false;
     auto* dst = trackByUid (r.dst);
     if (! dst) return false;
+    if (wouldCycle (src, r.dst)) r.feedback = true;   // closes a loop: allowed, one buffer late and limited
     r.channels = juce::jlimit (1, kMaxWidth, r.channels);
     r.srcOffset = juce::jlimit (0, kMaxWidth - 1, r.srcOffset); r.dstOffset = juce::jlimit (0, kMaxWidth - 1, r.dstOffset);
     auto run = std::make_unique<RouteRun>();
-    run->delay.resize ((size_t) r.channels); for (auto& d : run->delay) d.prepare (1024);
+    run->delay.resize ((size_t) r.channels); for (auto& d : run->delay) d.prepare (std::max (1024, 2 * bs + 16));
     auto v = std::make_shared<std::vector<Route>> (*src.routes); v->push_back (r);
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         src.routes = v; src.routeRun.push_back (std::move (run));
     }
+    negotiate (*dst);    // the destination's first device now reads this many channels
     rebuildLatency();
     dirty = true;
     return true;
@@ -468,10 +510,12 @@ void Session::removeRoute (Track& src, int index)
     if (index < 0 || index >= (int) src.routes->size()) return;
     auto v = std::make_shared<std::vector<Route>> (*src.routes); v->erase (v->begin() + index);
     std::unique_ptr<RouteRun> gone;
+    const int dstUid = (*src.routes)[(size_t) index].dst;
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         src.routes = v; gone = std::move (src.routeRun[(size_t) index]); src.routeRun.erase (src.routeRun.begin() + index);
     }
+    if (auto* dst = trackByUid (dstUid)) negotiate (*dst);
     rebuildLatency();
     dirty = true;
 }
@@ -501,7 +545,7 @@ void Session::rebuildLatency()
         if (t.depth >= 0) return t.depth;
         t.depth = 0;   // guards cycles
         int d = 0;
-        for (auto& s : tracks) for (auto& r : *s->routes) if (r.dst == t.uid) d = std::max (d, depthOf (*s) + 1);
+        for (auto& s : tracks) for (auto& r : *s->routes) if (r.dst == t.uid && ! r.feedback) d = std::max (d, depthOf (*s) + 1);
         t.depth = d;
         return d;
     };
@@ -513,7 +557,7 @@ void Session::rebuildLatency()
     std::function<int (Track&)> arrivalOf = [&] (Track& t) -> int
     {
         int a = 0;
-        for (auto& s : tracks) for (auto& r : *s->routes) if (r.dst == t.uid) a = std::max (a, s->arrival + s->latency);
+        for (auto& s : tracks) for (auto& r : *s->routes) if (r.dst == t.uid && ! r.feedback) a = std::max (a, s->arrival + s->latency);
         return a;
     };
     for (auto* t : order) t->arrival = arrivalOf (*t);
@@ -528,8 +572,9 @@ void Session::rebuildLatency()
             auto* dst = trackByUid ((*t->routes)[i].dst);
             const int d = dst ? dst->arrival - (t->arrival + t->latency) : 0;
             auto& run = *t->routeRun[i];
-            run.samples = std::max (0, d);
-            for (auto& dl : run.delay) if (dl.mask + 1 < run.samples + bs + 16) dl.prepare (run.samples + bs + 16);
+            run.samples = (*t->routes)[i].feedback ? 0 : std::max (0, d);
+            const int need = (*t->routes)[i].feedback ? 2 * bs + 16 : run.samples + bs + 16;
+            for (auto& dl : run.delay) if (dl.mask + 1 < need) dl.prepare (need);
         }
     }
     latReturns = 0;
@@ -543,6 +588,7 @@ void Session::rebuildLatency()
         const int need = t.alignDelay + t.directExtra + bs + 16;
         if ((int) t.align.size() != t.width.load()) t.align.resize ((size_t) t.width.load());
         for (auto& d : t.align) if (d.mask + 1 < need) d.prepare (need);
+        if ((int) t.instDelay.size() != std::max (2, t.width.load())) t.instDelay.resize ((size_t) std::max (2, t.width.load()));
         for (auto& d : t.instDelay) if (d.mask + 1 < t.inDelay + bs + 16) d.prepare (t.inDelay + bs + 16);
         if (t.directExtra > 0 && t.outChannel.load() > 0)
         {
@@ -643,6 +689,39 @@ void Session::editMidiMaps (const std::function<void (std::vector<MidiMap>&)>& f
     auto v = std::make_shared<std::vector<MidiMap>> (*midiMaps); fn (*v);
     { const juce::SpinLock::ScopedLockType sl (lock); midiMaps = v; }
     dirty = true;
+}
+void Session::editKeyMaps (const std::function<void (std::vector<KeyMap>&)>& fn)
+{
+    auto v = std::make_shared<std::vector<KeyMap>> (*keyMaps); fn (*v);
+    { const juce::SpinLock::ScopedLockType sl (lock); keyMaps = v; }
+    dirty = true;
+}
+bool Session::keyEvent (int key, bool down)
+{
+    if (const int learn = keyLearning.load(); learn != 0 && down)
+    {
+        keyLearning.store (0);
+        const Target t = keyLearnTarget; const bool hold = learn == 2;
+        editKeyMaps ([=] (std::vector<KeyMap>& m)
+        {
+            m.erase (std::remove_if (m.begin(), m.end(), [=] (const KeyMap& x) { return x.key == key || x.target == t; }), m.end());
+            m.push_back ({ key, t, hold });
+        });
+        return true;
+    }
+    bool used = false;
+    for (auto& m : *keyMaps)
+    {
+        if (m.key != key) continue;
+        auto* d = resolve (m.target);
+        if (! d) continue;
+        used = true;
+        if (! m.momentary && ! down) continue;
+        const float v = m.momentary ? (down ? 1.0f : 0.0f) : (d->baseValue (m.target.param) > 0.5f ? 0.0f : 1.0f);
+        d->setBase (m.target.param, v);
+        if (autoWrite.load() && playPpq.load() >= 0) recordPoint (m.target, v);   // a played mute or throw is written like any other move
+    }
+    return used;
 }
 LanePtr Session::lane (const Target& t) const
 {
@@ -752,6 +831,8 @@ void Session::editAudioClips (Track& t, const std::function<void (std::vector<Au
         st.push_back (std::move (keep));
     }
     { const juce::SpinLock::ScopedLockType sl (lock); t.aclips = np; t.clipState = std::move (st); }
+    int cw = 2; for (auto& c : v) if (c.sample) cw = std::max (cw, c.sample->data.getNumChannels());
+    if (std::min (cw, t.width.load()) != t.sourceWidth) negotiate (t);
     dirty = true;
 }
 void Session::splitClip (Track& t, int clipId, double atBar)
@@ -841,6 +922,35 @@ void Session::finishRecordings()
     }
 }
 
+Track* Session::captureJam()
+{
+    if (recording.load()) return nullptr;
+    auto* t = addTrack ("jam", -1, TrackKind::Audio);
+    if (! t) return nullptr;
+    if (master->width.load() != 2) setWidth (*t, master->width.load());
+    for (auto& o : tracks) if (o.get() != t && o->isAudio()) o->armed.store (false);   // only the take is written
+    t->inputSource.store (0); t->armed.store (true); t->monitor.store ((int) Monitor::Off); t->toMaster.store (false);
+    startRecording();
+    if (! running.load()) play();
+    return t;
+}
+
+void Session::freezeEvolution (Track& t)
+{
+    const int pi = juce::jlimit (0, kPatterns - 1, t.activePattern >= 0 ? t.activePattern : t.pattern.load());
+    std::array<juce::uint8, kMaxSteps> flip; std::array<float, kMaxSteps> drift;
+    { const juce::SpinLock::ScopedLockType sl (lock); flip = t.flip; drift = t.drift; t.flip.fill (0); t.drift.fill (0.0f); }
+    editPattern (t, pi, [&] (Pattern& p)
+    {
+        for (int i = 0; i < p.length; ++i)
+        {
+            auto& st = p.s[(size_t) i];
+            if (flip[(size_t) i] != 0) { st.on = ! st.on; if (st.on) st.vel = 0.55f; }
+            st.vel = juce::jlimit (0.1f, 1.0f, st.vel + drift[(size_t) i]);
+        }
+    });
+}
+
 // ---- transport ------------------------------------------------------------------------------------
 void Session::play() { running.store (true); }
 void Session::stop() { running.store (false); panicFlag.store (true); }
@@ -928,6 +1038,47 @@ void Session::recomputeIds()
     for (auto& r : returns) scan (*r);
     scan (*master);
     nextUid = u; nextClipId = cl; nextModId = mo;
+}
+
+// ---- the browser's audition ---------------------------------------------------------------------------
+bool Session::preview (const juce::File& f, juce::String* error)
+{
+    auto smp = loadSample (f, error);
+    if (! smp) return false;
+    auto p = std::make_shared<Preview>(); p->sample = smp;
+    { const juce::SpinLock::ScopedLockType sl (lock); previewOld = previewNow; previewNow = p; previewOn.store (true); }
+    previewOld.reset();
+    return true;
+}
+void Session::stopPreview()
+{
+    { const juce::SpinLock::ScopedLockType sl (lock); previewOld = previewNow; previewNow.reset(); previewOn.store (false); }
+    previewOld.reset();
+}
+
+juce::Array<juce::File> Session::suitePlugins()
+{
+    // the plug-ins that ship with the suite but are not compiled into the studio; found in the usual VST3 folders
+    // (and three of the same maker's that belong in a studio: the Leitner spatializer, openfield, Quell)
+    static const char* names[] = { "Partials", "Cloudfin", "ConvoSolution", "ObliqSound", "ObliqSonic", "Leitner", "openfield", "openprocess", "Quell" };
+    juce::Array<juce::File> out;
+    juce::VST3PluginFormat fmt;
+    const auto paths = fmt.getDefaultLocationsToSearch();
+    for (auto* n : names)
+        for (int i = 0; i < paths.getNumPaths(); ++i)
+        {
+            const auto f = paths[i].getChildFile (juce::String (n) + ".vst3");
+            if (f.exists()) { out.add (f); break; }
+        }
+    return out;
+}
+
+void Session::renderRange (double& fromBar, double& toBar) const
+{
+    if (loopOn.load() && loopEnd.load() > loopStart.load()) { fromBar = loopStart.load(); toBar = loopEnd.load(); return; }
+    fromBar = 0.0;
+    const auto m = (PlayMode) mode.load();
+    toBar = std::max (1.0, m == PlayMode::Song ? songBars() : m == PlayMode::Arrange ? arrangementBars() : loopEnd.load());
 }
 
 bool Session::midiLearnPoll()

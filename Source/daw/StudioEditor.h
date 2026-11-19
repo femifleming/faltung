@@ -18,6 +18,15 @@ public:
     int numPages() const;
     void tickForTest();
     StudioView& view() { return *root; }
+    /** the file menu and what its entries do (the app's menu bar shows the same menu) */
+    juce::PopupMenu fileMenu();
+    void fileAction (int id);
+    Track* renderProject (bool preMaster);
+    bool autoMaster();
+    void captureJam();
+    juce::Component* pageComponent (int page);
+    void selectTrack (Track*);
+    bool key (const juce::KeyPress&);
 
 private:
     void timerCallback() override;

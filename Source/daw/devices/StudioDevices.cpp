@@ -1,6 +1,7 @@
 // faltung sndstudio — the studio's own devices as AudioProcessors with stable parameter ids.
 #include "StudioDevices.h"
 #include "Dsp2.h"
+#include "../PatternTools.h"
 #include "../../dsp/Fx.h"
 #include "../../dsp/Bass.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -423,23 +424,70 @@ public:
 class ToneGen : public StudioFx
 {
 public:
-    enum { WAVE, HZ, PW, KEYTRACK, GATE, DUR, LEVEL, ATT };
+    enum { WAVE, HZ, PW, KEYTRACK, GATE, DUR, LEVEL, ATT, PAIR, DIFF, RATIO, APART, TUNING };
     ToneGen() : StudioFx ("st:tone", "tone", 0, 2, true, { C ("wave", "wave", { "sine", "pulse", "click", "impulse", "white", "pink" }, 0), F ("hz", "frequency", 0.1f, 20000, 1000, [] (float v) { return juce::String (v, 3) + " hz"; }, 0.3f),
         F ("pw", "pulse width", 0.01f, 0.99f, 0.5f, pctText), B ("keytrack", "key tracking", false), B ("gate", "gate (note length)", false), F ("duration", "duration", 0.1f, 10000, 10, msText, 0.3f),
-        F ("level", "level", -60, 0, -12, dbText), F ("attack", "attack", 0, 100, 0, msText) }) {}
-    void prepareToPlay (double s, int b) override { sr = s; bs = b; for (auto& v : voices) { v.on = false; v.rng.seed (17 + (uint32_t) (&v - voices.data())); } }
+        F ("level", "level", -60, 0, -12, dbText), F ("attack", "attack", 0, 100, 0, msText),
+        // a second pure tone next to the first: the ear makes the difference tone itself when each has its own channel
+        C ("pair", "second tone", { "off", "a difference away", "a ratio away" }, 0), F ("difference", "difference", 0.1f, 2000, 40, [] (float v) { return juce::String (v, 2) + " hz"; }, 0.3f),
+        F ("ratio", "ratio", 1.01f, 2.0f, 1.22f, [] (float v) { return juce::String (v, 3); }), F ("apart", "one tone per channel", 0, 1, 1, pctText),
+        C ("tuning", "tuning", { "equal", "just (5-limit)", "just (7-limit)", "harmonic series" }, 0) }) {}
+    void prepareToPlay (double s, int b) override { sr = s; bs = b; for (auto& v : voices) { v.on = false; v.rng.seed (17 + (uint32_t) (&v - voices.data())); } ph2.fill (0.0); }
+    /** the frequency of a key in a tuning (c is 1/1 in every octave) */
+    static float tuned (int note, int tuning)
+    {
+        static const double t[3][12] = {
+            { 1.0, 16.0 / 15, 9.0 / 8, 6.0 / 5, 5.0 / 4, 4.0 / 3, 45.0 / 32, 3.0 / 2, 8.0 / 5, 5.0 / 3, 9.0 / 5, 15.0 / 8 },
+            { 1.0, 567.0 / 512, 9.0 / 8, 147.0 / 128, 21.0 / 16, 1323.0 / 1024, 189.0 / 128, 3.0 / 2, 49.0 / 32, 7.0 / 4, 441.0 / 256, 63.0 / 32 },
+            { 1.0, 17.0 / 16, 9.0 / 8, 19.0 / 16, 5.0 / 4, 21.0 / 16, 11.0 / 8, 3.0 / 2, 13.0 / 8, 27.0 / 16, 7.0 / 4, 15.0 / 8 } };
+        if (tuning <= 0 || tuning > 3) return 440.0f * std::exp2 ((float) (note - 69) / 12.0f);
+        const int deg = ((note % 12) + 12) % 12, oct = (note - deg) / 12 - 5;
+        return (float) (261.6255653 * std::exp2 ((double) oct) * t[tuning - 1][deg]);
+    }
+    std::array<double, 8> ph2 {}; float hzNow = 0.0f;
     void processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffer& midi) override
     {
         ToneParams p { Pi (WAVE), P (HZ), P (PW), Pb (KEYTRACK), Pb (GATE), P (DUR), P (LEVEL), P (ATT) };
         const int n = buf.getNumSamples(); buf.clear();
         const float g = dbToGain (p.level);
         int pos = 0;
-        auto renderTo = [&] (int to) { for (; pos < to; ++pos) { float y = 0; for (auto& v : voices) y += v.tick (p, (float) sr); y *= g; for (int c = 0; c < buf.getNumChannels(); ++c) buf.setSample (c, pos, y); } };
+        const int pair = Pi (PAIR); const float apart = P (APART);
+        // a tone that is not following the keys follows the frequency control while it sounds: a drawn arc is a glissando
+        const float glide = 1.0f - std::exp (-1.0f / (0.004f * (float) sr));
+        if (hzNow <= 0.0f) hzNow = p.hz;
+        auto renderTo = [&] (int to)
+        {
+            for (; pos < to; ++pos)
+            {
+                hzNow += (p.hz - hzNow) * glide;
+                if (! p.keytrack) for (auto& v : voices) if (v.on) v.hz = hzNow;
+                float y = 0, y2 = 0;
+                for (size_t k = 0; k < voices.size(); ++k)
+                {
+                    auto& v = voices[k];
+                    if (pair != 0 && v.on && ! (p.gate && ! v.held))
+                    {
+                        const float f2 = pair == 1 ? v.hz + P (DIFF) : v.hz * P (RATIO);
+                        const float att = p.attackMs > 0.01f ? std::min (1.0f, (float) v.age / (p.attackMs * 0.001f * (float) sr)) : 1.0f;
+                        y2 += std::sin ((float) (kTwoPi * ph2[k])) * att;
+                        ph2[k] += f2 / sr; if (ph2[k] >= 1.0) ph2[k] -= 1.0;
+                    }
+                    y += v.tick (p, (float) sr);
+                }
+                y *= g; y2 *= g;
+                // apart: the first tone on the left only, the second on the right only
+                buf.setSample (0, pos, y + y2 * (1.0f - apart));
+                if (buf.getNumChannels() > 1) buf.setSample (1, pos, y * (pair != 0 ? 1.0f - apart : 1.0f) + y2);
+                for (int c = 2; c < buf.getNumChannels(); ++c) buf.setSample (c, pos, y);
+            }
+        };
         for (const auto m : midi)
         {
             const auto msg = m.getMessage();
             renderTo (std::min (n, m.samplePosition));
-            if (msg.isNoteOn()) { ToneVoice* free = nullptr; for (auto& v : voices) if (! v.on) { free = &v; break; } if (! free) free = &voices[0]; free->start (msg.getNoteNumber(), msg.getFloatVelocity(), p, (float) sr); }
+            if (msg.isNoteOn()) { ToneVoice* free = nullptr; for (auto& v : voices) if (! v.on) { free = &v; break; } if (! free) free = &voices[0]; free->start (msg.getNoteNumber(), msg.getFloatVelocity(), p, (float) sr);
+                if (p.keytrack && Pi (TUNING) > 0) free->hz = tuned (msg.getNoteNumber(), Pi (TUNING));
+                ph2[(size_t) (free - voices.data())] = 0.0; }
             else if (msg.isNoteOff()) { for (auto& v : voices) if (v.on && v.note == msg.getNoteNumber()) v.release(); }
             else if (msg.isAllNotesOff() || msg.isAllSoundOff()) for (auto& v : voices) v.on = false;
         }
@@ -480,7 +528,7 @@ public:
 class FmPerc : public StudioFx
 {
 public:
-    enum { R1, L1, D1, R2, L2, D2, R3, L3, D3, R4, L4, D4, ALGO, FB, PITCH, SWEEP, SWEEPMS, NOISE, NOISEDEC, DRIVE, KEYTRACK, LEVEL };
+    enum { R1, L1, D1, R2, L2, D2, R3, L3, D3, R4, L4, D4, ALGO, FB, PITCH, SWEEP, SWEEPMS, NOISE, NOISEDEC, DRIVE, KEYTRACK, LEVEL, MORPHTO, MORPH };
     static std::vector<PSpec> specs()
     {
         std::vector<PSpec> v;
@@ -498,15 +546,61 @@ public:
         v.push_back (F ("sweep", "sweep", 0, 1, 0.3f, pctText)); v.push_back (F ("sweepms", "sweep time", 1, 500, 40, msText, 0.4f));
         v.push_back (F ("noise", "noise", 0, 1, 0, pctText)); v.push_back (F ("noisedecay", "noise decay", 0.005f, 2, 0.1f, [] (float q) { return msText (q * 1000.0f); }, 0.35f));
         v.push_back (F ("drive", "drive", 0, 1, 0.1f, pctText)); v.push_back (B ("keytrack", "key tracking", true)); v.push_back (F ("level", "level", -24, 6, -6, dbText));
+        // preset morph: the sound slides from what the controls say towards one of the presets
+        juce::StringArray names; for (auto& pr : presets()) names.add (pr.name);
+        v.push_back (C ("morphto", "morph to", names, 3)); v.push_back (F ("morph", "morph", 0, 1, 0, pctText));
+        return v;
+    }
+    struct FmPreset { const char* name; FmParams p; };
+    static const std::vector<FmPreset>& presets()
+    {
+        auto mk = [] (std::array<float, 4> r, std::array<float, 4> l, std::array<float, 4> d, int algo, float fb, float pitch, float sweep, float sweepMs, float noise, float noiseDecay, float drive)
+        {
+            FmParams p; for (int k = 0; k < 4; ++k) { p.ratio[k] = r[(size_t) k]; p.level[k] = l[(size_t) k]; p.decay[k] = d[(size_t) k]; }
+            p.algo = algo; p.feedback = fb; p.pitch = pitch; p.sweep = sweep; p.sweepMs = sweepMs; p.noise = noise; p.noiseDecay = noiseDecay; p.drive = drive;
+            return p;
+        };
+        static const std::vector<FmPreset> v = {
+            { "init",       FmParams() },
+            { "fm kick",    mk ({ 1, 1.5f, 2, 3 },        { 1, 0.5f, 0.15f, 0 },    { 0.45f, 0.08f, 0.04f, 0.03f }, 0, 0.05f, 0.12f, 0.75f, 30, 0, 0.05f, 0.2f) },
+            { "tom",        mk ({ 1, 1.48f, 2.2f, 3 },    { 1, 0.45f, 0.2f, 0 },    { 0.5f, 0.2f, 0.1f, 0.05f }, 0, 0.1f, 0.3f, 0.4f, 60, 0, 0.05f, 0.1f) },
+            { "bell",       mk ({ 1, 3.5f, 7.1f, 11 },    { 1, 0.7f, 0.5f, 0.3f },  { 1.6f, 1.2f, 0.7f, 0.4f }, 1, 0.0f, 0.62f, 0.0f, 10, 0, 0.05f, 0.0f) },
+            { "snare",      mk ({ 1, 1.81f, 2.4f, 5.3f }, { 0.9f, 0.6f, 0.5f, 0.4f }, { 0.16f, 0.12f, 0.1f, 0.07f }, 2, 0.5f, 0.42f, 0.3f, 25, 0.7f, 0.14f, 0.25f) },
+            { "ring hat",   mk ({ 1, 2.63f, 5.41f, 8.2f }, { 0.6f, 0.8f, 0.8f, 0.7f }, { 0.05f, 0.05f, 0.04f, 0.03f }, 1, 0.7f, 0.9f, 0.0f, 5, 0.3f, 0.03f, 0.1f) },
+            { "wood",       mk ({ 1, 2.76f, 5.4f, 1 },    { 1, 0.5f, 0.25f, 0 },    { 0.09f, 0.04f, 0.02f, 0.02f }, 0, 0.0f, 0.56f, 0.1f, 8, 0, 0.02f, 0.0f) },
+            { "zap",        mk ({ 1, 1, 2, 4 },           { 1, 0.9f, 0.6f, 0.2f },  { 0.25f, 0.2f, 0.12f, 0.1f }, 0, 0.6f, 0.5f, 1.0f, 180, 0, 0.05f, 0.4f) },
+            { "glass",      mk ({ 1, 4.07f, 9.3f, 13.1f }, { 0.8f, 0.5f, 0.4f, 0.3f }, { 0.7f, 0.3f, 0.2f, 0.15f }, 1, 0.0f, 0.8f, 0.0f, 5, 0.05f, 0.01f, 0.0f) },
+        };
         return v;
     }
     FmPerc() : StudioFx ("st:fm", "fm perc", 0, 2, true, specs()) {}
+    int getNumPrograms() override { return (int) presets().size(); }
+    int getCurrentProgram() override { return program; }
+    const juce::String getProgramName (int i) override { return i >= 0 && i < (int) presets().size() ? juce::String (presets()[(size_t) i].name) : juce::String(); }
+    void setCurrentProgram (int i) override
+    {
+        if (i < 0 || i >= (int) presets().size()) return;
+        program = i; const auto& p = presets()[(size_t) i].p;
+        for (int k = 0; k < 4; ++k) { const auto x = juce::String (k + 1); setPlain ("ratio" + x, p.ratio[k]); setPlain ("level" + x, p.level[k]); setPlain ("decay" + x, p.decay[k]); }
+        setPlain ("algo", (float) p.algo); setPlain ("feedback", p.feedback); setPlain ("pitch", p.pitch); setPlain ("sweep", p.sweep); setPlain ("sweepms", p.sweepMs);
+        setPlain ("noise", p.noise); setPlain ("noisedecay", p.noiseDecay); setPlain ("drive", p.drive); setPlain ("morph", 0.0f);
+    }
+    int program = 0;
     void prepareToPlay (double s, int b) override { sr = s; bs = b; uint32_t seed = 5; for (auto& v : voices) { v.prepare ((float) sr, seed += 97); v.on = false; } }
     void processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffer& midi) override
     {
         FmParams p;
         for (int k = 0; k < 4; ++k) { p.ratio[k] = P (R1 + k * 3); p.level[k] = P (L1 + k * 3); p.decay[k] = P (D1 + k * 3); }
         p.algo = Pi (ALGO); p.feedback = P (FB); p.pitch = P (PITCH); p.sweep = P (SWEEP); p.sweepMs = P (SWEEPMS); p.noise = P (NOISE); p.noiseDecay = P (NOISEDEC); p.drive = P (DRIVE); p.keytrack = Pb (KEYTRACK); p.level_ = P (LEVEL);
+        if (const float mo = P (MORPH); mo > 0.0005f)
+        {
+            const auto& q = presets()[(size_t) juce::jlimit (0, (int) presets().size() - 1, Pi (MORPHTO))].p;
+            auto mix = [mo] (float a, float b) { return a + (b - a) * mo; };
+            for (int k = 0; k < 4; ++k) { p.ratio[k] = p.ratio[k] * std::pow (q.ratio[k] / std::max (0.01f, p.ratio[k]), mo); p.level[k] = mix (p.level[k], q.level[k]); p.decay[k] = mix (p.decay[k], q.decay[k]); }
+            p.feedback = mix (p.feedback, q.feedback); p.pitch = mix (p.pitch, q.pitch); p.sweep = mix (p.sweep, q.sweep); p.sweepMs = mix (p.sweepMs, q.sweepMs);
+            p.noise = mix (p.noise, q.noise); p.noiseDecay = mix (p.noiseDecay, q.noiseDecay); p.drive = mix (p.drive, q.drive);
+            if (mo > 0.5f) p.algo = q.algo;
+        }
         const int n = buf.getNumSamples(); buf.clear(); const float g = dbToGain (p.level_);
         int pos = 0;
         auto renderTo = [&] (int to) { for (; pos < to; ++pos) { float y = 0; for (auto& v : voices) y += v.tick (p); y *= g; for (int c = 0; c < buf.getNumChannels(); ++c) buf.setSample (c, pos, y); } };
@@ -626,6 +720,9 @@ public:
     std::array<Voice, 12> voices;
 };
 
+#include "Spatial.h"
+#include "Loops.h"
+
 // ---- registry ---------------------------------------------------------------------------------------------
 struct Entry { const char* type; const char* name; const char* blurb; bool instrument; std::function<std::unique_ptr<juce::AudioProcessor>()> make; };
 static const std::vector<Entry>& registry()
@@ -644,6 +741,12 @@ static const std::vector<Entry>& registry()
         { "st:multiband", "multiband", "three-band distortion", false, [] { return std::make_unique<MultibandFx>(); } },
         { "st:clip", "clip", "digital clipper, bits and rate", false, [] { return std::make_unique<ClipFx>(); } },
         { "st:noise", "noise bed", "tape hiss / noise floor with drift and crackle", false, [] { return std::make_unique<NoiseFx>(); } },
+        { "st:encoder", "encoder", "ambisonic encoder: mono / stereo to order 1 - 7 (acn, sn3d)", false, [] { return std::make_unique<EncoderFx>(); } },
+        { "st:decoder", "decoder", "ambisonic decoder to a ring, dome or sphere of speakers", false, [] { return std::make_unique<DecoderFx>(); } },
+        { "st:binaural", "binaural", "ambisonics to headphones", false, [] { return std::make_unique<BinauralFx>(); } },
+        { "st:line", "line", "lines of sound travelling through the speakers of a wide track", false, [] { return std::make_unique<LineFx>(); } },
+        { "st:wear", "wear", "a loop of the input that wears out a little on every pass", false, [] { return std::make_unique<WearFx>(); } },
+        { "st:skip", "skip", "a sample read like a skipping disc: fragments repeat, the read point jumps", true, [] { return std::make_unique<SkipFx>(); } },
         { "st:tone", "tone", "precision sine / pulse / click / impulse / noise generator", true, [] { return std::make_unique<ToneGen>(); } },
         { "st:data", "data", "byte-to-pulse bursts", true, [] { return std::make_unique<DataGen>(); } },
         { "st:fm", "fm perc", "four-operator fm percussion", true, [] { return std::make_unique<FmPerc>(); } },

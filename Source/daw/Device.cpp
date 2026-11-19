@@ -133,6 +133,10 @@ std::unique_ptr<Device> Device::makeHosted (int uid, std::unique_ptr<juce::Audio
     mirrorsFromProcessor (*d, raw, d, &Device::buildMirrors);
     d->proc = std::move (inst);
     d->proc->addListener (d.get());
+    // what the plug-in is made for shows in the layout it arrives with: a binaural decoder comes with a stereo output,
+    // an encoder with a stereo input, however permissive they are about other layouts
+    d->defIn = d->proc->getTotalNumInputChannels(); d->defOut = d->proc->getTotalNumOutputChannels();
+    d->defLayout = d->proc->getBusesLayout();
     d->configure (2, 2);
     return d;
 }
@@ -144,19 +148,34 @@ int Device::configure (int incoming, int trackWidth)
     {
         if (proc)
         {
-            // studio devices follow the chain width when they can (their buses accept any discrete layout)
+            // studio devices follow the chain width when they can (their buses accept any discrete layout); encoders
+            // and decoders say themselves what they read and write
             auto l = proc->getBusesLayout();
-            const int want = juce::jlimit (1, kMaxWidth, incoming > 0 ? incoming : trackWidth);
-            if (l.inputBuses.size() > 0 && proc->getTotalNumInputChannels() > 0) l.inputBuses.getReference (0) = channelSetFor (want);
-            if (l.outputBuses.size() > 0) l.outputBuses.getReference (0) = channelSetFor (want);
-            if (proc->checkBusesLayoutSupported (l)) proc->setBusesLayout (l);
+            int wantIn = juce::jlimit (1, kMaxWidth, incoming > 0 ? incoming : trackWidth), wantOut = wantIn;
+            if (auto* neg = dynamic_cast<WidthNegotiator*> (proc.get())) { const auto io = neg->widthsFor (incoming, trackWidth); wantIn = io.first; wantOut = io.second; }
+            if (l.inputBuses.size() > 0 && proc->getTotalNumInputChannels() > 0) l.inputBuses.getReference (0) = juce::AudioChannelSet::discreteChannels (wantIn);
+            if (l.outputBuses.size() > 0) l.outputBuses.getReference (0) = juce::AudioChannelSet::discreteChannels (wantOut);
+            if (l != proc->getBusesLayout() && proc->checkBusesLayoutSupported (l))
+            {
+                if (prepared) proc->releaseResources();
+                proc->setBusesLayout (l);
+                if (prepared)
+                {
+                    const double rate = proc->getSampleRate() > 0 ? proc->getSampleRate() : 48000.0; const int block = std::max (16, proc->getBlockSize());
+                    proc->setRateAndBufferSizeDetails (rate, block);
+                    proc->prepareToPlay (rate, block);
+                }
+            }
             inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels();
+            scratchChannels = std::max (2, std::max (inWidth, outWidth));
+            if (scratch.getNumChannels() < scratchChannels) scratch.setSize (scratchChannels, std::max (16, scratch.getNumSamples()), false, false, true);
         }
         return outWidth;
     }
     if (kind != Kind::Hosted || ! proc) return outWidth;
     // hosted: the main input takes the incoming width, the main output the widest layout the plug-in offers up to the
     // track's width (an encoder: 2 in, 16 out; a decoder: 16 in, 2 out); other buses stay off
+    if (prepared) proc->releaseResources();   // bus layouts change only while the plug-in is released
     auto layout = proc->getBusesLayout();
     for (int i = 1; i < layout.inputBuses.size(); ++i) layout.inputBuses.getReference (i) = juce::AudioChannelSet::disabled();
     for (int i = 1; i < layout.outputBuses.size(); ++i) layout.outputBuses.getReference (i) = juce::AudioChannelSet::disabled();
@@ -165,25 +184,47 @@ int Device::configure (int incoming, int trackWidth)
         auto l = layout;
         if (l.inputBuses.size() > 0) l.inputBuses.getReference (0) = in <= 0 ? juce::AudioChannelSet::disabled() : channelSetFor (in);
         if (l.outputBuses.size() > 0) l.outputBuses.getReference (0) = channelSetFor (out);
-        if (proc->checkBusesLayoutSupported (l) && proc->setBusesLayout (l)) return true;
+        // (some plug-ins say yes to a layout and then settle on another channel count: only what they really took counts)
+        if (proc->checkBusesLayoutSupported (l) && proc->setBusesLayout (l))
+            return proc->getTotalNumOutputChannels() == out && (in <= 0 || proc->getTotalNumInputChannels() == in);
         return false;
     };
     const bool hasIn = layout.inputBuses.size() > 0 && ! desc.isInstrument;
-    const int inWant = hasIn ? std::max (1, incoming) : 0;
+    // a plug-in that comes stereo on a side stays stereo there (an encoder's input, a binaural decoder's output, any
+    // plain stereo effect); a side that comes wide takes what the track has
+    const int inWant = hasIn ? (defIn <= 2 ? juce::jlimit (1, std::max (1, defIn), std::max (1, incoming)) : std::max (1, incoming)) : 0;
+    const int outWant = defOut <= 2 ? juce::jlimit (1, std::max (1, defOut), trackWidth) : trackWidth;
+    // the count the track has, or the next layouts a plug-in format can name that are at least as wide (vst3 has no
+    // "24 discrete channels": a decoder for 24 speakers takes 25, the next ambisonic count, and the track uses 24)
+    auto sizesFrom = [] (int want) { std::vector<int> v { want }; for (int a : { 4, 9, 16, 25, 36, 49, 64 }) if (a > want) v.push_back (a); return v; };
     bool ok = false;
-    // preferred: in = incoming, out = track width; then any narrower out; then stereo
+    for (int out : sizesFrom (outWant))
+    {
+        if (ok || (defOut <= 2 && out > 2)) break;
+        if (! hasIn) { ok = tryLayout (0, out); continue; }
+        for (int in : sizesFrom (inWant)) { if (tryLayout (in, out)) { ok = true; break; } if (defIn <= 2) break; }
+    }
     for (int out : { trackWidth, 64, 49, 36, 25, 16, 9, 8, 6, 4, 2, 1 })
     {
-        if (out > trackWidth || out <= 0) continue;
-        if (tryLayout (inWant, out)) { ok = true; break; }
+        if (ok) break;
+        if (out > trackWidth || out <= 0 || (defOut <= 2 && out > 2)) continue;
+        ok = tryLayout (inWant, out);
     }
     if (! ok && hasIn)
         for (int in : { 2, 1, 16, 4, 9, 25, 36, 49, 64 })
-            for (int out : { trackWidth, 16, 2, 1 })
-                if (out <= trackWidth && tryLayout (in, out)) { ok = true; break; }
-    if (! ok) tryLayout (hasIn ? 2 : 0, 2);
-    inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels();
-    if (prepared) { proc->releaseResources(); proc->prepareToPlay (proc->getSampleRate() > 0 ? proc->getSampleRate() : 48000.0, std::max (16, proc->getBlockSize())); }
+            for (int out : { outWant, 16, 2, 1 })
+                if (! ok && out <= std::max (2, trackWidth) && tryLayout (in, out)) ok = true;
+    if (! ok && ! tryLayout (hasIn ? 2 : 0, 2))
+        if (proc->checkBusesLayoutSupported (defLayout)) proc->setBusesLayout (defLayout);   // as it arrived
+    // what the track gives it and takes from it (the buses themselves may be wider)
+    inWidth = hasIn ? std::min (proc->getTotalNumInputChannels(), std::max (1, incoming)) : 0;
+    outWidth = std::max (1, std::min (proc->getTotalNumOutputChannels(), std::max (outWant, 1)));
+    if (prepared)
+    {
+        const double rate = proc->getSampleRate() > 0 ? proc->getSampleRate() : 48000.0; const int block = std::max (16, proc->getBlockSize());
+        proc->setRateAndBufferSizeDetails (rate, block);
+        proc->prepareToPlay (rate, block);
+    }
     scratchChannels = std::max (2, std::max (inWidth, outWidth));
     scratch.setSize (scratchChannels, std::max (16, scratch.getNumSamples()), false, false, true);
     return outWidth;
@@ -312,7 +353,7 @@ void Device::prepare (double sr, int bs)
         proc->prepareToPlay (sr, bs);
         scratchChannels = std::max (2, std::max (proc->getTotalNumInputChannels(), proc->getTotalNumOutputChannels()));
         scratch.setSize (scratchChannels, bs, false, false, true);
-        if (kind == Kind::Hosted || kind == Kind::Studio) { inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels(); }
+        if (kind == Kind::Studio) { inWidth = proc->getTotalNumInputChannels(); outWidth = proc->getTotalNumOutputChannels(); }
     }
     std::fill (lastWritten.begin(), lastWritten.end(), -1.0f);
     prepared = true;
@@ -394,11 +435,13 @@ void Device::process (juce::AudioBuffer<float>& track, juce::MidiBuffer& midi)
     if (kind == Kind::Hosted || kind == Kind::Studio)
         if (auto* kp = dynamic_cast<KeyedProcessor*> (proc.get())) kp->setKey (keyL, keyR);
     proc->processBlock (b, midi);
+    // the device replaces the channels it read with the ones it wrote; channels beyond both pass through untouched
+    const int top = std::max (ins, outs);
     for (int c = 0; c < width; ++c)
     {
         if (c < outs) track.copyFrom (c, 0, b, c, 0, n);
-        else if (outs == 1 && c == 1) track.copyFrom (c, 0, b, 0, 0, n);
-        else track.clear (c, 0, n);
+        else if (outs == 1 && ins <= 1 && c == 1) track.copyFrom (c, 0, b, 0, 0, n);
+        else if (c < top) track.clear (c, 0, n);
     }
 }
 
@@ -420,7 +463,10 @@ void Device::save (juce::XmlElement& e) const
     {
         const float v = baseValue (i);
         const int m = macro[(size_t) i].index.load();
-        if (std::abs (v - defaultValue (i)) < 1.0e-6f && m < 0) continue;
+        // (a parameter a modulator or a lock is moving right now is written even at its default: the state blob above
+        // holds the moved value, and the base must win when the project comes back)
+        const float live = proc && i < proc->getParameters().size() ? proc->getParameters()[i]->getValue() : v;
+        if (std::abs (v - defaultValue (i)) < 1.0e-6f && m < 0 && std::abs (live - v) < 1.0e-6f) continue;
         auto* p = e.createNewChildElement ("p");
         p->setAttribute ("id", paramId (i)); p->setAttribute ("v", v);
         if (m >= 0) { p->setAttribute ("m", m); p->setAttribute ("lo", macro[(size_t) i].lo.load()); p->setAttribute ("hi", macro[(size_t) i].hi.load()); }

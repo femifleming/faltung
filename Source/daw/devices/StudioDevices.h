@@ -12,6 +12,14 @@ struct KeyedProcessor
     virtual void setKey (const float* l, const float* r) = 0;
 };
 
+/** a device whose input and output widths differ (encoders, decoders): it says what it wants for an incoming width
+    on a track of a given width */
+struct WidthNegotiator
+{
+    virtual ~WidthNegotiator() = default;
+    virtual std::pair<int, int> widthsFor (int incomingWidth, int trackWidth) const = 0;
+};
+
 /** a device that holds a sample (the sampler): the browser drops files onto it */
 struct SampleHolder
 {

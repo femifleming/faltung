@@ -36,6 +36,11 @@ public:
     std::atomic<bool> bypass { false };
     /** channel widths after negotiation (configure): what the device reads and what it writes */
     int inWidth = 2, outWidth = 2;
+    /** hosted plug-ins: the channel counts they arrived with (what they are made for) */
+    int defIn = 2, defOut = 2;
+    juce::AudioProcessor::BusesLayout defLayout;
+    /** offline rendering: plug-ins are told, so they do not drop work they would skip to keep up in real time */
+    void setOffline (bool on) { if (proc) proc->setNonRealtime (on); }
     /** set the bus layout for an incoming width and the track's width; returns the width it will produce */
     int configure (int incomingWidth, int trackWidth);
 

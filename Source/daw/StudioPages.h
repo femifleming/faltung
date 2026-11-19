@@ -2,6 +2,7 @@
 // faltung sndstudio — the pages: session (scenes), arrange (timeline + automation), seq (steps + devices),
 // mix (strips, outputs, routes), mod (modulators, macros, midi), browse (devices, plug-ins, files, templates).
 #include "StudioWidgets.h"
+#include "PatternTools.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 
 namespace fal::daw
@@ -238,7 +239,17 @@ public:
         zoomOut.onClick = [this] { pxPerBar = std::max (4.0, pxPerBar / 1.4); repaint(); };
     }
     double pxPerBar = 24.0; double scrollBar = 0; int scrollY = 0;
-    const int left = 140, ruler = 26, laneH = 40, songW = 190, autoH = 170;
+    const int left = 140, ruler = 26, laneH = 40, songW = 190, autoH = 216;
+    int laneScroll = 0;                       // the first automation lane shown
+    Track* touched = nullptr; int touchedClip = 0;   // the audio clip last clicked (its id): , and . nudge it
+    /** move the clip last touched by a few milliseconds, off the grid (what the , and . keys do) */
+    bool nudge (double ms)
+    {
+        if (! touched || ctx.s.indexOf (touched) < 0) return false;
+        const double bars = ms * 0.001 / (60.0 / ctx.s.tempo() * 4.0); const int id = touchedClip; bool done = false;
+        ctx.s.editAudioClips (*touched, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == id) { c.startBar = std::max (0.0, c.startBar + bars); done = true; } });
+        repaint(); return done;
+    }
     int x (double bar) const { return left + (int) ((bar - scrollBar) * pxPerBar); }
     double bar (int px) const { return (px - left) / pxPerBar + scrollBar; }
     double snapBar (double b) const { if (! ctx.s.snap.load()) return std::max (0.0, b); const double q = pxPerBar > 60 ? 0.25 : 1.0; return std::max (0.0, std::round (b / q) * q); }
@@ -320,7 +331,7 @@ public:
         paintLanes (g);
         g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (left - 1, 0, 1, la.getBottom());
         g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (9.5f));
-        if (ctx.status) ctx.status (ui::U ("arrange: drag clips · edge: length · double-click a lane: add the track's pattern · drop audio files here · right-click a clip · ruler drag: loop · shift-click ruler: marker"));
+        if (ctx.status) ctx.status (ui::U ("arrange: drag clips · edge: length · alt-drag: copy · double-click a lane: add the track's pattern · drop audio files here · right-click a clip · , and . nudge the clip last touched by 5 ms · ruler drag: loop · shift-click ruler: marker"));
     }
     void drawWave (juce::Graphics& g, const AudioClip& c, juce::Rectangle<float> r, juce::Colour ink)
     {
@@ -357,10 +368,12 @@ public:
         auto targets = laneTargets();
         const int lh = 52;
         g.setFont (uiFont (10.0f));
-        for (int i = 0; i < (int) targets.size(); ++i)
+        const int fits = std::max (1, (aa.getHeight() - 26 - 22) / lh);
+        laneScroll = juce::jlimit (0, std::max (0, (int) targets.size() - fits), laneScroll);
+        if ((int) targets.size() > fits) { g.setColour (theme.ink.withAlpha (0.7f)); g.drawText ("lanes " + juce::String (laneScroll + 1) + "-" + juce::String (laneScroll + fits) + " of " + juce::String (targets.size()) + "  (scroll)", 76, aa.getY() + 4, 220, 18, juce::Justification::centredLeft); }
+        for (int i = laneScroll; i < (int) targets.size() && i < laneScroll + fits; ++i)
         {
-            const int y = aa.getY() + 26 + i * lh;
-            if (y + lh > aa.getBottom() + lh) break;
+            const int y = aa.getY() + 26 + (i - laneScroll) * lh;
             auto l = s.lane (targets[(size_t) i]);
             if (! l) continue;
             g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (0, y, aa.getWidth(), lh - 2);
@@ -386,7 +399,7 @@ public:
                 g.setColour (juce::Colours::white); g.fillEllipse (px - 3.0f, yy - 3.0f, 6.0f, 6.0f);
             }
         }
-        if (targets.empty()) { g.setColour (theme.ink.withAlpha (0.6f)); g.drawText ("automation: right-click any control for \"add an automation lane\", or + lane", left + 8, aa.getY() + 6, 500, 16, juce::Justification::centredLeft); }
+        if (targets.empty()) { g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (ui::U ("automation: right-click any control → automate it on the timeline, or + lane · click: a point · shift-drag: draw freehand · alt-drag a point: its curve"), left + 8, aa.getY() + 6, aa.getWidth() - left - 16, 16, juce::Justification::centredLeft, true); }
     }
     void laneMenu()
     {
@@ -400,7 +413,7 @@ public:
             for (int i = 0; i < std::min (d.numParams(), 120); ++i) { sub.addItem (id++, d.paramName (i)); list.push_back (ctx.s.targetFor (*t, d, i)); }
             m.addSubMenu (name, sub);
         };
-        addDev (*t->mixer, "strip");
+        if (! t->isMaster()) addDev (*t->mixer, "strip");
         if (t->instrument) addDev (*t->instrument, t->instrument->name);
         for (auto& d : t->inserts) addDev (*d, d->name);
         juce::PopupMenu glob; for (int i = 0; i < GP_COUNT; ++i) { glob.addItem (id++, globalParamName (i)); list.push_back ({ 0, 0, i }); } m.addSubMenu ("global (macros, tempo, swing, master)", glob);
@@ -481,11 +494,20 @@ public:
         if (aa.contains (e.getPosition()))
         {
             auto targets = laneTargets();
-            const int i = (e.y - aa.getY() - 26) / 52;
+            if (e.y < aa.getY() + 26) return;
+            const int i = (e.y - aa.getY() - 26) / 52 + laneScroll;
             if (i < 0 || i >= (int) targets.size()) return;
             if (e.x < left) { if (e.mods.isPopupMenu()) { s.removeLane (targets[(size_t) i]); repaint(); } else s.editLane (targets[(size_t) i], [] (AutoLane& l) { l.enabled = ! l.enabled; }); repaint(); return; }
-            dragLane = i; laneTarget = targets[(size_t) i];
-            const int y = aa.getY() + 26 + i * 52;
+            dragLane = i - laneScroll; laneTarget = targets[(size_t) i];
+            const int y = aa.getY() + 26 + (i - laneScroll) * 52;
+            if (e.mods.isShiftDown())
+            {
+                // freehand: the drag itself is the curve (an arc drawn by hand, a point every few pixels)
+                freehand = true; lastFreeBeat = bar (e.x) * 4.0;
+                const double fb = std::max (0.0, lastFreeBeat); const float fv = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
+                s.editLane (laneTarget, [fb, fv] (AutoLane& ll) { ll.pts.erase (std::remove_if (ll.pts.begin(), ll.pts.end(), [fb] (const AutoPoint& p) { return std::abs (p.beat - fb) < 0.02; }), ll.pts.end()); ll.pts.push_back ({ fb, fv, 0.0f }); });
+                repaint(); return;
+            }
             const double beat = bar (e.x) * 4.0; const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
             auto l = s.lane (laneTarget);
             int near = -1; double best = 0.3;
@@ -513,7 +535,7 @@ public:
         }
         if (e.mods.isPopupMenu()) { clipMenu (h); return; }
         drag = h; dragStartBar = bar (e.x);
-        if (h.audio) { const auto& c = (*h.t->aclips)[(size_t) h.clip]; dragClipStart = c.startBar; dragClipLen = c.bars; if (e.getNumberOfClicks() > 1) { clipEditor (h); drag = Hit(); } }
+        if (h.audio) { const auto& c = (*h.t->aclips)[(size_t) h.clip]; dragClipStart = c.startBar; dragClipLen = c.bars; touched = h.t; touchedClip = c.id; if (e.getNumberOfClicks() > 1) { clipEditor (h); drag = Hit(); } }
         else { const auto& c = (*h.t->clips)[(size_t) h.clip]; dragClipStart = c.startBar; dragClipLen = c.bars; }
         if (e.mods.isAltDown() && h.t)
         {
@@ -527,6 +549,15 @@ public:
         auto& s = ctx.s;
         if (loopDrag) { const double b = snapBar (bar (e.x)); s.loopStart.store (std::min (loopA, b)); s.loopEnd.store (std::max (loopA + (s.snap.load() ? 1.0 : 0.25), std::max (loopA, b))); repaint(); return; }
         if (songDrag >= 0) { const int d = e.getDistanceFromDragStartX() / 12; const int i = songDrag; const int nb = std::max (1, songStart + d); s.editSong ([i, nb] (std::vector<SongEntry>& v) { if (i < (int) v.size()) v[(size_t) i].bars = nb; }); repaint(); return; }
+        if (dragLane >= 0 && freehand)
+        {
+            const int y = autoArea().getY() + 26 + dragLane * 52;
+            const double b1 = std::max (0.0, bar (e.x) * 4.0); const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
+            const double lo = std::min (lastFreeBeat, b1), hi = std::max (lastFreeBeat, b1);
+            if (hi - lo < 4.0 * 3.0 / pxPerBar) return;   // a point every three pixels
+            s.editLane (laneTarget, [=] (AutoLane& l) { l.pts.erase (std::remove_if (l.pts.begin(), l.pts.end(), [=] (const AutoPoint& p) { return p.beat > lo + 1.0e-6 && p.beat <= hi + 1.0e-6; }), l.pts.end()); l.pts.push_back ({ b1, v, 0.0f }); });
+            lastFreeBeat = b1; repaint(); return;
+        }
         if (dragLane >= 0 && dragPoint >= 0)
         {
             const int y = autoArea().getY() + 26 + dragLane * 52;
@@ -543,9 +574,10 @@ public:
         else s.editClips (*t, [&] (std::vector<Clip>& v) { if (ci < (int) v.size()) { if (edge) v[(size_t) ci].bars = std::max (0.25, snapBar (start + len + d) - start); else v[(size_t) ci].startBar = snapBar (start + d); } });
         repaint();
     }
-    void mouseUp (const juce::MouseEvent&) override { loopDrag = false; songDrag = -1; drag = Hit(); dragLane = -1; dragPoint = -1; }
+    void mouseUp (const juce::MouseEvent&) override { loopDrag = false; songDrag = -1; drag = Hit(); dragLane = -1; dragPoint = -1; freehand = false; }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
+        if (autoArea().contains (e.getPosition())) { laneScroll = std::max (0, laneScroll + (w.deltaY < 0 ? 1 : w.deltaY > 0 ? -1 : 0)); repaint(); return; }
         if (e.mods.isCommandDown()) { pxPerBar = juce::jlimit (4.0, 200.0, pxPerBar * (1.0 + w.deltaY)); }
         else { scrollBar = std::max (0.0, scrollBar - w.deltaX * 8.0 / pxPerBar * 10.0); scrollY = juce::jlimit (0, std::max (0, (int) ctx.s.tracks.size() * laneH - lanesArea().getHeight()), scrollY - (int) (w.deltaY * 60)); }
         repaint();
@@ -640,7 +672,7 @@ private:
     ui::TextLink addLane, addSong, snapLink, zoomIn, zoomOut;
     Hit drag; double dragStartBar = 0, dragClipStart = 0, dragClipLen = 0;
     bool loopDrag = false; double loopA = 0; int songDrag = -1, songStart = 0;
-    int dragLane = -1, dragPoint = -1; bool curveDrag = false; Target laneTarget;
+    int dragLane = -1, dragPoint = -1; bool curveDrag = false, freehand = false; double lastFreeBeat = 0; Target laneTarget;
 };
 
 // =================================================================================================
@@ -653,18 +685,29 @@ public:
     {
         auto link = [&] (ui::TextLink*& l, const char* name, std::function<void()> fn) { l = links.add (new ui::TextLink (name, theme)); l->onClick = std::move (fn); addAndMakeVisible (l); };
         link (tEuclid, "euclid", [this] { euclid(); });
-        link (tRotL, "< rotate", [this] { tool ([] (Pattern& p) { const int n = p.length; auto f = p.s[0]; for (int i = 0; i < n - 1; ++i) p.s[(size_t) i] = p.s[(size_t) i + 1]; p.s[(size_t) n - 1] = f; }); });
-        link (tRotR, "rotate >", [this] { tool ([] (Pattern& p) { const int n = p.length; auto l = p.s[(size_t) n - 1]; for (int i = n - 1; i > 0; --i) p.s[(size_t) i] = p.s[(size_t) i - 1]; p.s[0] = l; }); });
-        link (tRev, "reverse", [this] { tool ([] (Pattern& p) { std::reverse (p.s.begin(), p.s.begin() + p.length); }); });
-        link (tMutate, "mutate", [this] { tool ([this] (Pattern& p) { for (int i = 0; i < p.length; ++i) if (rnd.nextFloat() < 0.12f) { p.s[(size_t) i].on = ! p.s[(size_t) i].on; if (p.s[(size_t) i].on) p.s[(size_t) i].vel = 0.5f + 0.5f * rnd.nextFloat(); } }); });
-        link (tHuman, "humanise", [this] { tool ([this] (Pattern& p) { for (int i = 0; i < p.length; ++i) if (p.s[(size_t) i].on) { p.s[(size_t) i].micro = juce::jlimit (-1.0f, 1.0f, p.s[(size_t) i].micro + (rnd.nextFloat() - 0.5f) * 0.5f); p.s[(size_t) i].vel = juce::jlimit (0.1f, 1.0f, p.s[(size_t) i].vel + (rnd.nextFloat() - 0.5f) * 0.2f); } }); });
-        link (tRandom, "random", [this] { tool ([this] (Pattern& p) { for (int i = 0; i < p.length; ++i) { p.s[(size_t) i].on = rnd.nextFloat() < 0.4f; p.s[(size_t) i].vel = 0.4f + 0.6f * rnd.nextFloat(); } }); });
-        link (tMarkov, "markov", [this] { markov(); });
-        link (tRules, "rewrite", [this] { tool ([] (Pattern& p) { Pattern q = p; const int n = p.length; for (int i = 0; i < n; ++i) { const auto& a = p.s[(size_t) i]; const auto& b = p.s[(size_t) ((i + 1) % n)]; auto& o = q.s[(size_t) i]; if (a.on && b.on) { o.on = true; o.ratchet = std::min (8, a.ratchet + 1); } else if (a.on && ! b.on) { o = a; q.s[(size_t) ((i + 1) % n)].on = true; q.s[(size_t) ((i + 1) % n)].vel = a.vel * 0.6f; } } p = q; }); });
-        link (tDouble, "double", [this] { tool ([] (Pattern& p) { const int n = p.length; if (n * 2 > kMaxSteps) return; for (int i = 0; i < n; ++i) p.s[(size_t) (n + i)] = p.s[(size_t) i]; p.length = n * 2; }); });
+        link (tRotL, "< rotate", [this] { tool ([] (Pattern& p) { tools::rotate (p, -1); }); });
+        link (tRotR, "rotate >", [this] { tool ([] (Pattern& p) { tools::rotate (p, 1); }); });
+        link (tRev, "reverse", [this] { tool ([] (Pattern& p) { tools::reverse (p); }); });
+        link (tMutate, "mutate", [this] { tool ([this] (Pattern& p) { tools::mutate (p, rng); }); });
+        link (tHuman, "humanise", [this] { tool ([this] (Pattern& p) { tools::humanise (p, rng); }); });
+        link (tRandom, "random", [this] { tool ([this] (Pattern& p) { tools::randomise (p, rng); }); });
+        link (tMarkov, "markov", [this] { tool ([this] (Pattern& p) { tools::markov (p, rng); }); });
+        link (tRules, "rewrite", [this] { tool ([] (Pattern& p) { tools::rewrite (p); }); });
+        link (tDouble, "double", [this] { tool ([] (Pattern& p) { tools::doubleLength (p); }); });
         link (tClear, "clear", [this] { tool ([] (Pattern& p) { p = Pattern(); }); });
+        // second row: time and pitch systems
+        link (tRatios, "ratios", [this] { ask ("step times", "one number per step: how long it lasts, in steps. e.g. 1 1 2/3 2/3 2/3 3/2", "1 1 2/3 2/3 2/3 3/2", [this] (juce::String t) { tool ([t] (Pattern& p) { tools::ratios (p, t); }); }); });
+        link (tAccel, "accelerate", [this] { ask ("accelerate", "every step lasts this many times the one before (below 1: faster and faster; the loop keeps its length)", "0.9", [this] (juce::String t) { const float f = t.getFloatValue(); tool ([f] (Pattern& p) { tools::accelerate (p, f); }); }); });
+        link (tEven, "even", [this] { tool ([] (Pattern& p) { tools::evenTime (p); }); });
+        link (tStrict, "strict", [this] { ask ("strict grid", "velocity levels (1 = all the same, 2 = accent or not ...), then the note length in steps", "2 0.5", [this] (juce::String t) { auto a = juce::StringArray::fromTokens (t, " ,", ""); const int lv = a[0].getIntValue(); const float ln = a.size() > 1 ? a[1].getFloatValue() : 0.5f; tool ([lv, ln] (Pattern& p) { tools::strictGrid (p, lv, ln > 0 ? ln : 0.5f); }); }); });
+        link (tSieve, "sieve", [this] { ask ("sieve: which steps", "residue classes modulus@residue, | joins, & intersects, ! excludes. e.g. 3@0 | 4@1", "3@0 | 4@1", [this] (juce::String t) { bool ok = false; tools::sieveHolds (t, 0, &ok); if (! ok) { ctx.status ("sieve: could not read \"" + t + "\""); return; } tool ([t] (Pattern& p) { tools::sieveRhythm (p, t); }); }); });
+        link (tSievePitch, "sieve pitch", [this] { ask ("sieve: the pitches of the hits", "the sieve as a scale in semitones, e.g. 3@0 | 4@1 (add \"random\" to draw from it)", "3@0 | 4@1", [this] (juce::String t) { const bool rand = t.containsIgnoreCase ("random"); const auto e = t.replace ("random", "", true).trim(); tool ([this, e, rand] (Pattern& p) { tools::sievePitch (p, e, rand ? &rng : nullptr); }); }); });
+        link (tCloud, "cloud", [this] { ask ("stochastic cloud", "events a step (the times between them are exponential), then the pitch range in semitones", "1 12", [this] (juce::String t) { auto a = juce::StringArray::fromTokens (t, " ,", ""); const float d = a[0].getFloatValue(); const int r = a.size() > 1 ? a[1].getIntValue() : 12; tool ([this, d, r] (Pattern& p) { tools::stochastic (p, rng, d > 0 ? d : 1.0f, r); }); }); });
+        link (tFreeze, "freeze", [this] { if (auto* t = ctx.selected()) { ctx.s.freezeEvolution (*t); refresh(); } });
+        tFreeze->setTooltip ("write what the evolving pattern has drifted to into the pattern");
         link (tCopy, "copy", [this] { if (auto* t = ctx.selected()) if (auto p = t->patternAt (t->pattern.load())) clip = *p; });
         link (tPaste, "paste", [this] { tool ([this] (Pattern& p) { p = clip; }); });
+        rng.seed ((uint32_t) juce::Random::getSystemRandom().nextInt());
         link (tAddDevice, "+ device", [this] { addDeviceMenu(); });
         link (tAddLock, "+ lock", [this] { lockMenu(); });
         juce::StringArray pats; for (int i = 0; i < kPatterns; ++i) pats.add (juce::String (i + 1));
@@ -681,6 +724,10 @@ public:
         row (rStepMs, new ValueRow ("step ms", 10.0f, 2000.0f, 125.0f, [] (float v) { return juce::String (v, 1) + " ms"; }));
         row (rChain, new ValueRow ("chain", { "off", "on" }, 0)); rChain->boolStyle = true;
         row (rQuant, new ValueRow ("launch", { "now", "1 bar", "2 bars", "4 bars" }, 1));
+        row (rEvolve, new ValueRow ("evolve", 0.0f, 1.0f, 0.0f, [] (float v) { return v < 0.005f ? juce::String ("off") : juce::String (juce::roundToInt (v * 100)) + "%"; }));
+        rEvolve->setTooltip ("on every pass a few steps change or come back: the pattern drifts around what is written. \"freeze\" writes the drift into the pattern");
+        row (rChoke, new ValueRow ("choke group", { "off", "a", "b", "c", "d", "e", "f", "g", "h" }, 0));
+        rChoke->setTooltip ("a hit on one track of a group cuts the other tracks of that group (closed hat / open hat, chopped samples)");
         // the step
         row (sVel, new ValueRow ("velocity", 0.0f, 1.0f, 0.8f, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
         row (sPitch, new ValueRow ("pitch", -36.0f, 36.0f, 0.0f, [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v)) + " st"; }));
@@ -688,16 +735,28 @@ public:
         row (sRatchet, new ValueRow ("ratchet", 1.0f, 8.0f, 1.0f, [] (float v) { return juce::String (juce::roundToInt (v)); }));
         row (sMicro, new ValueRow ("micro", -1.0f, 1.0f, 0.0f, [this] (float v) { return (v > 0 ? "+" : "") + juce::String (v * ctx.s.microMs.load(), 1) + " ms"; }));
         row (sLen, new ValueRow ("length", 0.05f, 16.0f, 0.5f, [] (float v) { return juce::String (v, 2) + " steps"; }));
+        row (sDur, new ValueRow ("step time", 0.25f, 4.0f, 1.0f, [] (float v) { return "x" + juce::String (v, 2); }));
+        sDur->setTooltip ("how long this step lasts, as a ratio of the track's step: uneven grids (a triplet next to a straight step). The pattern's loop is the sum of its steps");
         juce::StringArray conds; for (int i = 0; i < (int) Cond::Count; ++i) conds.add (condName ((Cond) i));
         row (sCond, new ValueRow ("condition", conds, 0));
         row (sSlide, new ValueRow ("slide", { "off", "on" }, 0)); sSlide->boolStyle = true;
         row (sSlice, new ValueRow ("slice", -1.0f, 63.0f, -1.0f, [] (float v) { return v < 0 ? juce::String ("note") : juce::String (juce::roundToInt (v) + 1); }));
+        { juce::StringArray ch; for (int i = 0; i < kChords; ++i) ch.add (chordName (i)); row (sChord, new ValueRow ("chord", ch, 0)); }
+        row (sRCurve, new ValueRow ("ratchet curve", -1.0f, 1.0f, 0.0f, [] (float v) { return std::abs (v) < 0.02f ? juce::String ("even") : (v > 0 ? "speeds up " : "slows ") + juce::String (juce::roundToInt (std::abs (v) * 100)) + "%"; }));
+        sRCurve->setLabelWidth (90);
         for (int k = 0; k < kLocks; ++k) { row (sLock[k], new ValueRow ("lock " + juce::String (k + 1), 0.0f, 1.0f, 0.0f, [] (float v) { return juce::String (v, 2); })); sLock[k]->setLabelWidth (150); }
         wire();
         viewport.setViewedComponent (&chain, false); viewport.setScrollBarsShown (true, false); addAndMakeVisible (viewport);
     }
-    ValueRow *rPattern, *rLength, *rSpeed, *rSwing, *rShift, *rProb, *rRoot, *rFree, *rStepMs, *rChain, *rQuant;
-    ValueRow *sVel, *sPitch, *sProb, *sRatchet, *sMicro, *sLen, *sCond, *sSlide, *sSlice; ValueRow* sLock[kLocks];
+    ValueRow *rPattern, *rLength, *rSpeed, *rSwing, *rShift, *rProb, *rRoot, *rFree, *rStepMs, *rChain, *rQuant, *rEvolve, *rChoke;
+    ValueRow *sVel, *sPitch, *sProb, *sRatchet, *sMicro, *sLen, *sDur, *sCond, *sSlide, *sSlice, *sChord, *sRCurve; ValueRow* sLock[kLocks];
+    /** a one-line question (the tools that take a text) */
+    void ask (const juce::String& title, const juce::String& what, const juce::String& initial, std::function<void (juce::String)> then)
+    {
+        auto* w = new juce::AlertWindow (title, what, juce::MessageBoxIconType::NoIcon);
+        w->addTextEditor ("t", initial); w->addButton ("ok", 1); w->addButton ("cancel", 0);
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([w, then] (int r) { if (r == 1) then (w->getTextEditorContents ("t")); }), true);
+    }
     int selectedStep = 0, page = 0;
     void wire()
     {
@@ -713,12 +772,17 @@ public:
         rChain->onChange = [this] (float v) { if (auto* t = ctx.selected()) { t->chainOn.store (v > 0.5f); if (v > 0.5f && t->chain->empty()) chainEditor(); } };
         rChain->onMenu = [this] { chainEditor(); };
         rQuant->onChange = [this] (float v) { const int q[4] = { 0, 1, 2, 4 }; ctx.s.launchQuant.store (q[juce::jlimit (0, 3, (int) v)]); };
+        rEvolve->onChange = [this] (float v) { if (auto* t = ctx.selected()) { t->evolve.store (v); ctx.s.dirty = true; } };
+        rChoke->onChange = [this] (float v) { if (auto* t = ctx.selected()) { t->chokeGroup.store ((int) v); ctx.s.dirty = true; } };
+        sChord->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].chord = (int) v; }); };
+        sRCurve->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].rcurve = std::abs (v) < 0.02f ? 0.0f : v; }); };
         sVel->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].vel = v; }); };
         sPitch->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].pitch = (int) std::round (v); }); };
         sProb->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].prob = v; }); };
         sRatchet->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].ratchet = (int) std::round (v); }); };
         sMicro->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].micro = v; }); };
         sLen->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].len = v; }); };
+        sDur->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].dur = std::abs (v - 1.0f) < 0.02f ? 1.0f : v; }); };
         sCond->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].cond = (Cond) (int) v; }); };
         sSlide->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].slide = v > 0.5f; }); };
         sSlice->onChange = [this] (float v) { editStep ([v] (Pattern& p, int i) { p.s[(size_t) i].slice = (int) std::round (v); }); };
@@ -744,13 +808,8 @@ public:
         {
             if (r != 1) return;
             const int hits = w->getTextEditorContents ("hits").getIntValue(), rot = w->getTextEditorContents ("rot").getIntValue();
-            tool ([hits, rot] (Pattern& p) { const int n = p.length; for (int i = 0; i < n; ++i) { const int k = ((i - rot) % n + n) % n; const bool on = hits > 0 && ((k * hits) % n) < hits; p.s[(size_t) i].on = on; if (on) p.s[(size_t) i].vel = 0.8f; } });
+            tool ([hits, rot] (Pattern& p) { tools::euclid (p, hits, rot); });
         }), true);
-    }
-    void markov()
-    {
-        // a two-state walk over the existing steps: on → on with 0.6, off → on with 0.25; velocities follow a random walk
-        tool ([this] (Pattern& p) { bool prev = p.s[0].on; float v = 0.7f; for (int i = 0; i < p.length; ++i) { const bool on = rnd.nextFloat() < (prev ? 0.6f : 0.25f); v = juce::jlimit (0.2f, 1.0f, v + (rnd.nextFloat() - 0.5f) * 0.3f); p.s[(size_t) i].on = on; if (on) p.s[(size_t) i].vel = v; prev = on; } });
     }
     void chainEditor()
     {
@@ -766,6 +825,7 @@ public:
         auto* t = ctx.selected(); if (! t) return;
         juce::PopupMenu m; int id = 1; std::vector<std::pair<int, int>> list;
         auto addDev = [&] (Device& d, const juce::String& name) { juce::PopupMenu sub; for (int i = 0; i < std::min (d.numParams(), 120); ++i) { sub.addItem (id++, d.paramName (i)); list.push_back ({ d.uid, i }); } m.addSubMenu (name, sub); };
+        if (t->isMaster() || t->isReturn() || t->isAudio()) { ctx.status ("locks belong to the steps of an instrument track"); return; }
         addDev (*t->mixer, "strip"); if (t->instrument) addDev (*t->instrument, t->instrument->name); for (auto& d : t->inserts) addDev (*d, d->name);
         m.showMenuAsync (juce::PopupMenu::Options(), [this, list] (int r)
         {
@@ -826,9 +886,10 @@ public:
         rLength->set (p ? (float) p->length : 16.0f);
         rSpeed->set ((float) t->speed.load()); rSwing->set (t->swingOffset.load()); rShift->set (t->shiftMs.load()); rProb->set (t->probMul.load()); rRoot->set ((float) t->rootNote.load());
         rFree->set (t->freeClock.load() ? 1.0f : 0.0f); rStepMs->set (t->stepMs.load()); rChain->set (t->chainOn.load() ? 1.0f : 0.0f);
+        rEvolve->set (t->evolve.load()); rChoke->set ((float) t->chokeGroup.load());
         const int q = ctx.s.launchQuant.load(); rQuant->set (q == 0 ? 0.0f : q == 1 ? 1.0f : q == 2 ? 2.0f : 3.0f);
         const Step st = p ? p->s[(size_t) juce::jlimit (0, kMaxSteps - 1, selectedStep)] : Step();
-        sVel->set (st.vel); sPitch->set ((float) st.pitch); sProb->set (st.prob); sRatchet->set ((float) st.ratchet); sMicro->set (st.micro); sLen->set (st.len); sCond->set ((float) st.cond); sSlide->set (st.slide ? 1.0f : 0.0f); sSlice->set ((float) st.slice);
+        sVel->set (st.vel); sPitch->set ((float) st.pitch); sProb->set (st.prob); sRatchet->set ((float) st.ratchet); sMicro->set (st.micro); sLen->set (st.len); sDur->set (st.dur); sCond->set ((float) st.cond); sSlide->set (st.slide ? 1.0f : 0.0f); sSlice->set ((float) st.slice); sChord->set ((float) st.chord); sRCurve->set (st.rcurve);
         for (int k = 0; k < kLocks; ++k)
         {
             const auto& l = st.locks[(size_t) k];
@@ -843,29 +904,31 @@ public:
         const int w = getWidth();
         // left: track settings; middle: the grid + step; bottom: the chain
         int y = 30;
-        for (auto* r : { rPattern, rLength, rSpeed, rSwing, rShift, rProb, rRoot, rFree, rStepMs, rChain, rQuant }) { r->setBounds (8, y, 210, 18); y += 20; }
+        for (auto* r : { rPattern, rLength, rSpeed, rSwing, rShift, rProb, rRoot, rFree, rStepMs, rChain, rQuant, rEvolve, rChoke }) { r->setBounds (8, y, 210, 18); y += 20; }
         const int gx = 236, gw = w - gx - 8;
         int x = gx;
         for (auto* l : { tEuclid, tRotL, tRotR, tRev, tMutate, tHuman, tRandom, tMarkov, tRules, tDouble, tClear, tCopy, tPaste }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 196, lw, 18); x += lw + 2; }
-        tAddLock->setBounds (gx + 540, 222, 60, 18);
-        int sy = 222;
-        ValueRow* steps[] = { sVel, sPitch, sProb, sRatchet, sMicro, sLen, sCond, sSlide, sSlice };
-        for (int i = 0; i < 9; ++i) steps[i]->setBounds (gx + (i % 2) * 230, sy + (i / 2) * 20, 220, 18);
-        for (int k = 0; k < kLocks; ++k) sLock[k]->setBounds (gx + 470, 244 + k * 20, gw - 470, 18);
-        tAddDevice->setBounds (8, 332, 80, 18);
-        viewport.setBounds (8, 352, w - 16, getHeight() - 360);
+        x = gx;
+        for (auto* l : { tRatios, tAccel, tEven, tStrict, tSieve, tSievePitch, tCloud, tFreeze }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 214, lw, 18); x += lw + 2; }
+        tAddLock->setBounds (gx + 540, 240, 60, 18);
+        int sy = 240;
+        ValueRow* steps[] = { sVel, sPitch, sProb, sRatchet, sMicro, sRCurve, sLen, sDur, sCond, sSlice, sChord, sSlide };
+        for (int i = 0; i < 12; ++i) steps[i]->setBounds (gx + (i % 2) * 230, sy + (i / 2) * 20, 220, 18);
+        for (int k = 0; k < kLocks; ++k) sLock[k]->setBounds (gx + 470, 262 + k * 20, gw - 470, 18);
+        tAddDevice->setBounds (8, 366, 80, 18);
+        viewport.setBounds (8, 386, w - 16, getHeight() - 394);
         int cy = 0; const int cw = viewport.getWidth() - 12;
         for (auto* p : panels) { const int h = p->wanted (cw); p->setBounds (0, cy, cw, h); cy += h + 6; }
         chain.setSize (cw, std::max (cy, 10));
     }
-    juce::Rectangle<float> cell (int i) const { const int gx = 236; const float cw = (float) (getWidth() - gx - 8) / 16.0f; return { gx + (i % 16) * cw + 2.0f, 60.0f + (i / 16) * 0.0f, cw - 4.0f, 118.0f }; }
+    juce::Rectangle<float> cell (int i) const { const int gx = 236; const float cw = (float) (getWidth() - gx - 28) / 16.0f; return { gx + (i % 16) * cw + 2.0f, 60.0f + (i / 16) * 0.0f, cw - 4.0f, 118.0f }; }
     void paint (juce::Graphics& g) override
     {
         auto* t = ctx.selected();
         g.setFont (uiFont (11.0f, true)); g.setColour (theme.ink);
         g.drawText (t ? t->name + "  ·  " + (t->isAudio() ? "audio track" : (t->instrument ? t->instrument->name : "no instrument")) : "no track selected", 8, 6, 400, 18, juce::Justification::centredLeft, true);
-        g.setFont (uiFont (11.0f, true)); g.drawText ("step " + juce::String (selectedStep + 1), 236 + 470, 222, 100, 16, juce::Justification::centredLeft);
-        g.drawText ("devices", 90, 332, 200, 18, juce::Justification::centredLeft);
+        g.setFont (uiFont (11.0f, true)); g.drawText ("step " + juce::String (selectedStep + 1), 236 + 470, 240, 100, 16, juce::Justification::centredLeft);
+        g.drawText ("devices", 90, 366, 200, 18, juce::Justification::centredLeft);
         if (! t) return;
         auto p = t->patternAt (t->pattern.load());
         const int len = p ? p->length : 16;
@@ -898,17 +961,26 @@ public:
                 if (st.cond != Cond::Always) info << condName (st.cond) << "\n";
                 if (st.slide) info << "slide\n";
                 if (st.slice >= 0) info << "s" << (st.slice + 1) << "\n";
+                if (st.chord > 0) info << chordName (st.chord) << "\n";
+                if (std::abs (st.dur - 1.0f) > 1.0e-4f) info << "t x" << juce::String (st.dur, 2) << "\n";
                 int locks = 0; for (auto& l : st.locks) if (l.param >= 0) ++locks;
                 if (locks) info << locks << " lock" << (locks > 1 ? "s" : "") << "\n";
-                g.drawFittedText (info.trim(), r.reduced (4.0f, 6.0f).toNearestInt(), juce::Justification::topLeft, 6);
+                g.drawFittedText (info.trim(), r.withTrimmedLeft (17.0f).withTrimmedRight (2.0f).reduced (0.0f, 6.0f).toNearestInt(), juce::Justification::topLeft, 7, 1.0f);
                 if (st.ratchet > 1) { g.setColour (theme.ink.withAlpha (0.8f)); for (int q = 1; q < st.ratchet; ++q) g.fillRect (r.getX() + r.getWidth() * q / st.ratchet, r.getBottom() - 10.0f, 1.0f, 8.0f); }
             }
-            else { g.setColour (theme.ink.withAlpha (0.22f)); g.strokePath (ui::skewRect (c, 0.12f), juce::PathStrokeType (1.0f)); }
+            else
+            {
+                g.setColour (theme.ink.withAlpha (0.22f)); g.strokePath (ui::skewRect (c, 0.12f), juce::PathStrokeType (1.0f));
+                if (std::abs (st.dur - 1.0f) > 1.0e-4f) { g.setColour (theme.ink.withAlpha (0.6f)); g.setFont (uiFont (9.0f)); g.drawText ("t x" + juce::String (st.dur, 2), c.reduced (4.0f, 6.0f), juce::Justification::topLeft); }
+            }
             if (i == selectedStep) { g.setColour (juce::Colours::white); g.strokePath (ui::skewRect (c.expanded (1.0f), 0.12f), juce::PathStrokeType (1.5f)); }
             if (i == playing) { g.setColour (juce::Colours::white); g.fillRect (c.getX(), c.getBottom() + 2.0f, c.getWidth(), 2.0f); }
         }
         g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (9.5f));
-        g.drawText (ui::U ("click: on / off and select · drag up / down: velocity · drag across: paint · shift-drag: micro · alt-click: chance · right-click: ratchet · double-click a device slider: default · right-click a slider: map an lfo, automation, midi learn, macro"), 236, 182, getWidth() - 244, 14, juce::Justification::centredLeft, true);
+        g.drawText (ui::U ("click: on / off and select · drag up / down: velocity · drag across: paint · shift-drag: micro · alt-click: chance · right-click: ratchet · right-click a slider below: map an lfo / random / gate, automate, midi, key, macro"), 236, 182, getWidth() - 244, 14, juce::Justification::centredLeft, true);
+        // the evolving copy: steps that have drifted from what is written carry a mark
+        if (t->evolve.load() > 0.0005f)
+            for (int k = 0; k < 16; ++k) { const int i = page * 16 + k; if (i < len && (t->flip[(size_t) i] != 0 || t->drift[(size_t) i] != 0.0f)) { g.setColour (juce::Colour (0xffee8e6e)); g.fillRect (cell (k).getX() + 14.0f, 58.0f - 6.0f, 10.0f, 3.0f); } }
     }
     int stepAt (juce::Point<float> p) const { for (int k = 0; k < 16; ++k) if (cell (k).expanded (2.0f).contains (p)) return page * 16 + k; return -1; }
     void mouseDown (const juce::MouseEvent& e) override
@@ -941,12 +1013,13 @@ public:
         refresh();
     }
     void mouseUp (const juce::MouseEvent&) override { if (mode == Pending && ! turnedOn) { const int ds = downStep; editStep ([ds] (Pattern& p, int) { p.s[(size_t) ds].on = false; }); } mode = None; refresh(); }
-    void tick() override { for (auto* p : panels) p->tick(); repaint (236, 50, getWidth() - 236, 140); }
+    void tick() override { for (auto* p : panels) p->tick(); repaint (236, 30, getWidth() - 236, 160); }
 private:
     juce::OwnedArray<ui::TextLink> links; juce::OwnedArray<ValueRow> rows; juce::OwnedArray<DevicePanel> panels;
     ui::TextLink *tEuclid, *tRotL, *tRotR, *tRev, *tMutate, *tHuman, *tRandom, *tMarkov, *tRules, *tDouble, *tClear, *tCopy, *tPaste, *tAddDevice, *tAddLock;
+    ui::TextLink *tRatios, *tAccel, *tEven, *tStrict, *tSieve, *tSievePitch, *tCloud, *tFreeze;
     juce::Component chain; juce::Viewport viewport;
-    Pattern clip; juce::Random rnd;
+    Pattern clip; Rng rng;
     enum Mode { None, Pending, Vertical, Paint, Micro } mode = None;
     int downStep = 0; float startVel = 0, startMicro = 0; bool paintOn = true, turnedOn = false;
 };
@@ -954,78 +1027,221 @@ private:
 // =================================================================================================
 //  mix: strips, outputs, widths, routes
 // =================================================================================================
+/** the route icon of a strip: drag it onto another strip to route this track there; a click lists the routes */
+class RouteHandle : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    RouteHandle() { setMouseCursor (juce::MouseCursor::DraggingHandCursor); setTooltip ("route: drag this onto another track's strip to send this track's channels into it; click for the routes it has"); }
+    std::function<void()> onClick; std::function<void (juce::Point<int> screen)> onDragTo, onDrop;
+    bool active = false; int count = 0;
+    void paint (juce::Graphics& g) override
+    {
+        const auto t = studioTheme(); auto b = getLocalBounds().toFloat().reduced (2.0f);
+        const float cy = b.getCentreY();
+        g.setColour (active ? juce::Colour (0xffee8e6e) : t.ink);
+        g.drawEllipse (b.getX() + 2.0f, cy - 5.0f, 10.0f, 10.0f, 1.4f);
+        if (count > 0) g.fillEllipse (b.getX() + 4.5f, cy - 2.5f, 5.0f, 5.0f);
+        juce::Path p; p.startNewSubPath (b.getX() + 13.0f, cy); p.lineTo (b.getX() + 24.0f, cy); p.startNewSubPath (b.getX() + 20.0f, cy - 4.0f); p.lineTo (b.getX() + 24.0f, cy); p.lineTo (b.getX() + 20.0f, cy + 4.0f);
+        g.strokePath (p, juce::PathStrokeType (1.4f));
+        g.setFont (uiFont (10.5f)); g.drawText (count > 0 ? "route (" + juce::String (count) + ")" : juce::String ("route"), b.withTrimmedLeft (30.0f), juce::Justification::centredLeft, true);
+    }
+    void mouseDown (const juce::MouseEvent&) override { dragged = false; }
+    void mouseDrag (const juce::MouseEvent& e) override { if (e.getDistanceFromDragStart() > 5) { dragged = true; active = true; repaint(); if (onDragTo) onDragTo (e.getScreenPosition()); } }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        active = false; repaint();
+        if (dragged) { if (onDrop) onDrop (e.getScreenPosition()); }
+        else if (onClick) onClick();
+        dragged = false;
+    }
+private:
+    bool dragged = false;
+};
+
+/** the popup after a route drag: how many channels, from where, into where */
+class RoutePopup : public juce::Component
+{
+public:
+    RoutePopup (Session& s, Track& from, Track& to, std::function<void()> done)
+        : session (s), src (from), dst (to), close (std::move (done)), cancel ("cancel", studioTheme()), custom ("other...", studioTheme())
+    {
+        feedback = s.wouldFeedBack (from, to.uid);
+        suggested = std::min (from.width.load(), to.width.load());
+        for (int c : { 1, 2, 4, 6, 8, 9, 12, 16, 24, 25, 32, 36, 49, 64 })
+        {
+            if (c > from.width.load()) continue;
+            auto* l = counts.add (new ui::TextLink (juce::String (c), studioTheme()));
+            l->setLit (c == suggested); l->onClick = [this, c] { choose (c); };
+            addAndMakeVisible (l);
+        }
+        if (counts.isEmpty() || from.width.load() != suggested) { }
+        fromCh = std::make_unique<ValueRow> ("from channel", 1.0f, (float) std::max (1, from.width.load()), 1.0f, [] (float v) { return juce::String (juce::roundToInt (v)); });
+        toCh = std::make_unique<ValueRow> ("into channel", 1.0f, (float) std::max (1, to.width.load()), 1.0f, [] (float v) { return juce::String (juce::roundToInt (v)); });
+        gain = std::make_unique<ValueRow> ("gain", -24.0f, 12.0f, 0.0f, [] (float v) { return (v > 0 ? "+" : "") + juce::String (v, 1) + " db"; });
+        for (auto* r : { fromCh.get(), toCh.get(), gain.get() }) { r->setLabelWidth (90); addAndMakeVisible (r); }
+        addAndMakeVisible (cancel); addAndMakeVisible (custom);
+        cancel.onClick = [this] { if (close) close(); };
+        custom.onClick = [this]
+        {
+            auto* w = new juce::AlertWindow ("route", "how many channels", juce::MessageBoxIconType::NoIcon);
+            w->addTextEditor ("ch", juce::String (suggested)); w->addButton ("route", 1); w->addButton ("cancel", 0);
+            juce::Component::SafePointer<RoutePopup> safe (this);
+            w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w] (int r) { if (r == 1 && safe) safe->choose (w->getTextEditorContents ("ch").getIntValue()); }), true);
+        };
+        setSize (std::max (340, 16 + counts.size() * 34), 168);
+    }
+    /** make the route over this many channels (what a click on a number does) */
+    bool choose (int channels)
+    {
+        Route r; r.dst = dst.uid; r.channels = juce::jlimit (1, kMaxWidth, channels);
+        r.srcOffset = juce::roundToInt (fromCh->get()) - 1; r.dstOffset = juce::roundToInt (toCh->get()) - 1; r.gain = juce::Decibels::decibelsToGain (gain->get());
+        const bool ok = session.addRoute (src, r);
+        if (close) close();
+        return ok;
+    }
+    int suggestion() const { return suggested; }
+    void resized() override
+    {
+        int x = 8; for (auto* l : counts) { l->setBounds (x, 48, 32, 22); x += 34; }
+        fromCh->setBounds (8, 80, getWidth() - 16, 18); toCh->setBounds (8, 100, getWidth() - 16, 18); gain->setBounds (8, 120, getWidth() - 16, 18);
+        custom.setBounds (8, 142, 70, 20); cancel.setBounds (getWidth() - 70, 142, 62, 20);
+    }
+    void paint (juce::Graphics& g) override
+    {
+        const auto t = studioTheme();
+        g.fillAll (t.ground.brighter (kDeep ? 0.25f : 0.14f)); g.setColour (t.ink); g.drawRect (getLocalBounds(), 1);
+        g.setFont (uiFont (11.0f, true)); g.drawText ("route " + src.name + " (" + juce::String (src.width.load()) + " ch)" + ui::U (" → ") + dst.name + " (" + juce::String (dst.width.load()) + " ch)", 8, 6, getWidth() - 16, 16, juce::Justification::centredLeft, true);
+        g.setFont (uiFont (10.5f));
+        g.drawText (feedback ? ui::U ("how many channels?  ·  this closes a loop: a feedback route, one buffer late, limited") : juce::String ("how many channels?"), 8, 26, getWidth() - 16, 16, juce::Justification::centredLeft, true);
+    }
+    Session& session; Track& src; Track& dst;
+private:
+    std::function<void()> close; juce::OwnedArray<ui::TextLink> counts; ui::TextLink cancel, custom;
+    std::unique_ptr<ValueRow> fromCh, toCh, gain; int suggested = 2; bool feedback = false;
+};
+
 class Strip : public juce::Component
 {
 public:
-    Strip (Ctx& c, Track& t) : ctx (c), track (t), theme (studioTheme()), meter (t), level (t.mixer->base (MP_LEVEL), theme, "level"), pan (t.mixer->base (MP_PAN), theme, "pan"),
-        mute ("mute", theme), solo ("solo", theme), arm ("rec", theme), out ("out", theme), width ("2 ch", theme), toMaster ("to master", theme), route ("route", theme), input ("in", theme), key ("key", theme)
+    Strip (Ctx& c, Track& t) : ctx (c), track (t), theme (studioTheme()), meter (t),
+        mute ("mute", theme), solo ("solo", theme), arm ("rec", theme), out ("out", theme), width ("2 ch", theme), toMaster ("to master", theme), input ("in", theme), key ("key", theme), bounce ("bounce", theme), autoMaster ("auto master", theme)
     {
-        addAndMakeVisible (meter); addAndMakeVisible (level); addAndMakeVisible (pan);
-        level.setLabelWidth (34); pan.setLabelWidth (34);
-        for (auto* l : { &mute, &solo, &arm, &out, &width, &toMaster, &route, &input, &key }) addAndMakeVisible (l);
-        for (int r = 0; r < kReturns; ++r)
+        addAndMakeVisible (meter);
+        Device& lvlDev = t.isMaster() ? *c.s.global : *t.mixer;
+        level = std::make_unique<BarSlider> (lvlDev, t.isMaster() ? (int) GP_MASTER : (int) MP_LEVEL, "level");
+        Track* menuTrack = &t;
+        level->onMenu = [this, menuTrack] (BarSlider& b) { ParamMenu::show (ctx.s, track.isMaster() ? *ctx.s.master : *menuTrack, b.device, b.index, &b, [this] (int) { ctx.select (&track); ctx.showPage (1); }); };
+        addAndMakeVisible (*level);
+        if (! t.isMaster())
         {
-            auto* s = sends.add (new ui::ParamSlider (t.mixer->base (MP_SEND1 + r), theme, juce::String (r + 1)));
-            s->setLabelWidth (14); addAndMakeVisible (s);
+            pan = std::make_unique<BarSlider> (*t.mixer, MP_PAN, "pan");
+            pan->onMenu = [this] (BarSlider& b) { ParamMenu::show (ctx.s, track, b.device, b.index, &b, [this] (int) { ctx.select (&track); ctx.showPage (1); }); };
+            addAndMakeVisible (*pan);
         }
+        if (! t.isMaster() && ! t.isReturn())
+            for (int r = 0; r < kReturns; ++r)
+            {
+                auto* s = sends.add (new BarSlider (*t.mixer, MP_SEND1 + r, juce::String (r + 1)));
+                s->onMenu = [this, r] (BarSlider& b)
+                {
+                    if (juce::ModifierKeys::currentModifiers.isAltDown()) { track.sendPre[(size_t) r].store (! track.sendPre[(size_t) r].load()); return; }
+                    ParamMenu::show (ctx.s, track, b.device, b.index, &b, [this] (int) { ctx.select (&track); ctx.showPage (1); });
+                };
+                addAndMakeVisible (s);
+            }
+        for (auto* l : { &mute, &solo, &arm, &out, &width, &toMaster, &input, &key, &bounce, &autoMaster }) addAndMakeVisible (l);
+        addAndMakeVisible (route);
         mute.onClick = [this] { track.mixer->setBase (MP_MUTE, track.muted() ? 0.0f : 1.0f); };
         solo.onClick = [this] { track.solo.store (! track.solo.load()); };
         arm.onClick = [this] { track.armed.store (! track.armed.load()); };
-        toMaster.onClick = [this] { track.toMaster.store (! track.toMaster.load()); };
+        toMaster.onClick = [this] { track.toMaster.store (! track.toMaster.load()); ctx.s.dirty = true; };
         out.onClick = [this] { outMenu(); };
         width.onClick = [this] { widthMenu(); };
         route.onClick = [this] { routeMenu(); };
         input.onClick = [this] { inputMenu(); };
         key.onClick = [this] { keyMenu(); };
+        bounce.onClick = [this] { bounceMenu(); };
+        autoMaster.onClick = [this] { if (onAutoMaster) onAutoMaster(); };
+        mute.setTooltip ("mute (m)"); solo.setTooltip ("solo (s)"); toMaster.setTooltip ("to master: off, the track only feeds its routes and its own output channels");
+        width.setTooltip ("how many channels this track has (1 - 64): reads > makes / width");
+        out.setTooltip ("its own output channels (multi-out), and pre / post fader sends");
+        key.setTooltip ("the track the sidechain devices on this track listen to");
+        bounce.setTooltip (t.isMaster() ? "render the project (or the loop) into a new audio track" : "render this track into a new audio track or a sampler");
+        autoMaster.setTooltip ("ms0 listens to the track for 20 seconds and sets the mastering chain once");
     }
+    std::function<void()> onAutoMaster; std::function<void (Strip&, juce::Point<int>)> onRouteDrag, onRouteDrop;
+    RouteHandle route;
     void outMenu()
     {
         juce::PopupMenu m;
+        if (track.isMaster())
+        {
+            for (int c = 1; c + track.width.load() - 1 <= kOutChannels && c <= 65; c += 2) m.addItem (100 + c, "master on channels " + juce::String (c) + "-" + juce::String (c + track.width.load() - 1), true, ctx.s.masterOut.load() == c);
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&out), [this] (int r) { if (r >= 100) { ctx.s.masterOut.store (r - 100); ctx.s.dirty = true; } });
+            return;
+        }
         m.addItem (1, "no own output (master only)", true, track.outChannel.load() == 0);
         for (int b = 0; b < kOutChannels; b += 16) { juce::PopupMenu sub; for (int c = b + 1; c <= b + 16; c += 2) sub.addItem (100 + c, "channels " + juce::String (c) + "-" + juce::String (c + track.width.load() - 1), true, track.outChannel.load() == c); m.addSubMenu ("channels " + juce::String (b + 1) + ".." + juce::String (b + 16), sub); }
-        for (int r = 0; r < (int) ctx.s.returns.size(); ++r) { const bool pre = track.sendPre[(size_t) r].load(); m.addItem (300 + r, "send " + juce::String (r + 1) + (pre ? ": pre fader" : ": post fader")); }
+        if (! track.isReturn()) for (int r = 0; r < (int) ctx.s.returns.size(); ++r) { const bool pre = track.sendPre[(size_t) r].load(); m.addItem (300 + r, "send " + juce::String (r + 1) + " (" + ctx.s.returns[(size_t) r]->name + ")" + (pre ? ": pre fader" : ": post fader")); }
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&out), [this] (int r)
         {
             if (r == 1) track.outChannel.store (0); else if (r >= 100 && r < 300) { track.outChannel.store (r - 100); ctx.s.multiOut.store (true); }
             else if (r >= 300) track.sendPre[(size_t) (r - 300)].store (! track.sendPre[(size_t) (r - 300)].load());
-            ctx.s.rebuildLatency();
+            ctx.s.rebuildLatency(); ctx.s.dirty = true;
         });
     }
+    static const std::vector<int>& widths() { static const std::vector<int> w { 1, 2, 4, 6, 8, 9, 12, 16, 24, 25, 32, 36, 49, 64 }; return w; }
     void widthMenu()
     {
-        juce::PopupMenu m; for (int w : { 1, 2, 4, 6, 8, 9, 12, 16, 24, 25, 32, 36, 49, 64 }) m.addItem (w, juce::String (w) + " ch", true, track.width.load() == w);
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&width), [this] (int r) { if (r > 0) ctx.s.setWidth (track, r); });
+        juce::PopupMenu m;
+        for (int w : widths())
+        {
+            if (track.isMaster() && w < 2) continue;
+            juce::String n = juce::String (w) + " ch";
+            if (w == 1) n << "  mono"; else if (w == 2) n << "  stereo";
+            else if (w == 4 || w == 9 || w == 16 || w == 25 || w == 36 || w == 49 || w == 64) n << "  ambisonics, order " << juce::roundToInt (std::sqrt ((double) w)) - 1;
+            m.addItem (w, n, true, track.width.load() == w);
+        }
+        m.addItem (1000, "other...");
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&width), [this] (int r)
+        {
+            if (r > 0 && r < 1000) setWidth (r);
+            else if (r == 1000)
+            {
+                auto* w = new juce::AlertWindow ("width", "channels (1 - 64)", juce::MessageBoxIconType::NoIcon);
+                w->addTextEditor ("ch", juce::String (track.width.load())); w->addButton ("ok", 1); w->addButton ("cancel", 0);
+                juce::Component::SafePointer<Strip> safe (this);
+                w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w] (int rr) { if (rr == 1 && safe) safe->setWidth (w->getTextEditorContents ("ch").getIntValue()); }), true);
+            }
+        });
     }
+    /** what the width menu does */
+    void setWidth (int w) { ctx.s.setWidth (track, track.isMaster() ? std::max (2, w) : w); if (auto* p = getParentComponent()) p->repaint(); }
     void routeMenu()
     {
         juce::PopupMenu m;
+        m.addSectionHeader ("drag the route icon onto another strip, or:");
         int id = 1; std::vector<int> dst;
-        for (auto& t : ctx.s.tracks) if (t.get() != &track) { m.addItem (id++, "route to " + t->name + " (" + juce::String (t->width.load()) + " ch)"); dst.push_back (t->uid); }
-        for (auto& t : ctx.s.returns) if (t.get() != &track) { m.addItem (id++, "route to " + t->name); dst.push_back (t->uid); }
-        if (! track.routes->empty()) { m.addSeparator(); for (int i = 0; i < (int) track.routes->size(); ++i) { auto* d = ctx.s.trackByUid ((*track.routes)[(size_t) i].dst); m.addItem (500 + i, "remove route to " + (d ? d->name : juce::String ("?")) + " (" + juce::String ((*track.routes)[(size_t) i].channels) + " ch)"); } }
+        for (auto& t : ctx.s.tracks) if (t.get() != &track) { m.addItem (id++, "route to " + t->name + " (" + juce::String (t->width.load()) + " ch)..."); dst.push_back (t->uid); }
+        for (auto& t : ctx.s.returns) if (t.get() != &track) { m.addItem (id++, "route to " + t->name + "..."); dst.push_back (t->uid); }
+        if (! track.routes->empty()) { m.addSeparator(); for (int i = 0; i < (int) track.routes->size(); ++i) { const auto& r = (*track.routes)[(size_t) i]; auto* d = ctx.s.trackByUid (r.dst); m.addItem (500 + i, "remove the route to " + (d ? d->name : juce::String ("?")) + " (" + juce::String (r.channels) + " ch" + (r.feedback ? ", feedback" : "") + ")"); } }
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&route), [this, dst] (int r)
         {
             if (r >= 500) { ctx.s.removeRoute (track, r - 500); return; }
             if (r <= 0 || r > (int) dst.size()) return;
-            const int d = dst[(size_t) r - 1];
-            auto* w = new juce::AlertWindow ("route", "how many channels, from which channel of this track, into which channel of the other", juce::MessageBoxIconType::NoIcon);
-            auto* dt = ctx.s.trackByUid (d);
-            w->addTextEditor ("ch", juce::String (std::min (track.width.load(), dt ? dt->width.load() : 2))); w->addTextEditor ("so", "1"); w->addTextEditor ("do", "1"); w->addButton ("route", 1); w->addButton ("cancel", 0);
-            w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, d] (int rr)
-            {
-                if (rr != 1) return;
-                Route rt; rt.dst = d; rt.channels = w->getTextEditorContents ("ch").getIntValue(); rt.srcOffset = w->getTextEditorContents ("so").getIntValue() - 1; rt.dstOffset = w->getTextEditorContents ("do").getIntValue() - 1;
-                if (! ctx.s.addRoute (track, rt)) ctx.status ("route refused (would make a cycle)");
-            }), true);
+            if (auto* d = ctx.s.trackByUid (dst[(size_t) r - 1])) if (onRouteAsk) onRouteAsk (*this, *d);
         });
     }
+    std::function<void (Strip&, Track&)> onRouteAsk;
     void inputMenu()
     {
         juce::PopupMenu m;
-        const int n = ctx.s.inputChannels.load();
-        m.addItem (1, "device input: mono / stereo pairs below", false);
-        for (int c = 1; c <= std::max (2, n); c += 2) m.addItem (100 + c, "input " + juce::String (c) + "-" + juce::String (c + 1), true, track.inputSource.load() == -2 && track.inputChannel.load() == c && track.inputCount.load() == 2);
-        for (int c = 1; c <= std::max (2, n); ++c) m.addItem (300 + c, "input " + juce::String (c) + " (mono)", true, track.inputSource.load() == -2 && track.inputChannel.load() == c && track.inputCount.load() == 1);
+        const int n = std::max (2, ctx.s.inputChannels.load()), w = track.width.load();
+        m.addSectionHeader ("device input");
+        for (int c = 1; c <= n; c += 2) m.addItem (100 + c, "input " + juce::String (c) + "-" + juce::String (c + 1), true, track.inputSource.load() == -2 && track.inputChannel.load() == c && track.inputCount.load() == 2);
+        juce::PopupMenu mono; for (int c = 1; c <= n; ++c) mono.addItem (300 + c, "input " + juce::String (c), true, track.inputSource.load() == -2 && track.inputChannel.load() == c && track.inputCount.load() == 1);
+        m.addSubMenu ("mono", mono);
+        if (w > 2) { juce::PopupMenu wide; for (int c = 1; c + w - 1 <= std::max (n, w); c += (w > 8 ? w : 2)) wide.addItem (600 + c, "inputs " + juce::String (c) + "-" + juce::String (c + w - 1) + " (" + juce::String (w) + " ch)", true, track.inputSource.load() == -2 && track.inputChannel.load() == c && track.inputCount.load() == w); m.addSubMenu (juce::String (w) + " channels (the track's width)", wide); }
         m.addSeparator();
         m.addItem (2, "resample: the master", true, track.inputSource.load() == 0);
         juce::PopupMenu rs; for (auto& t : ctx.s.tracks) if (t.get() != &track) rs.addItem (1000 + t->uid, t->name, true, track.inputSource.load() == t->uid); m.addSubMenu ("resample: a track", rs);
@@ -1034,10 +1250,12 @@ public:
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&input), [this] (int r)
         {
             if (r >= 1000) { track.inputSource.store (r - 1000); }
+            else if (r >= 600) { track.inputSource.store (-2); track.inputChannel.store (r - 600); track.inputCount.store (track.width.load()); }
             else if (r >= 300) { track.inputSource.store (-2); track.inputChannel.store (r - 300); track.inputCount.store (1); }
             else if (r >= 100) { track.inputSource.store (-2); track.inputChannel.store (r - 100); track.inputCount.store (2); }
             else if (r == 2) track.inputSource.store (0);
             else if (r >= 3 && r <= 5) track.monitor.store (r - 3);
+            if (r > 0) { ctx.s.negotiate (track); ctx.s.dirty = true; }
         });
     }
     void keyMenu()
@@ -1046,88 +1264,197 @@ public:
         for (auto& t : ctx.s.tracks) if (t.get() != &track) m.addItem (1000 + t->uid, "key: " + t->name, true, track.keyTrack.load() == t->uid);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&key), [this] (int r) { if (r == 1) track.keyTrack.store (0); else if (r >= 1000) track.keyTrack.store (r - 1000); });
     }
+    /** bounce: 1 a new audio track · 2 a sampler track · on the master: 1 the project (through the master chain) · 2 before the master chain */
+    void bounceTo (int what)
+    {
+        double a, b; ctx.s.renderRange (a, b);
+        juce::String err; Track* made = nullptr;
+        if (track.isMaster()) made = ctx.s.renderProjectToTrack (a, b, what == 2, err);
+        else made = what == 2 ? ctx.s.renderTrackToSampler (track, a, b, err) : ctx.s.renderTrackToTrack (track, a, b, err);
+        if (made) { ctx.select (made); ctx.status ((track.isMaster() ? juce::String ("project") : track.name) + " rendered (bars " + juce::String (a + 1, 0) + " - " + juce::String (b, 0) + ") into " + made->name); }
+        else ctx.status (err.isNotEmpty() ? err : juce::String ("nothing rendered"));
+    }
+    void bounceMenu()
+    {
+        juce::PopupMenu m;
+        double a, b; ctx.s.renderRange (a, b);
+        const juce::String range = ctx.s.loopOn.load() ? "the loop" : juce::String (playModeName ((PlayMode) ctx.s.mode.load())) + ", " + juce::String (b - a, 0) + " bars";
+        if (track.isMaster()) { m.addItem (1, "render the project into a new audio track (" + range + ")"); m.addItem (2, "the same, before the master chain"); }
+        else { m.addItem (1, "bounce this track into a new audio track (" + range + ")"); m.addItem (2, "bounce it into a sampler on a new track (sliced)"); }
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&bounce), [this] (int r) { if (r > 0) bounceTo (r); });
+    }
     void resized() override
     {
-        const int w = getWidth();
-        int y = 42;
-        meter.setBounds (6, y, w - 12, 110); y += 114;
-        level.setBounds (2, y, w - 4, 18); y += 20; pan.setBounds (2, y, w - 4, 18); y += 22;
+        const int w = getWidth(), in = 4, cw = w - 2 * in, half = cw / 2;
+        int y = 40;
+        const int meterH = juce::jlimit (90, 240, getHeight() - 430);
+        meter.setBounds (in + 2, y, cw - 4, meterH); y += meterH + 8;
+        level->setBounds (in, y, cw, 22); y += 23;
+        if (pan) { pan->setBounds (in, y, cw, 22); y += 23; }
+        y += 4;
         const int nr = (int) ctx.s.returns.size();
-        for (int r = 0; r < kReturns; ++r) { sends[r]->setVisible (r < nr && ! track.isReturn() && ! track.isMaster()); if (r < nr) { sends[r]->setBounds (2, y, w - 4, 16); y += 17; } }
+        for (int r = 0; r < sends.size(); ++r)
+        {
+            sends[r]->setVisible (r < nr);
+            if (r < nr) { sends[r]->setLabel (ui::U ("→ ") + ctx.s.returns[(size_t) r]->name); sends[r]->setBounds (in, y, cw, 22); y += 23; }
+        }
         y += 6;
-        mute.setBounds (2, y, (w - 4) / 2, 18); solo.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
-        arm.setBounds (2, y, (w - 4) / 3, 18); toMaster.setBounds (2 + (w - 4) / 3, y, (w - 4) * 2 / 3, 18); y += 20;
-        out.setBounds (2, y, (w - 4) / 2, 18); width.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
-        route.setBounds (2, y, (w - 4) / 2, 18); input.setBounds (2 + (w - 4) / 2, y, (w - 4) / 2, 18); y += 20;
-        key.setBounds (2, y, (w - 4) / 2, 18);
         const bool master = track.isMaster(), ret = track.isReturn();
-        arm.setVisible (track.isAudio()); input.setVisible (track.isAudio()); toMaster.setVisible (! master); route.setVisible (! master && ! ret); solo.setVisible (! master && ! ret); mute.setVisible (! master);
+        mute.setVisible (! master); solo.setVisible (! master && ! ret); arm.setVisible (track.isAudio()); input.setVisible (track.isAudio());
+        toMaster.setVisible (! master); route.setVisible (! master && ! ret); key.setVisible (! master); autoMaster.setVisible (master && ! kDeep);
+        if (! master) { mute.setBounds (in, y, half, 20); solo.setBounds (in + half, y, half, 20); y += 22; }
+        if (track.isAudio()) { arm.setBounds (in, y, half, 20); input.setBounds (in + half, y, half, 20); y += 22; }
+        if (! master) { toMaster.setBounds (in, y, cw, 20); y += 22; }
+        width.setBounds (in, y, cw, 20); y += 22;
+        out.setBounds (in, y, cw, 20); y += 22;
+        if (route.isVisible()) { route.setBounds (in, y, cw, 22); y += 24; }
+        if (! master) { key.setBounds (in, y, half, 20); bounce.setBounds (in + half, y, half, 20); y += 22; }
+        else { bounce.setBounds (in, y, cw, 20); y += 22; autoMaster.setBounds (in, y, cw, 20); y += 22; }
+        routesY = y + 2;
     }
     void paint (juce::Graphics& g) override
     {
         const bool sel = ctx.selected() == &track;
         g.setColour (theme.ink.withAlpha (sel ? 0.12f : 0.05f)); g.fillRect (getLocalBounds().reduced (1, 0));
         g.setColour (trackColour (track)); g.fillRect (0, 0, getWidth(), 4);
-        g.setColour (theme.ink); g.setFont (uiFont (11.0f, sel));
-        g.drawText (track.name, 4, 8, getWidth() - 8, 16, juce::Justification::centredLeft, true);
-        g.setFont (uiFont (9.0f)); g.setColour (theme.ink.withAlpha (0.7f));
+        g.setColour (theme.ink); g.setFont (uiFont (11.5f, sel));
+        g.drawText (track.name, 6, 8, getWidth() - 12, 16, juce::Justification::centredLeft, true);
+        g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.75f));
         juce::String sub;
-        if (track.isMaster()) sub = juce::String (track.width.load()) + " ch out " + juce::String (ctx.s.masterOut.load());
-        else sub = (track.outChannel.load() > 0 && ctx.s.multiOut.load() ? "ch " + juce::String (track.outChannel.load()) + "-" + juce::String (track.outChannel.load() + track.width.load() - 1) : juce::String (track.toMaster.load() ? "to master" : "no output")) + (track.routes->empty() ? "" : ui::U (" · ") + juce::String (track.routes->size()) + " route" + (track.routes->size() > 1 ? "s" : ""));
-        g.drawText (sub, 4, 24, getWidth() - 8, 14, juce::Justification::centredLeft, true);
+        if (track.isMaster()) sub = juce::String (track.width.load()) + " ch, channels " + juce::String (ctx.s.masterOut.load()) + "-" + juce::String (ctx.s.masterOut.load() + track.width.load() - 1);
+        else sub = track.isAudio() ? "audio" : track.isReturn() ? "return" : (track.instrument ? track.instrument->name : juce::String ("no instrument"));
+        g.drawText (sub, 6, 23, getWidth() - 12, 13, juce::Justification::centredLeft, true);
         mute.setLit (track.muted()); solo.setLit (track.solo.load()); arm.setLit (track.armed.load()); toMaster.setLit (track.toMaster.load());
-        width.setText (juce::String (track.inWidth()) + ui::U ("→") + juce::String (track.outWidth()) + "/" + juce::String (track.width.load()));
+        toMaster.setText (track.toMaster.load() ? "to master" : "not to master");
+        width.setText (track.isMaster() ? "width: " + juce::String (track.width.load()) + " ch" : "width: " + juce::String (track.inWidth()) + ui::U (" → ") + juce::String (track.outWidth()) + " / " + juce::String (track.width.load()) + " ch");
+        const int oc = track.outChannel.load();
+        out.setText (track.isMaster() ? "out " + juce::String (ctx.s.masterOut.load()) + "-" + juce::String (ctx.s.masterOut.load() + track.width.load() - 1)
+                                      : (oc > 0 && ctx.s.multiOut.load() ? "out " + juce::String (oc) + "-" + juce::String (oc + track.width.load() - 1) : juce::String ("out: master only")));
+        out.setLit (! track.isMaster() && oc > 0 && ctx.s.multiOut.load());
+        if (track.isAudio()) input.setText (track.inputSource.load() == -2 ? "in " + juce::String (track.inputChannel.load()) + (track.inputCount.load() > 1 ? "-" + juce::String (track.inputChannel.load() + track.inputCount.load() - 1) : juce::String()) : track.inputSource.load() == 0 ? juce::String ("in: master") : juce::String ("in: track"));
+        route.count = (int) track.routes->size();
+        // the routes this track has, under the buttons
+        g.setFont (uiFont (9.5f)); int y = routesY;
+        for (auto& r : *track.routes)
+        {
+            auto* d = ctx.s.trackByUid (r.dst);
+            g.setColour (juce::Colour (0xffee8e6e)); g.drawText (ui::U ("→ ") + (d ? d->name : juce::String ("?")) + "  " + juce::String (r.channels) + " ch" + (r.feedback ? " fb" : ""), 6, y, getWidth() - 12, 13, juce::Justification::centredLeft, true);
+            y += 13;
+        }
+        for (int r = 0; r < sends.size() && r < (int) ctx.s.returns.size(); ++r)
+            if (track.sendPre[(size_t) r].load()) { g.setColour (theme.ink.withAlpha (0.7f)); g.drawText ("pre", sends[r]->getRight() - 60, sends[r]->getY() - 1, 24, 10, juce::Justification::centredLeft); }
         g.setColour (theme.ink.withAlpha (0.2f)); g.fillRect (getWidth() - 1, 0, 1, getHeight());
+        if (dropTarget) { g.setColour (juce::Colour (0xffee8e6e)); g.drawRect (getLocalBounds().reduced (1), 2); }
     }
     void mouseDown (const juce::MouseEvent& e) override { if (e.y < 40) ctx.select (&track); }
-    void tick() { meter.tick(); repaint (0, 0, getWidth(), 40); }
-    Ctx& ctx; Track& track; ui::Theme theme;
-    Meter meter; ui::ParamSlider level, pan; juce::OwnedArray<ui::ParamSlider> sends;
-    ui::TextLink mute, solo, arm, out, width, toMaster, route, input, key;
+    void tick() { meter.tick(); repaint(); }
+    Ctx& ctx; Track& track; ui::Theme theme; bool dropTarget = false;
+    Meter meter; std::unique_ptr<BarSlider> level, pan; juce::OwnedArray<BarSlider> sends;
+    ui::TextLink mute, solo, arm, out, width, toMaster, input, key, bounce, autoMaster;
+    int routesY = 0;
 };
 
 class MixPage : public Page
 {
 public:
-    explicit MixPage (Ctx& c) : Page (c), mode ("produce", theme), assign ("assign all outputs", theme), bypass ("master chain bypass", theme), masterWidth ("master width", theme), masterLevel (c.s.global->base (GP_MASTER), theme, "master")
+    explicit MixPage (Ctx& c) : Page (c), mode ("produce", theme), assign ("assign all outputs", theme), bypass ("master chain bypass", theme)
     {
-        for (auto* l : { &mode, &assign, &bypass, &masterWidth }) addAndMakeVisible (l);
-        addAndMakeVisible (masterLevel); masterLevel.setLabelWidth (50);
+        for (auto* l : { &mode, &assign, &bypass }) addAndMakeVisible (l);
         mode.onClick = [this] { ctx.s.multiOut.store (! ctx.s.multiOut.load()); ctx.s.dirty = true; };
         assign.onClick = [this] { ctx.s.assignOutputs(); rebuild(); };
-        bypass.onClick = [this] { ctx.s.masterBypass.store (! ctx.s.masterBypass.load()); };
-        masterWidth.onClick = [this] { juce::PopupMenu m; for (int w : { 2, 4, 6, 8, 12, 16, 24, 32, 36, 49, 64 }) m.addItem (w, juce::String (w) + " channels", true, ctx.s.master->width.load() == w); m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&masterWidth), [this] (int r) { if (r > 0) { ctx.s.setWidth (*ctx.s.master, r); rebuild(); } }); };
+        bypass.onClick = [this] { ctx.s.masterBypass.store (! ctx.s.masterBypass.load()); ctx.s.dirty = true; };
+        mode.setTooltip ("produce: everything is mixed to the master. multi-out: tracks and returns leave on their own channels");
+        assign.setTooltip ("master on channels 1 ..., then every track and return on its own channels, to-master off");
+        bypass.setTooltip ("bypass the master's devices (when mixing and mastering happen in another daw)");
         viewport.setViewedComponent (&row, false); viewport.setScrollBarsShown (false, true); addAndMakeVisible (viewport);
     }
     void rebuild() override
     {
+        popup.reset();
         strips.clear(); row.removeAllChildren();
-        for (auto& t : ctx.s.tracks) { auto* s = strips.add (new Strip (ctx, *t)); row.addAndMakeVisible (s); }
-        for (auto& t : ctx.s.returns) { auto* s = strips.add (new Strip (ctx, *t)); row.addAndMakeVisible (s); }
-        auto* m = strips.add (new Strip (ctx, *ctx.s.master)); row.addAndMakeVisible (m);
+        auto add = [&] (Track& t)
+        {
+            auto* s = strips.add (new Strip (ctx, t)); row.addAndMakeVisible (s);
+            s->route.onDragTo = [this, s] (juce::Point<int> screen) { dragFrom = s; dragAt = getLocalPoint (nullptr, screen); for (auto* o : strips) o->dropTarget = o != s && o->getScreenBounds().contains (screen) && ! o->track.isMaster(); repaint(); };
+            s->route.onDrop = [this, s] (juce::Point<int> screen) { routeDropped (*s, screen); };
+            s->onRouteAsk = [this] (Strip& from, Track& to) { askRoute (from.track, to, from.getBounds().getCentre() + viewport.getPosition() - viewport.getViewPosition()); };
+            s->onAutoMaster = [this] { if (onAutoMaster) onAutoMaster(); };
+        };
+        for (auto& t : ctx.s.tracks) add (*t);
+        for (auto& t : ctx.s.returns) add (*t);
+        add (*ctx.s.master);
         resized();
     }
+    std::function<void()> onAutoMaster;
+    /** the strip of a track (scripts and tests) */
+    Strip* stripFor (const Track& t) { for (auto* s : strips) if (&s->track == &t) return s; return nullptr; }
+    RoutePopup* routePopup() { return popup.get(); }
+    void routeDropped (Strip& from, juce::Point<int> screen)
+    {
+        dragFrom = nullptr;
+        Strip* target = nullptr;
+        for (auto* o : strips) { if (o != &from && o->getScreenBounds().contains (screen) && ! o->track.isMaster()) target = o; o->dropTarget = false; }
+        repaint();
+        if (! target) { ctx.status ("route: drop the icon on another track's strip"); return; }
+        askRoute (from.track, target->track, getLocalPoint (nullptr, screen));
+    }
+    /** the popup that asks how many channels */
+    void askRoute (Track& from, Track& to, juce::Point<int> at)
+    {
+        popup = std::make_unique<RoutePopup> (ctx.s, from, to, [this] { juce::Component::SafePointer<MixPage> safe (this); juce::MessageManager::callAsync ([safe] { if (safe) { safe->popup.reset(); safe->rebuildKeepingScroll(); } }); closing = true; });
+        closing = false;
+        addAndMakeVisible (*popup);
+        popup->setTopLeftPosition (juce::jlimit (4, std::max (4, getWidth() - popup->getWidth() - 4), at.x - popup->getWidth() / 2), juce::jlimit (36, std::max (36, getHeight() - popup->getHeight() - 30), at.y - 40));
+        popup->toFront (false);
+    }
+    void rebuildKeepingScroll() { const auto p = viewport.getViewPosition(); resized(); viewport.setViewPosition (p); repaint(); }
     void resized() override
     {
-        mode.setBounds (8, 6, 90, 20); assign.setBounds (104, 6, 150, 20); bypass.setBounds (260, 6, 150, 20); masterWidth.setBounds (416, 6, 110, 20); masterLevel.setBounds (540, 6, 260, 20);
-        viewport.setBounds (0, 32, getWidth(), getHeight() - 60);
-        const int sw = 96; int x = 0;
-        for (auto* s : strips) { s->setBounds (x, 0, sw, viewport.getHeight() - 14); x += sw; }
-        row.setSize (std::max (x, 10), viewport.getHeight() - 14);
+        mode.setBounds (8, 6, 90, 20); assign.setBounds (104, 6, 150, 20); bypass.setBounds (260, 6, 160, 20);
+        viewport.setBounds (0, 32, getWidth(), getHeight() - 58);
+        const int n = std::max (1, strips.size());
+        const int sw = juce::jlimit (118, 150, (getWidth() - 2) / n); int x = 0;
+        for (auto* s : strips) { s->setBounds (x, 0, sw, viewport.getHeight() - 12); x += sw; }
+        row.setSize (std::max (x, 10), viewport.getHeight() - 12);
     }
     void paint (juce::Graphics& g) override
     {
         mode.setText (ctx.s.multiOut.load() ? "multi-out" : "produce"); mode.setLit (ctx.s.multiOut.load()); bypass.setLit (ctx.s.masterBypass.load());
-        // the routes as lines along the bottom
-        g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (9.5f));
+        g.setColour (theme.ink.withAlpha (0.75f)); g.setFont (uiFont (10.0f));
+        g.drawText (ui::U ("drag a strip's route icon onto another strip to route it there · width: the track's channels (1 - 64) · alt-right-click a send: pre / post fader"), 430, 8, getWidth() - 440, 16, juce::Justification::centredLeft, true);
         juce::String routes;
-        for (auto& t : ctx.s.tracks) for (auto& r : *t->routes) if (auto* d = ctx.s.trackByUid (r.dst)) routes << t->name << ui::U (" → ") << d->name << " (" << r.channels << " ch)   ";
-        g.drawText (routes.isEmpty() ? juce::String (ctx.s.multiOut.load() ? "multi-out: every track and return on its own device channels (channels 1-2 … 127-128); send them to another daw over a 128-channel device" : "produce: everything mixed to the master; switch to multi-out to put tracks on their own channels") : "routes: " + routes, 8, getHeight() - 22, getWidth() - 16, 16, juce::Justification::centredLeft, true);
+        for (auto& t : ctx.s.tracks) for (auto& r : *t->routes) if (auto* d = ctx.s.trackByUid (r.dst)) routes << t->name << ui::U (" → ") << d->name << " (" << r.channels << " ch" << (r.feedback ? ", feedback" : "") << ")   ";
+        g.drawText (routes.isEmpty() ? juce::String (ctx.s.multiOut.load() ? "multi-out: every track and return with an output leaves on its own device channels (1-2 ... 127-128); record them in another daw over a 128-channel device or the plug-in's buses"
+                                                                           : "produce: everything is mixed to the master. multi-out puts tracks on their own channels")
+                                     : "routes: " + routes, 8, getHeight() - 22, getWidth() - 16, 16, juce::Justification::centredLeft, true);
+    }
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        // the routes as cables between the strips, and the one being dragged
+        const juce::Colour cable (0xffee8e6e);
+        for (auto* s : strips)
+            for (auto& r : *s->track.routes)
+                for (auto* d : strips)
+                    if (d->track.uid == r.dst && &d->track != ctx.s.master.get())
+                    {
+                        const auto a = getLocalPoint (&s->route, juce::Point<int> (8, s->route.getHeight() / 2)).toFloat(), b = getLocalPoint (d, juce::Point<int> (d->getWidth() / 2, 36)).toFloat();
+                        if (a.x < -50 || b.x < -50 || a.x > getWidth() + 50 || b.x > getWidth() + 50) continue;
+                        juce::Path p; p.startNewSubPath (a); p.cubicTo (a.x, a.y + 60.0f, b.x, b.y - 30.0f, b.x, b.y);
+                        g.setColour (cable.withAlpha (r.feedback ? 0.35f : 0.55f)); g.strokePath (p, juce::PathStrokeType (1.3f));
+                        g.fillEllipse (b.x - 3.0f, b.y - 3.0f, 6.0f, 6.0f);
+                    }
+        if (dragFrom)
+        {
+            const auto a = getLocalPoint (&dragFrom->route, juce::Point<int> (8, dragFrom->route.getHeight() / 2)).toFloat();
+            g.setColour (cable); g.drawLine (a.x, a.y, (float) dragAt.x, (float) dragAt.y, 2.0f);
+            g.fillEllipse ((float) dragAt.x - 4.0f, (float) dragAt.y - 4.0f, 8.0f, 8.0f);
+        }
     }
     void tick() override { for (auto* s : strips) s->tick(); repaint (0, 0, getWidth(), 30); }
 private:
-    ui::TextLink mode, assign, bypass, masterWidth; ui::ParamSlider masterLevel;
+    ui::TextLink mode, assign, bypass;
     juce::Component row; juce::Viewport viewport; juce::OwnedArray<Strip> strips;
+    std::unique_ptr<RoutePopup> popup; Strip* dragFrom = nullptr; juce::Point<int> dragAt; bool closing = false;
 };
 
 // =================================================================================================
@@ -1175,7 +1502,8 @@ public:
         auto* t = ctx.selected(); if (! t) return;
         juce::PopupMenu m; int id = 1; std::vector<std::pair<int, int>> list;
         auto addDev = [&] (Device& d, const juce::String& name) { juce::PopupMenu sub; for (int i = 0; i < std::min (d.numParams(), 120); ++i) { sub.addItem (id++, d.paramName (i)); list.push_back ({ d.uid, i }); } m.addSubMenu (name, sub); };
-        addDev (*t->mixer, "strip"); if (t->instrument) addDev (*t->instrument, t->instrument->name); for (auto& d : t->inserts) addDev (*d, d->name);
+        if (t->isMaster()) addDev (*ctx.s.global, "global (tempo, swing, master level, macros)"); else addDev (*t->mixer, "strip");
+        if (t->instrument) addDev (*t->instrument, t->instrument->name); for (auto& d : t->inserts) addDev (*d, d->name);
         juce::PopupMenu mods; for (int i = 0; i < (int) t->mods->size(); ++i) { mods.addItem (id++, "rate of modulator " + juce::String ((*t->mods)[(size_t) i].id)); list.push_back ({ -1, i }); } m.addSubMenu ("another modulator's rate", mods);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addMod), [this, list] (int r)
         {
@@ -1199,7 +1527,7 @@ public:
         auto* t = ctx.selected();
         paintPanel (g, { 0, 0, getWidth() / 2, getHeight() }, t ? "modulators of " + t->name : "modulators");
         paintPanel (g, { getWidth() / 2 + 8, 0, getWidth() / 2 - 8, 260 }, "macros (the host sees these as parameters)");
-        paintPanel (g, { getWidth() / 2 + 8, 270, getWidth() / 2 - 8, getHeight() - 270 }, "midi controllers");
+        paintPanel (g, { getWidth() / 2 + 8, 270, getWidth() / 2 - 8, getHeight() - 270 }, "midi controllers and keys");
         g.setFont (uiFont (10.5f));
         if (t)
         {
@@ -1211,6 +1539,7 @@ public:
                 if (m.src == MOD_LFO) line << " " << lfoShapeName (m.shape);
                 line << "  " << (m.sync ? divisionNames()[juce::jlimit (0, 18, m.div)] : juce::String (m.hz, 2) + " hz");
                 line << "  depth " << (m.depth > 0 ? "+" : "") << juce::roundToInt (m.depth * 100) << "%  " << polarityName (m.polarity);
+                if (m.slew > 0.001f) line << "  slew";
                 line << ui::U ("  →  ") << (m.device == -1 ? "rate of modulator " + juce::String (m.param + 1) : ctx.s.targetName ({ t->uid, m.device, m.param }));
                 g.drawText (line, 8, y, getWidth() / 2 - 16, 18, juce::Justification::centredLeft, true);
                 // a live trace of the source
@@ -1222,7 +1551,9 @@ public:
         }
         int y = 300;
         for (auto& mm : *ctx.s.midiMaps) { g.setColour (theme.ink); g.drawText ("cc " + juce::String (mm.cc) + ui::U ("  →  ") + ctx.s.targetName (mm.target), getWidth() / 2 + 16, y, getWidth() / 2 - 24, 18, juce::Justification::centredLeft, true); y += 20; }
-        if (ctx.s.learning.load()) { g.setColour (juce::Colour (0xffee8e6e)); g.drawText ("learning: move a controller for " + ctx.s.targetName (ctx.s.learnTarget) + ui::U ("  (click here to cancel)"), getWidth() / 2 + 16, y, getWidth() / 2 - 24, 18, juce::Justification::centredLeft, true); }
+        if (ctx.s.learning.load()) { g.setColour (juce::Colour (0xffee8e6e)); g.drawText ("learning: move a controller for " + ctx.s.targetName (ctx.s.learnTarget) + ui::U ("  (click here to cancel)"), getWidth() / 2 + 16, y, getWidth() / 2 - 24, 18, juce::Justification::centredLeft, true); y += 20; }
+        for (auto& km : *ctx.s.keyMaps) { g.setColour (theme.ink); g.drawText ("key " + juce::KeyPress (km.key).getTextDescription() + (km.momentary ? " (held)" : " (toggle)") + ui::U ("  →  ") + ctx.s.targetName (km.target), getWidth() / 2 + 16, y, getWidth() / 2 - 24, 18, juce::Justification::centredLeft, true); y += 20; }
+        if (ctx.s.keyLearning.load() != 0) { g.setColour (juce::Colour (0xffee8e6e)); g.drawText ("press a key for " + ctx.s.targetName (ctx.s.keyLearnTarget) + ui::U ("  (click here to cancel)"), getWidth() / 2 + 16, y, getWidth() / 2 - 24, 18, juce::Justification::centredLeft, true); }
         g.setColour (theme.ink.withAlpha (0.6f)); g.setFont (uiFont (9.5f));
         g.drawText ("right-click a map to remove it", getWidth() / 2 + 16, getHeight() - 22, 300, 16, juce::Justification::centredLeft);
     }
@@ -1243,8 +1574,10 @@ public:
         if (e.x > getWidth() / 2 && e.y >= 300)
         {
             if (ctx.s.learning.load()) { ctx.s.midiLearnCancel(); repaint(); return; }
-            const int i = (e.y - 300) / 20;
-            if (e.mods.isPopupMenu() && i >= 0 && i < (int) ctx.s.midiMaps->size()) ctx.s.editMidiMaps ([i] (std::vector<MidiMap>& v) { v.erase (v.begin() + i); });
+            if (ctx.s.keyLearning.load() != 0) { ctx.s.keyLearning.store (0); repaint(); return; }
+            const int i = (e.y - 300) / 20, nm = (int) ctx.s.midiMaps->size();
+            if (e.mods.isPopupMenu() && i >= 0 && i < nm) ctx.s.editMidiMaps ([i] (std::vector<MidiMap>& v) { v.erase (v.begin() + i); });
+            else if (e.mods.isPopupMenu() && i >= nm && i - nm < (int) ctx.s.keyMaps->size()) { const int k = i - nm; ctx.s.editKeyMaps ([k] (std::vector<KeyMap>& v) { v.erase (v.begin() + k); }); }
             repaint();
         }
     }
@@ -1259,9 +1592,12 @@ private:
 class BrowsePage : public Page, private juce::Thread, public juce::DragAndDropContainer
 {
 public:
-    explicit BrowsePage (Ctx& c) : Page (c), juce::Thread ("plugin scan"), scan ("scan plug-ins", theme), folder ("choose folder...", theme), newTemplate ("new from template", theme), up (".. up", theme)
+    explicit BrowsePage (Ctx& c) : Page (c), juce::Thread ("plugin scan"), scan ("scan plug-ins", theme), folder ("choose folder...", theme), newTemplate ("new from template", theme), up (".. up", theme), audition ("audition", theme)
     {
-        for (auto* l : { &scan, &folder, &newTemplate, &up }) addAndMakeVisible (l);
+        for (auto* l : { &scan, &folder, &newTemplate, &up, &audition }) addAndMakeVisible (l);
+        audition.setLit (true);
+        audition.onClick = [this] { auditionOn = ! auditionOn; audition.setLit (auditionOn); if (! auditionOn) ctx.s.stopPreview(); };
+        audition.setTooltip ("click a file to hear it through the main output; click it again to stop");
         scan.onClick = [this] { if (! isThreadRunning()) startThread(); };
         folder.onClick = [this] { chooser = std::make_unique<juce::FileChooser> ("samples folder", dir); chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& fc) { if (fc.getResult().isDirectory()) { dir = fc.getResult(); ctx.s.browseDir = dir; list(); } }); };
         up.onClick = [this] { dir = dir.getParentDirectory(); ctx.s.browseDir = dir; list(); };
@@ -1269,7 +1605,17 @@ public:
         dir = ctx.s.browseDir.isDirectory() ? ctx.s.browseDir : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
         list();
     }
-    ~BrowsePage() override { stopThread (5000); }
+    ~BrowsePage() override { stopThread (5000); ctx.s.stopPreview(); }
+    void visibilityChanged() override { if (! isVisible()) ctx.s.stopPreview(); }
+    static bool isAudio (const juce::File& f) { return f.hasFileExtension ("wav;aif;aiff;flac;mp3;ogg"); }
+    /** what a click on a file does */
+    void clickFile (const juce::File& f)
+    {
+        if (! auditionOn || ! isAudio (f)) return;
+        if (previewFile == f && ctx.s.previewing()) { ctx.s.stopPreview(); previewFile = juce::File(); }
+        else { juce::String err; if (ctx.s.preview (f, &err)) previewFile = f; else ctx.status (err); }
+        repaint();
+    }
     void list() { files.clear(); for (auto& f : dir.findChildFiles (juce::File::findFilesAndDirectories, false)) if (! f.getFileName().startsWith (".")) files.add (f); files.sort(); fileScroll = 0; repaint(); }
     void run() override
     {
@@ -1292,12 +1638,12 @@ public:
     void resized() override
     {
         scan.setBounds (8, 30, 110, 20); newTemplate.setBounds (124, 30, 140, 20);
-        const auto fa = fileArea(); folder.setBounds (fa.getX() + 8, 30, 120, 20); up.setBounds (fa.getX() + 136, 30, 60, 20);
+        const auto fa = fileArea(); folder.setBounds (fa.getX() + 8, 30, 120, 20); up.setBounds (fa.getX() + 136, 30, 60, 20); audition.setBounds (fa.getX() + 204, 30, 80, 20);
     }
     void paint (juce::Graphics& g) override
     {
         paintPanel (g, devArea(), ui::U ("devices  (click: add to the selected track · right-click: as instrument / insert / on a return / on the master)"));
-        paintPanel (g, fileArea(), ui::U ("files  (double-click: onto the selected track · drag onto the arrangement · double-click a folder)"));
+        paintPanel (g, fileArea(), ui::U ("files  (click: hear it · double-click: onto the selected track · drag onto the arrangement · double-click a folder)"));
         g.setFont (uiFont (10.5f));
         g.setColour (theme.ink.withAlpha (0.7f)); g.drawText (progress, 270, 32, devArea().getWidth() - 280, 16, juce::Justification::centredLeft, true);
         types = ctx.s.deviceTypes();
@@ -1319,7 +1665,12 @@ public:
         for (auto& f : files)
         {
             if (y > getHeight()) break;
-            if (y > 60) { g.setColour (theme.ink.withAlpha (f.isDirectory() ? 0.8f : 1.0f)); g.drawText ((f.isDirectory() ? "/ " : "  ") + f.getFileName(), fa.getX() + 8, y, fa.getWidth() - 16, 18, juce::Justification::centredLeft, true); }
+            if (y > 60)
+            {
+                const bool playing = f == previewFile && ctx.s.previewing();
+                g.setColour (playing ? juce::Colour (0xffee8e6e) : theme.ink.withAlpha (f.isDirectory() ? 0.8f : 1.0f));
+                g.drawText ((f.isDirectory() ? "/ " : playing ? "> " : "  ") + f.getFileName(), fa.getX() + 8, y, fa.getWidth() - 16, 18, juce::Justification::centredLeft, true);
+            }
             y += 18;
         }
     }
@@ -1353,7 +1704,8 @@ public:
             const auto f = files[i];
             if (f.isDirectory()) { if (e.getNumberOfClicks() > 1) { dir = f; list(); } return; }
             dragFile = f;
-            if (e.getNumberOfClicks() > 1) { if (auto* t = ctx.selected()) { if (t->isAudio()) { juce::String err; ctx.s.addAudioClip (*t, f, ctx.s.currentBar(), &err); ctx.status (err.isNotEmpty() ? err : "added to " + t->name); } else if (t->instrument) if (auto* h = dynamic_cast<SampleHolder*> (t->instrument->processor())) { h->setSampleFile (f); ctx.status ("sample loaded into " + t->name); } } }
+            if (e.getNumberOfClicks() == 1) clickFile (f);
+            if (e.getNumberOfClicks() > 1) { ctx.s.stopPreview(); if (auto* t = ctx.selected()) { if (t->isAudio()) { juce::String err; ctx.s.addAudioClip (*t, f, ctx.s.currentBar(), &err); ctx.status (err.isNotEmpty() ? err : "added to " + t->name); } else if (t->instrument) if (auto* h = dynamic_cast<SampleHolder*> (t->instrument->processor())) { h->setSampleFile (f); ctx.status ("sample loaded into " + t->name); } } }
         }
     }
     void mouseDrag (const juce::MouseEvent& e) override
@@ -1380,9 +1732,10 @@ public:
         if (devArea().contains (e.getPosition())) devScroll = std::max (0, devScroll - (int) (w.deltaY * 60)); else fileScroll = std::max (0, fileScroll - (int) (w.deltaY * 60));
         repaint();
     }
+    void tick() override { if (previewFile != juce::File() && ! ctx.s.previewing()) { previewFile = juce::File(); repaint(); } }
 private:
-    ui::TextLink scan, folder, newTemplate, up;
-    juce::File dir, dragFile; juce::Array<juce::File> files; std::vector<Session::TypeEntry> types;
+    ui::TextLink scan, folder, newTemplate, up, audition; bool auditionOn = true;
+    juce::File dir, dragFile, previewFile; juce::Array<juce::File> files; std::vector<Session::TypeEntry> types;
     juce::String progress; int devScroll = 0, fileScroll = 0;
     std::unique_ptr<juce::FileChooser> chooser;
 };
