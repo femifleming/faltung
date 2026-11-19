@@ -43,7 +43,11 @@ public:
         setClockOut (settings->getValue ("clockOut"));
         window = std::make_unique<MainWindow> (*this);
         deviceManager.addAudioCallback (this);
+       #if JUCE_MAC
         juce::MenuBarModel::setMacMainMenu (this);
+       #else
+        window->setMenuBar (this);   // (Windows / Linux: the same menus on the window)
+       #endif
         // the last project, or the starter
         juce::String err;
         const auto last = juce::File (settings->getValue ("lastProject"));
@@ -56,7 +60,11 @@ public:
     void shutdown() override
     {
         selfTest.reset();
+       #if JUCE_MAC
         juce::MenuBarModel::setMacMainMenu (nullptr);
+       #else
+        if (window) window->setMenuBar (nullptr);
+       #endif
         deviceManager.removeAudioCallback (this);
         deviceManager.removeMidiInputDeviceCallback ({}, &collector);
         if (! selfTesting)   // a self-test leaves the user's settings alone
