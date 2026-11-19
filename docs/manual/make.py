@@ -180,6 +180,12 @@ def params_rows(code, lookup, skip=lambda pid: False, rename=lambda p: p['name']
 def shot(code, cls='shot'):
     return f'<img class="{cls}" src="img/{code}.png" alt="{code}">'
 
+def crop(name, x, y, w, h, mm, cls='crop', win=1320):
+    """a part of a window picture: x, y, w, h in the window's own points, shown mm wide"""
+    k = mm / w
+    return (f'<div class="{cls}" style="width:{mm:.1f}mm;height:{h * k:.1f}mm"><img src="img/{name}.png" alt="{name}" '
+            f'style="width:{win * k:.1f}mm;margin-left:{-x * k:.1f}mm;margin-top:{-y * k:.1f}mm"></div>')
+
 def presets(code):
     return '<p class="presets"><span>presets</span> ' + ' · '.join(e(n) for n in P[code]['presets']) + '</p>'
 
@@ -465,10 +471,10 @@ MS = {
  'trim': 'input level. Aim for peaks around -6 dbfs into the chain', 'listen': 'monitoring only: stereo · mono (sum) · side (the difference) · swap (L / R). Set stereo before you bounce',
  'bypass': 'compare: hear the input instead (delayed to match the latency)', 'match': 'during compare, the input is level-matched to the output (short-term loudness), so louder never wins by default',
  'eqon': 'switch the whole linear-phase eq (stays at the same latency)', 'type': 'bell · low shelf · high shelf · notch', 'freq': 'centre or corner frequency', 'gain': 'boost or cut',
- 'q': 'width: low = broad, high = narrow', 'ch': 'stereo (both) · mid (the centre) · side (the edges)', 'on': 'band on',
+ 'q': 'width: low = broad, high = narrow (1.41 = one octave between the -3 db edges, 4.3 = a third of an octave)', 'ch': 'stereo (both) · mid (the centre) · side (the edges)', 'on': 'band on',
  'hpon': 'high-pass on', 'hpfreq': 'high-pass corner', 'hpslope': '12 – 96 db / octave', 'hpch': 'which part it acts on (side = remove lows from the edges only)',
  'lpon': 'low-pass on', 'lpfreq': 'low-pass corner', 'lpslope': '12 – 96 db / octave', 'lpch': 'which part it acts on',
- 'dynon': 'switch both dynamic bands', 'thr': 'level at which the band starts acting', 'range': 'maximum cut (negative) or boost (positive)', 'att': 'how fast it reacts', 'rel': 'how fast it lets go',
+ 'dynon': 'switch both dynamic bands', 'thr': 'level inside the band at which it starts acting (the <i>hears</i> bar shows that level)', 'range': 'maximum cut (negative) or boost (positive); the dashed bell in the analyser', 'att': 'how fast it reacts', 'rel': 'how fast it lets go',
  'mbon': 'switch the band compression (the split and widths stay)', 'x1': 'sub / low-mid crossover', 'x2': 'low-mid / mid-high crossover', 'x3': 'mid-high / high crossover',
  'ratio': 'compression ratio, keep it 1.2 – 2', 'width': 'stereo width of the band: 0% mono, 100% as is, 200% doubled side', 'solo': 'hear only the soloed bands',
  'imgon': 'switch the per-band widths', 'air': 'adds a decorrelated copy of the top band\'s centre to its sides: width for mono highs, no transient smear below the top crossover',
@@ -518,15 +524,17 @@ electroacoustic music that reaches from the lowest lows to the highest highs. Th
 <p>Everything runs in mid / side. The eq and the band split are <b>linear phase</b>: they change level without smearing the timing of
 transients or the phase between frequencies, which is why the plug-in has about 190 ms of latency (8192-tap filters at 48 khz, longer
 filters at higher rates so the resolution stays the same). Ableton compensates automatically. With every stage neutral the output equals the
-input to within 135 db — the test suite checks this.</p>
+input to within 135 db — the test suite checks this. Eq and dynamic eq frequencies can be automated: while playing, the filters
+follow a few hundredths of a second behind; in an offline bounce they are redesigned in step with the audio, so the move lands where it is drawn.</p>
 <h3>a way of working</h3><ol>
 <li><b>trim</b> so the loudest peaks sit near -6 dbfs. Listen in <b>mono</b> once for reference.</li>
 <li>Look at the <b>analyser</b> (mid blue, side orange, the input faint) — especially 150 hz – 1.5 khz, where many independent sounds pile up.
 The analyser shows where to listen, not where to cut.</li>
 <li><b>eq</b>: remove what is not wanted. A high-pass only if the lows below 25 hz are not part of the music. Small cuts in the low-mids of the
 <b>mid</b> if the centre is crowded; side-only cuts around 200 – 500 hz if the edges are muddy; a gentle side high shelf for air.
-Double-click the analyser to add a band, drag it, scroll for q, right-click for type and channel.</li>
-<li><b>dynamic eq</b> for buildups that only happen sometimes (a texture that blooms at 400 hz when it gets loud).</li>
+Double-click the analyser to add a band; drag its point (hold shift to move ten times finer), scroll or alt-drag for q, double-click the
+point to type its frequency, right-click for type, channel and exact values.</li>
+<li><b>dynamic eq</b> for buildups that only happen sometimes (a texture that blooms at 400 hz when it gets loud). See <i>the dynamic eq</i> below.</li>
 <li><b>multiband</b>: gentle (1.3 – 2:1, 1 – 2 db of reduction) and only where the low end moves too much. Go easy on the low-mid band.
 Then the <b>widths</b>: sub mono, low-mids slightly narrow, mids moderate, highs wider. Width and depth are different things; watch the imager and
 the correlation.</li>
@@ -535,12 +543,74 @@ the correlation.</li>
 <li><b>glue</b> 0.5 – 1.5 db, or none.</li>
 <li><b>clipper</b> (optional, 1 – 3 db) then <b>limiter</b>: ceiling -1 dbtp, oversampling 4× or 8×, ideally 1 – 2 db of reduction or less. Don't chase a loudness number.</li>
 <li>Check everything with <b>compare</b> (level-matched): each stage must improve separation, depth or translation, or it goes. The best chain is often short.</li></ol>
+<h3>the dynamic eq</h3>
+<p>Two bands that act only while the level inside them is above their threshold. Each is drawn in the analyser, in the colour of its
+channel (mid blue, side orange, stereo white), as the bell it <b>really</b> has — measured from the filter that runs, not from a formula:</p>
+{crop('ms0-dyn', 36, 52, 932, 360, 180)}
+<ul><li>the <b>dashed outline</b> is the <i>range</i>: the most the band may cut or boost;</li>
+<li>the <b>filled</b> part is what it is doing at this moment;</li>
+<li>the <b>bar across the bell</b> is its width. Its ends stand on the -3 db edges of the band's filter, so a high q is a short bar and a low q
+a long one. When a band is in focus — click its point, its numbers under the sliders, or touch one of its sliders — the two edge frequencies
+are written at the ends of the bar and the stretch between them is shaded from top to bottom, across the spectrum: that is what the band
+listens to and works on. A band in focus is drawn even while it is switched off, so it can be placed before it is heard.</li></ul>
+<table class="params"><tr><th>on a point (d1, d2)</th><th>does</th></tr>
+<tr><td class="n">drag</td><td>left / right: frequency · up / down: range</td></tr>
+<tr><td class="n">shift</td><td>ten times finer, for any of these drags</td></tr>
+<tr><td class="n">alt-drag, or the wheel</td><td>q: up = narrower (shift + wheel: steps of 2%)</td></tr>
+<tr><td class="n">cmd-drag (ctrl on Windows / Linux)</td><td>threshold</td></tr>
+<tr><td class="n">double-click</td><td>type the frequency</td></tr>
+<tr><td class="n">right-click</td><td>channel · type the frequency, q, threshold or range · band on / off</td></tr></table>
+{crop('ms0-type', 284, 428, 244, 430, 58, 'crop right')}
+<p>While the mouse is on a point, or drags it, a <b>read-out</b> stands beside it: the frequency to a tenth of a hertz and the note it is,
+the q, the width in octaves, the two edges, range and threshold, the level in the band and the change at this moment. The eq's points
+show theirs the same way.</p>
+<p>Under the sliders the same numbers stay in view for both bands. <b>hears</b> is the level inside the band on a -60 … 0 db scale, the
+mark is the threshold; whatever is over the threshold is drawn in the band's colour — that is when the band works. The hollow ticks on the
+<i>threshold</i> and <i>range</i> sliders show the same two things (level in the band, gain now) where you set them.</p>
+<p>The picture tells two things the numbers alone do not:</p>
+<ul><li>The filters are linear phase, 8192 taps at 44.1 / 48 khz. Low down, a very narrow band cannot be that narrow: 50 hz at q 8 comes out
+0.43 octaves wide instead of 0.18 and reaches 65% of its range (-3.4 db of a -6 db range). The bell is drawn as it is and the read-out says
+<i>reaches 65% of the range</i>. From about 300 hz up, q is what it says.</li>
+<li>A dynamic band is added to what the eq puts out; it does not multiply it. Where the eq has already cut, the same range goes deeper:
+a -6 db band on a -4 db eq bell at the same frequency takes the level to -17.6 db — 13.6 db under the eq, not 6. The bell is drawn with the eq
+under it, and the read-out says <i>on the eq's -4.0 db here: -13.6 db at most</i>. Don't stack a dynamic cut on a static one without looking.</li></ul>
+<h3>typing a value</h3>
+<p>Every slider's value can be typed: <b>double-click the number</b> at the right of the slider (double-clicking the bar still returns it to its
+default). A small field opens with the value selected; return, or a click anywhere else, applies it; escape leaves it as it was. The picture
+shows the field over dynamic band 1's frequency. In the analyser, double-click a point to type its frequency; under the dynamic eq,
+double-click a frequency or a q.</p>
+<table class="params"><tr><th>kind</th><th>what you can type</th></tr>
+<tr><td class="n">frequency</td><td><code>850</code> · <code>850 hz</code> · <code>1.2k</code> · <code>2k5</code> · <code>12.5 khz</code> · a bare number under the range is khz
+(<code>2.8</code> = 2.8 khz) · a note: <code>a4</code> <code>c#3</code> <code>bb2</code>, with cents if you like: <code>a4 +20</code></td></tr>
+<tr><td class="n">level, q, ratio</td><td>the number: <code>-4.5</code> · <code>-4.5 db</code> · <code>2.5</code> · <code>2.5:1</code></td></tr>
+<tr><td class="n">percent</td><td><code>115</code> or <code>115%</code></td></tr>
+<tr><td class="n">time</td><td><code>20</code> · <code>20 ms</code> · <code>0.02 s</code></td></tr>
+<tr><td class="n">balance</td><td><code>c</code> · <code>l 20</code> · <code>r 20</code></td></tr></table>
+<p class="small" style="clear:both">A value outside the range stops at the end of the range. A typed value is one automation gesture, like a drag.</p>
 <h3>the limiter section</h3><p>Gain → <b>clipper</b> → <b>limiter</b>, both running <b>oversampled</b> (2×, 4× or 8×, linear-phase
 half-band filters), then a short <b>true-peak safety</b> stage at the normal rate that catches anything the down-sampling filters add back.
 The limiter never acts late: a sliding minimum plus a box-car average over the look-ahead window guarantees the gain is already down when
 a peak arrives. Release is program dependent in auto (fast after short peaks, slower when it is held). Measured on a drum loop pushed
 18 db into it, the output stays at -1.000 dbtp with oversampling off, 2× and 4×, and -0.999 dbtp at 8× with the clipper. A clipper before
 the limiter is the usual way to get loudness with fewer audible limiter movements; keep it at 1 – 3 db.</p>
+<h3>the limiter's meter</h3>
+{crop('ms0', 1046, 742, 244, 110, 86, 'crop right')}
+<p>Under the limiter. Four rows: <b>in</b> — after the limiter's gain, so what the limiter is asked to hold — left and right, and <b>out</b>,
+left and right.</p>
+<p>The <b>bar is a VU meter</b>: the average level through the classic 300 ms needle. Measured: it shows 99% of a tone 301 ms after the tone
+starts, overshoots by 1.25%, and is back 301 ms after it stops (the standard asks for 300 ms ± 10% and 1 – 1.5%); a sine reads its own
+level within 0.01 db from 100 hz to 10 khz, at 44.1, 48 and 96 khz. The number beside the bar is in <b>vu</b>: 0 vu is the reference level
+written at the top right, -18 dbfs to start with (a -18 dbfs sine reads 0.0 vu), and the dashed line. Click the reference to choose
+-24 … -6 dbfs: for a loud club master take -12 or -10, so the bar plays around the dashed line. The reference is kept with the session; it
+is not a parameter.</p>
+<p>The <b>short mark</b> is the true peak (4× interpolated), falling back 20 db in 1.7 s; the <b>tall thin mark</b> holds the highest for 2 s and
+the <b>dbtp</b> number is that held peak. The orange line is the ceiling. On the way in, peaks beyond it are drawn orange: that is what the
+limiter has to take off. On the way out nothing passes it.</p>
+<p><b>gr</b> is the gain reduction, growing from the right (12 db across, a tick every 3), with its own 2 s hold; the two numbers are the
+reduction now and the deepest held. <i>reset meters</i> clears the holds.</p>
+<p style="clear:both">Reading it: the peaks tell you whether the ceiling holds, the vu bars what happened to the body of the sound. If <i>out</i> reads clearly
+less vu than <i>in</i>, the limiter is working on the body and not only on the peaks: take some gain back, or let the clipper have the first
+1 – 3 db.</p>
 <h3>a / b, compare and the target</h3><p><b>a</b> and <b>b</b> hold two complete settings; click to switch, <b>copy</b> copies the current one to the
 other. <b>compare</b> plays the input instead (level-matched when <i>level-matched</i> is on). Choose a <b>target</b> (−14 lufs for streaming,
 −9 for club …), play the whole song once so the integrated loudness is measured, then <b>go to target</b> sets the limiter gain to reach it.
@@ -552,7 +622,8 @@ diagonals mean more side than mid. <b>Polar level</b>: the energy at each angle 
 the width you set (white mark). The same per-band width bars appear in the analyser under each band.</p>
 <h3>meters</h3><p>The line under the analyser: momentary, short-term and integrated loudness (BS.1770 / EBU R128, gated), <b>lra</b> (loudness
 range, EBU Tech 3342), the distance to the target, true peak (4× interpolated), <b>plr</b> (peak to loudness ratio — how much dynamic punch is
-left), gain reduction of glue and limiter, and the latency. <b>reset meters</b> clears integrated loudness, loudness range and peak hold.</p>
+left), gain reduction of glue and limiter, and the latency. <b>reset meters</b> clears integrated loudness, loudness range and the peak
+holds, the limiter meter's too.</p>
 <h3>your mixes</h3><p>ms0 was tuned on the ten final mixes in <i>Sadnoise_Cloudfin_Dreamstate / final wavs</i>, measured with its own meters:</p>
 <table class="params"><tr><th>what</th><th>found</th><th>what ms0 does about it</th></tr>
 <tr><td class="n">true peak</td><td>five tracks above 0 dbtp: track 9 +3.7, track 10 +2.3, track 1 +2.1, track 12 +0.7, track 4 +0.4</td><td>oversampled limiter + true-peak safety at -1 dbtp</td></tr>
@@ -617,6 +688,9 @@ table.params td.r {{ max-width: 52mm; }}
 table.params tr {{ break-inside: avoid; }}
 img.shot {{ width: 100%; margin: 6pt 0 2pt; border: 0.4pt solid #ccc; }}
 img.shot.half {{ width: 60%; }}
+.crop {{ overflow: hidden; border: 0.4pt solid #ccc; margin: 6pt 0 4pt; break-inside: avoid; }}
+.crop img {{ display: block; max-width: none; }}
+.crop.right {{ float: right; margin: 2pt 0 6pt 10pt; }}
 .presets {{ font: 8pt Plex; margin-top: 8pt; }} .presets span {{ background: #1d1c15; color: #fff; padding: 1px 5px; margin-right: 6px; }}
 .small {{ font-size: 8pt; color: #555; }}
 ol.toc {{ font: 10pt Plex; line-height: 1.9; }}

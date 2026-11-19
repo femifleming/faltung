@@ -716,6 +716,9 @@ void Processor::processEffect (juce::AudioBuffer<float>& buffer, const Transport
         case Pid::ms0:
         {
             const auto mp = readMaster();
+            // an offline bounce runs faster than the clock the design thread keeps: design here, so automated eq and
+            // dynamic eq frequencies land where they are drawn (and two bounces of a session are the same)
+            if (isNonRealtime()) { const juce::ScopedLock sl (designLock); if (masterReady) masterFx->design (mp, false); }
             if (autoListen && autoListen->listening()) autoListen->push (L, R, n, dbToGain (mp.trim));   // auto: hears the input
             for (int off = 0; off < n; off += 4096)
                 masterFx->process (L + off, R + off, std::min (4096, n - off), mp);
@@ -766,6 +769,10 @@ void Processor::setCurrentProgram (int i)
 {
     const auto& pr = presets (pid);
     if (i < 0 || i >= (int) pr.size()) return;
+    // a VST2 host (REAPER) restores a session as "set the chunk, then select the saved program": that second step
+    // must not put the preset's own values over the ones just restored
+    if (i == currentProgram && stateLoadedMs != 0 && juce::Time::getMillisecondCounter() - stateLoadedMs < 1500) { stateLoadedMs = 0; return; }
+    stateLoadedMs = 0;
     currentProgram = i;
     // a preset is complete: everything it does not mention goes back to its default
     static const juce::StringArray keep { "pattern", "run", "bpm", "master", "loopbeats", "listen", "bypass", "match", "trim", "target", "balance" };
@@ -793,6 +800,7 @@ void Processor::getStateInformation (juce::MemoryBlock& dest)
     }
     if (pid == Pid::ms0)
     {
+        xml->setAttribute ("vuref", vuRef);
         auto* ab = xml->createNewChildElement ("ab");
         ab->setAttribute ("current", abCurrent);
         for (int k = 0; k < 2; ++k)
@@ -815,6 +823,7 @@ void Processor::setStateInformation (const void* data, int size)
     auto xml = getXmlFromBinary (data, size);
     if (! xml) return;
     currentProgram = xml->getIntAttribute ("program", 0);
+    vuRef = juce::jlimit (-24, -6, xml->getIntAttribute ("vuref", -18));
     if (auto* b = xml->getChildByName ("bank"))
     {
         const auto txt = b->getAllSubText().toStdString();
@@ -840,6 +849,7 @@ void Processor::setStateInformation (const void* data, int size)
     xml->deleteAllChildElementsWithTagName ("bank");
     xml->deleteAllChildElementsWithTagName ("sample");
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    stateLoadedMs = std::max<juce::uint32> (1, juce::Time::getMillisecondCounter());
 }
 
 // ---- wb1 wub ---------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 #include "Editor.h"
+#include "ValueEntry.h"
 
 namespace fal
 {

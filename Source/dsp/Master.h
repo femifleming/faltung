@@ -107,6 +107,80 @@ private:
     std::vector<float> buf, win;
 };
 
+/** taps of the linear-phase FIRs at a sample rate */
+inline int firLenFor (double sr) { return sr <= 50000 ? 8192 : (sr <= 100000 ? 16384 : 32768); }
+
+// =================================================================================================
+//  What a dynamic eq band really does. Its band-pass FIR is designed exactly as the chain designs it
+//  and then measured (zero-padded FFT), so the editor draws the filter that runs, not its analog
+//  prototype: with a finite number of taps a narrow band low down is wider and lower than its q says.
+// =================================================================================================
+class DynResponse
+{
+public:
+    /** redesigns when anything changed; true if it did */
+    bool update (double sampleRate, float freq, float q)
+    {
+        if (juce::exactlyEqual (sampleRate, sr) && juce::exactlyEqual (freq, f0) && juce::exactlyEqual (q, q0) && ! bins.empty()) return false;
+        const int n = firLenFor (sampleRate);
+        if (n != N || ! designer)
+        {
+            N = n;
+            designer = std::make_unique<FirDesigner> (N);
+            int order = 0; while ((1 << order) < 2 * N) ++order;
+            fft = std::make_unique<juce::dsp::FFT> (order);
+            buf.assign ((size_t) (4 * N), 0.0f);
+            bins.assign ((size_t) (N + 1), 0.0f);
+        }
+        sr = sampleRate; f0 = freq; q0 = q;
+        std::fill (buf.begin(), buf.end(), 0.0f);
+        designer->design (sr, [&] (double f) { return mag::bandPass (f, freq, q); }, buf.data());
+        fft->performFrequencyOnlyForwardTransform (buf.data(), true);
+        std::copy_n (buf.begin(), N + 1, bins.begin());
+        // measured: height, centre and the -3 dB edges
+        int pk = 0; for (int k = 1; k <= N; ++k) if (bins[(size_t) k] > bins[(size_t) pk]) pk = k;
+        peak = bins[(size_t) pk]; peakHz = (float) (pk * binHz());
+        const float half = peak * 0.70710678f;
+        auto cross = [&] (int from, int step)
+        {
+            for (int k = from; k + step >= 0 && k + step <= N; k += step)
+            {
+                const float a = bins[(size_t) k], b = bins[(size_t) (k + step)];
+                if (b <= half) return (float) (((double) k + (double) step * (a - half) / std::max (1.0e-12f, a - b)) * binHz());
+            }
+            return step < 0 ? 0.0f : (float) (sr * 0.5);
+        };
+        loHz = cross (pk, -1); hiHz = cross (pk, 1);
+        return true;
+    }
+    /** magnitude of the band filter at f (1 = the whole of the band's gain change) */
+    float bp (double f) const
+    {
+        if (bins.empty()) return 0.0f;
+        const double x = std::clamp (f / binHz(), 0.0, (double) N - 1.0e-6);
+        const int k = (int) x; const float t = (float) (x - k);
+        return bins[(size_t) k] + (bins[(size_t) (k + 1)] - bins[(size_t) k]) * t;
+    }
+    /** change in dB at f while the band's gain stands at gainDb. The band works in parallel with the eq
+        (out = eq·x + band·(g − 1)·x), so where the eq has already moved the level (eqLin ≠ 1) the same
+        band gain changes the result by a different amount. */
+    float changeDb (double f, float gainDb, double eqLin = 1.0) const
+    {
+        const double g = std::pow (10.0, gainDb / 20.0) - 1.0;
+        return (float) (20.0 * std::log10 (std::max (1.0e-4, std::abs (1.0 + bp (f) * g / std::max (1.0e-4, eqLin)))));
+    }
+    /** width between the -3 dB edges, in octaves */
+    float octaves() const { return loHz > 0.0f && hiHz > loHz ? std::log2 (hiHz / loHz) : 0.0f; }
+    float peak = 0, peakHz = 0, loHz = 0, hiHz = 0;
+    /** the analog prototype's width in octaves, for a q */
+    static float octavesForQ (float q) { return (float) (2.0 / std::log (2.0) * std::asinh (1.0 / (2.0 * std::max (0.01f, q)))); }
+private:
+    double sr = 0; float f0 = 0, q0 = 0; int N = 0;
+    std::unique_ptr<FirDesigner> designer; std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<float> buf, bins;
+    double binHz() const { return sr / (2.0 * N); }
+};
+
 // =================================================================================================
 //  Uniformly partitioned FFT convolution (mono, overlap-save) with click-free IR swaps: a new IR is
 //  staged from another thread and faded in over one block.
@@ -165,18 +239,19 @@ private:
     bool hasIr = false;
     std::atomic<int> active { 0 }, state { 0 };   // state: 0 free · 1 staged · 2 fading
     juce::dsp::FFT fft { 9 };                     // 512 = F
+    juce::dsp::FFT fillFft { 9 }; std::vector<float> fillBuf;
     std::array<std::vector<float>, 3> slot;
     std::vector<float> fdl, inBuf, outNew, outOld, tmp, acc;
 
     void fill (std::vector<float>& dst, const float* ir, int irLen)
     {
-        std::vector<float> t ((size_t) F * 2, 0.0f);
+        auto& t = fillBuf;                      // (its own transform and buffer: fill runs beside process)
+        t.resize ((size_t) F * 2);
         for (int p = 0; p < P; ++p)
         {
             std::fill (t.begin(), t.end(), 0.0f);
             for (int n = 0; n < B; ++n) { const int i = p * B + n; t[(size_t) n] = i < irLen ? ir[i] : 0.0f; }
-            juce::dsp::FFT f (9);
-            f.performRealOnlyForwardTransform (t.data(), true);
+            fillFft.performRealOnlyForwardTransform (t.data(), true);
             std::copy (t.begin(), t.begin() + F + 2, dst.begin() + p * (F + 2));
         }
     }
@@ -560,6 +635,86 @@ struct ScopeRing
     }
 };
 
+/** One channel pair of a level meter, fed from the audio thread and read by the editor through atomics.
+    vu   — a VU movement: the full-wave rectified average through a second-order "needle" that shows 99 % of
+           a tone 300 ms after it starts, overshoots by 1 – 1.5 % and falls back the same way (IEC 60268-17).
+           Scaled so a sine reads its own level in dBFS: a -18 dBFS sine reads -18.0.
+    peak — true peak (4x interpolation), instant rise, falling 20 dB in 1.7 s; hold keeps the highest for 2 s. */
+class LevelMeter
+{
+public:
+    static constexpr double kRiseMs = 300.0;
+    void prepare (double sampleRate)
+    {
+        sr = sampleRate;
+        step = std::max (1, (int) std::round (sr / 1000.0));            // the needle moves once a millisecond
+        // damping for 1.25 % overshoot; then the natural frequency that puts the first crossing of 99 % at 300 ms
+        const double zeta = 0.8127, x99 = 4.053, wn = x99 / (kRiseMs * 0.001), rate = sr / step;
+        const double g = std::tan (0.5 * wn / rate), k = 2.0 * zeta;
+        a1 = 1.0 / (1.0 + g * (g + k)); a2 = g * a1; a3 = g * a2;
+        fall = (float) std::pow (10.0, -20.0 / 20.0 / (1.7 * sr));
+        holdLen = (int) (2.0 * sr);
+        reset();
+    }
+    void reset()
+    {
+        for (int c = 0; c < 2; ++c)
+        {
+            ic1[c] = ic2[c] = acc[c] = 0; pk[c] = hd[c] = 0; holdLeft[c] = 0; tp[(size_t) c].reset();
+            vu[(size_t) c].store (0); peak[(size_t) c].store (0); hold[(size_t) c].store (0);
+        }
+        cnt = 0;
+    }
+    /** asks the audio thread to drop the peak holds (from any thread) */
+    void clearHold() { clearReq.store (true); }
+    void process (const float* L, const float* R, int n)
+    {
+        if (clearReq.exchange (false)) for (int c = 0; c < 2; ++c) { hd[c] = pk[c]; holdLeft[c] = 0; }
+        const float* in[2] = { L, R };
+        for (int i = 0; i < n; ++i)
+        {
+            for (int c = 0; c < 2; ++c)
+            {
+                const float x = in[c][i];
+                acc[c] += std::abs (x);
+                const float t = tp[(size_t) c].push (x);
+                pk[c] = std::max (t, pk[c] * fall);
+                if (pk[c] >= hd[c]) { hd[c] = pk[c]; holdLeft[c] = holdLen; }
+                else if (holdLeft[c] > 0) --holdLeft[c];
+                else hd[c] = std::max (pk[c], hd[c] * fall);
+            }
+            if (++cnt >= step)
+            {
+                for (int c = 0; c < 2; ++c)
+                {
+                    const double u = acc[c] / cnt * 1.5707963267948966;   // rectified average → sine peak
+                    const double v3 = u - ic2[c], v1 = a1 * ic1[c] + a2 * v3, v2 = ic2[c] + a2 * ic1[c] + a3 * v3;
+                    ic1[c] = 2.0 * v1 - ic1[c]; ic2[c] = 2.0 * v2 - ic2[c];
+                    if (std::abs (ic1[c]) < 1.0e-30) ic1[c] = 0; if (std::abs (ic2[c]) < 1.0e-30) ic2[c] = 0;
+                    acc[c] = 0;
+                    vu[(size_t) c].store ((float) std::max (0.0, v2), std::memory_order_relaxed);
+                    peak[(size_t) c].store (pk[c], std::memory_order_relaxed);
+                    hold[(size_t) c].store (hd[c], std::memory_order_relaxed);
+                }
+                cnt = 0;
+            }
+        }
+    }
+    // linear; 1.0 = full scale
+    std::array<std::atomic<float>, 2> vu {}, peak {}, hold {};
+    float vuDb (int c) const { return gainToDb (vu[(size_t) c].load (std::memory_order_relaxed)); }
+    float peakDb (int c) const { return gainToDb (peak[(size_t) c].load (std::memory_order_relaxed)); }
+    float holdDb (int c) const { return gainToDb (hold[(size_t) c].load (std::memory_order_relaxed)); }
+private:
+    double sr = 48000, a1 = 0, a2 = 0, a3 = 0;
+    int step = 48, cnt = 0, holdLen = 96000;
+    float fall = 1.0f;
+    double ic1[2] {}, ic2[2] {}, acc[2] {};
+    float pk[2] {}, hd[2] {}; int holdLeft[2] {};
+    std::array<TruePeak, 2> tp;
+    std::atomic<bool> clearReq { false };
+};
+
 // =================================================================================================
 //  the chain
 // =================================================================================================
@@ -571,6 +726,10 @@ public:
     std::atomic<float> truePeak { -100 }, corr { 1 }, limGr { 0 }, glueGr { 0 };
     std::array<std::atomic<float>, 4> bandGr {}, bandWidth {};
     std::array<std::atomic<float>, 2> dynGr {};
+    std::array<std::atomic<float>, 2> dynLevel {};    // what each dynamic band hears, dB (compare with its threshold); -120: nothing
+    MasterChain() { for (auto& a : dynLevel) a.store (-120.0f); }
+    LevelMeter limIn, limOut;                         // the limiter's meter: what goes in (after its gain), what comes out
+    std::atomic<float> limGrMeter { 0 }, limGrHold { 0 };   // limiter gain reduction for the meter: instant rise, 20 dB / s back; 2 s hold
     ScopeRing preMS, postMS, postLR;
 
     int firLen() const { return N; }
@@ -579,7 +738,7 @@ public:
     void prepare (double sampleRate, int)
     {
         sr = sampleRate;
-        N = sr <= 50000 ? 8192 : (sr <= 100000 ? 16384 : 32768);
+        N = firLenFor (sr);
         designer = std::make_unique<FirDesigner> (N);
         ir.assign ((size_t) N, 0.0f); ir2.assign ((size_t) N, 0.0f);
         for (auto* c : allConvs()) c->prepare (N);
@@ -604,6 +763,7 @@ public:
         room.prepare ((float) sr);
         glue.prepare ((float) sr);
         outMeter.prepare (sr); inMeter.prepare (sr); wetMeter.prepare (sr);
+        limIn.prepare (sr); limOut.prepare (sr); grMeterDb = grHoldDb = 0; grHoldLeft = 0; limGrMeter.store (0); limGrHold.store (0);
         matchSm.prepare ((float) sr, 400.0f); matchSm.snap (1.0f);
         bypSm.prepare ((float) sr, 30.0f); bypSm.snap (0.0f);
         trimSm.prepare ((float) sr, 20.0f); outSm.prepare ((float) sr, 20.0f); limGainSm.prepare ((float) sr, 20.0f);
@@ -695,7 +855,7 @@ public:
                 const auto& d = p.dyn[(size_t) k];
                 std::copy_n (M.data(), n, bpM.data()); std::copy_n (S.data(), n, bpS.data());
                 convDyn[(size_t) k][0].process (bpM.data(), n); convDyn[(size_t) k][1].process (bpS.data(), n);
-                if (! p.dynOn || ! d.on) { dynGrDb[(size_t) k] = 0; dynEnv[(size_t) k] = 0; dynGr[(size_t) k].store (0); continue; }
+                if (! p.dynOn || ! d.on) { dynGrDb[(size_t) k] = 0; dynEnv[(size_t) k] = 0; dynGr[(size_t) k].store (0); dynLevel[(size_t) k].store (-120.0f); continue; }
                 const float aK = tcoef (std::max (0.1f, d.attack), (float) sr), rK = tcoef (std::max (5.0f, d.release), (float) sr);
                 float maxGr = 0;
                 for (int i = 0; i < n; ++i)
@@ -713,6 +873,7 @@ public:
                     maxGr = std::max (maxGr, std::abs (dynGrDb[(size_t) k]));
                 }
                 dynGr[(size_t) k].store (dynGrDb[(size_t) k]);
+                dynLevel[(size_t) k].store (10.0f * std::log10 (dynEnv[(size_t) k] + 1.0e-12f) + 3.0f);
                 juce::ignoreUnused (maxGr);
             }
 
@@ -890,7 +1051,7 @@ public:
         const double den = std::sqrt (corrLL * corrRR);
         corr.store (den > 1.0e-9 ? (float) (corrLR / den) : 1.0f);
     }
-    void resetMeters() { outMeter.reset(); inMeter.reset(); wetMeter.reset(); tpHold = 0; }
+    void resetMeters() { outMeter.reset(); inMeter.reset(); wetMeter.reset(); tpHold = 0; limIn.clearHold(); limOut.clearHold(); grClear.store (true); }
 
 private:
     double sr = 48000;
@@ -924,6 +1085,7 @@ private:
     Smooth matchSm, bypSm, trimSm, outSm, limGainSm;
     double corrLR = 0, corrLL = 0, corrRR = 0; float tpHold = 0;
     Rng rng; std::array<float, 2> ditherErr {};
+    float grMeterDb = 0, grHoldDb = 0; int grHoldLeft = 0; std::atomic<bool> grClear { false };
 
     int latencyNoDry() const { return 2 * (PartConv::B + N / 2) + kSatOs + limDelay; }
     static constexpr int kSatOs = 39;   // OverN::latencyFor (4)
@@ -991,6 +1153,7 @@ private:
         const int fi = p.limOs >= 8 ? 3 : (p.limOs >= 4 ? 2 : (p.limOs >= 2 ? 1 : 0)), f = fs[fi];
         limGainSm.target = dbToGain (p.limOn ? p.limGain : 0.0f);
         for (int i = 0; i < n; ++i) { const float g0 = limGainSm.tick(); L[i] *= g0; R[i] *= g0; }
+        limIn.process (L, R, n);
         const float ceil = dbToGain (p.ceiling);
         limOver[0].up (L, n, f, osL.data()); limOver[1].up (R, n, f, osR.data());
         const int nOs = n * f;
@@ -1015,7 +1178,15 @@ private:
         }
         // final true-peak safety (catches what the down-sampling filters add back)
         safety.process (L, R, n, p.limOn, ceil, lookS, tcoef (40.0f, (float) sr), tcoef (40.0f, (float) sr), false, 1.0f);
-        limGr.store (std::max (lim.grDb, safety.grDb));
+        const float gr = std::max (lim.grDb, safety.grDb);
+        limGr.store (gr);
+        limOut.process (L, R, n);
+        // the meter's reduction: jumps up, comes back 20 dB a second; the hold keeps the deepest for 2 s
+        if (grClear.exchange (false)) { grHoldDb = 0; grHoldLeft = 0; }
+        grMeterDb = std::max (gr, grMeterDb - 20.0f * (float) (n / sr));
+        if (gr >= grHoldDb) { grHoldDb = gr; grHoldLeft = (int) (2.0 * sr); }
+        else if ((grHoldLeft -= n) <= 0) grHoldDb = grMeterDb;
+        limGrMeter.store (grMeterDb); limGrHold.store (grHoldDb);
     }
     static float clip (float x, float t, float k)
     {

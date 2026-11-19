@@ -77,6 +77,8 @@ public:
     BassSynth* bass() { return bassFx.get(); }
     MasterChain* master() { return masterFx.get(); }
     MasterParams readMaster() const;
+    /** ms0 limiter meter: the level a sine has at 0 VU, dBFS (kept with the session; not a parameter) */
+    int vuRef = -18;
     // A / B comparison of complete settings (ms0)
     int abCurrent = 0;
     void abSwitch (int slot);
@@ -112,6 +114,7 @@ private:
     float lastBpm = 120.0f;
     juce::String samplePath;
     int currentProgram = 0;
+    juce::uint32 stateLoadedMs = 0;   // when a state was last restored (see setCurrentProgram)
     Rng rng;
 
     // modules + kit voices
@@ -155,7 +158,7 @@ private:
             {
                 wait (25);
                 const juce::ScopedLock sl (p.designLock);
-                if (p.masterReady) p.masterFx->design (p.readMaster(), false);
+                if (p.masterReady && ! p.isNonRealtime()) p.masterFx->design (p.readMaster(), false);   // (a bounce designs in its own callback)
             }
         }
     };

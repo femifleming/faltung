@@ -2,6 +2,7 @@
 //   faltungTest [--wav dir] [--screenshots dir] [--only kt1]
 #include "Processor.h"
 #include "Editor.h"
+#include "ValueEntry.h"
 #include "MirrorTree.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -750,6 +751,201 @@ int main (int argc, char** argv)
             }
         }
 
+        if (pi.id == Pid::ms0)
+        {
+            // ---- the limiter's meter -----------------------------------------------------------------------
+            // the VU movement alone: a sine reads its own level; 99 % of it 300 ms after it starts (+-10 %), 1 - 1.5 %
+            // overshoot, the same on the way back (IEC 60268-17); at three sample rates
+            const double pi2 = juce::MathConstants<double>::twoPi;
+            for (double rate : { 44100.0, 48000.0, 96000.0 })
+            {
+                auto tone = [&] (LevelMeter& lm, double hzf, double amp, double seconds, double& phase, std::vector<float>* trace)
+                {
+                    const int chunk = (int) std::round (rate / 1000.0), total = (int) (seconds * rate);
+                    std::vector<float> a ((size_t) chunk), b ((size_t) chunk);
+                    for (int pos = 0; pos < total; pos += chunk)
+                    {
+                        for (int i = 0; i < chunk; ++i) { a[(size_t) i] = (float) (amp * std::sin (phase)); b[(size_t) i] = a[(size_t) i]; phase += pi2 * hzf / rate; }
+                        lm.process (a.data(), b.data(), chunk);
+                        if (trace) trace->push_back (lm.vu[0].load());
+                    }
+                };
+                juce::String line = "  vu at " + juce::String (rate / 1000.0, 1) + " khz:";
+                for (auto [hzf, db] : { std::pair<double, double> { 1000.0, -18.0 }, { 1000.0, 0.0 }, { 1000.0, -6.0 }, { 1000.0, -30.0 }, { 100.0, -18.0 }, { 10000.0, -18.0 } })
+                {
+                    LevelMeter lm; lm.prepare (rate); double ph = 0.3;
+                    tone (lm, hzf, std::pow (10.0, db / 20.0), 2.0, ph, nullptr);
+                    const float got = lm.vuDb (0);
+                    line << "  " << (hzf >= 1000 ? juce::String (hzf / 1000.0, 0) + "k" : juce::String (hzf, 0)) << " hz " << juce::String (db, 0) << " dbfs reads " << juce::String (got, 2);
+                    check (std::abs (got - db) < 0.1 && std::abs (lm.vuDb (1) - db) < 0.1, "vu calibration: a " + juce::String (db, 0) + " dbfs sine at " + juce::String (hzf, 0) + " hz reads its level");
+                }
+                std::cout << line << "\n";
+                LevelMeter lm; lm.prepare (rate); double ph = 0;
+                std::vector<float> up, down;
+                const double amp = std::pow (10.0, -18.0 / 20.0);
+                tone (lm, 1000.0, amp, 1.5, ph, &up);
+                const float steady = up.back();
+                tone (lm, 1000.0, 0.0, 1.5, ph, &down);
+                double rise = 0, fallT = 0; float top = 0;
+                for (size_t i = 0; i < up.size(); ++i) { top = std::max (top, up[i]); if (rise == 0 && up[i] >= 0.99f * steady) rise = (double) (i + 1) * std::round (rate / 1000.0) / rate * 1000.0; }
+                for (size_t i = 0; i < down.size(); ++i) if (down[i] <= 0.01f * steady) { fallT = (double) (i + 1) * std::round (rate / 1000.0) / rate * 1000.0; break; }
+                const double over = (top / steady - 1.0) * 100.0;
+                std::cout << "    0 vu tone on: 99 % after " << juce::String (rise, 1) << " ms, overshoot " << juce::String (over, 2) << " %; tone off: 1 % after " << juce::String (fallT, 1) << " ms\n";
+                check (rise > 270.0 && rise < 330.0, "vu rise: 99 % in 300 ms +-10 %");
+                check (over >= 1.0 && over <= 1.5, "vu overshoot 1 - 1.5 %");
+                check (fallT > 270.0 && fallT < 330.0, "vu fall: back in 300 ms +-10 %");
+            }
+            {
+                // true peak: a full-scale sine at fs / 4 sampled 45 degrees off its crests has samples at -3 dB; the
+                // meter must see the 0 dB between them. Then the hold: there for 2 s, gone after
+                LevelMeter lm; lm.prepare (48000.0);
+                std::vector<float> a (4800), z (4800, 0.0f);
+                for (int i = 0; i < 4800; ++i) a[(size_t) i] = (float) std::sin (pi2 * 0.25 * i + pi2 / 8.0);
+                lm.process (a.data(), a.data(), 4800);
+                const float tp = lm.peakDb (0);
+                lm.process (z.data(), z.data(), 480);                                          // (the cut itself peaks a little higher)
+                const float top = lm.holdDb (0);
+                for (int k = 0; k < 15; ++k) lm.process (z.data(), z.data(), 4800);           // 1.5 s of silence
+                const float held = lm.holdDb (0), fallen = lm.peakDb (0);
+                for (int k = 0; k < 20; ++k) lm.process (z.data(), z.data(), 4800);           // 2 s more
+                std::cout << "  true peak of a 12 khz sine with -3.01 db samples: " << juce::String (tp, 2) << " dbtp; held after 1.5 s " << juce::String (held, 2)
+                          << ", peak mark by then " << juce::String (fallen, 1) << "; hold after 3.5 s " << juce::String (lm.holdDb (0), 1) << "\n";
+                check (tp > -0.3f && tp < 0.2f, "meter true peak sees between the samples");
+                check (std::abs (held - top) < 0.01f && top < 0.5f, "peak hold stays for 2 s");
+                check (std::abs (fallen - (top - 20.0f * 1.5f / 1.7f)) < 0.5f, "peak mark falls 20 db in 1.7 s");
+                check (lm.holdDb (0) < held - 10.0f, "peak hold lets go");
+            }
+            {
+                // in the plug-in: the meter sits around the limiter. Everything else neutral, limiter gain +6: a
+                // -18 dbfs sine on the left only reads -12 going in and coming out, nothing on the right, no reduction;
+                // gain +18 into a -1 dbtp ceiling with a -6 dbfs sine: +12 going in, held under the ceiling coming out,
+                // and the reduction the meter shows is the difference
+                auto run = [&] (float limGain, double ampL, double ampR, float& inL, float& inR, float& outL, float& outR, float& outPk, float& gr, float& grHold)
+                {
+                    Processor m (Pid::ms0);
+                    for (auto id : { "mbon", "dynon", "glueon", "saton", "ambon", "dcon" }) m.setParam (id, 0.0f);
+                    for (int b = 1; b <= 4; ++b) m.setParam ("b" + juce::String (b) + "width", 1.0f);
+                    m.setParam ("match", 0.0f); m.setParam ("limgain", limGain); m.setParam ("ceiling", -1.0f);
+                    const double sr = 48000.0; const int bs = 256;
+                    m.setRateAndBufferSizeDetails (sr, bs); m.prepareToPlay (sr, bs);
+                    juce::AudioBuffer<float> blk (2, bs); juce::MidiBuffer mb; double ph = 0;
+                    for (int pos = 0; pos < (int) (3.0 * sr); pos += bs)
+                    {
+                        for (int i = 0; i < bs; ++i) { blk.setSample (0, i, (float) (ampL * std::sin (ph))); blk.setSample (1, i, (float) (ampR * std::sin (ph))); ph += pi2 * 1000.0 / sr; }
+                        m.processBlock (blk, mb);
+                    }
+                    auto* mc = m.master();
+                    inL = mc->limIn.vuDb (0); inR = mc->limIn.vuDb (1); outL = mc->limOut.vuDb (0); outR = mc->limOut.vuDb (1);
+                    outPk = mc->limOut.holdDb (0); gr = mc->limGrMeter.load(); grHold = mc->limGrHold.load();
+                };
+                float inL, inR, outL, outR, outPk, gr, grHold;
+                run (6.0f, std::pow (10.0, -18.0 / 20.0), 0.0, inL, inR, outL, outR, outPk, gr, grHold);
+                std::cout << "  limiter meter, -18 dbfs sine left only, gain +6: in l " << juce::String (inL, 2) << " r " << juce::String (inR, 1) << ", out l " << juce::String (outL, 2)
+                          << " r " << juce::String (outR, 1) << ", out peak " << juce::String (outPk, 2) << " dbtp, gr " << juce::String (gr, 2) << "\n";
+                check (std::abs (inL + 12.0f) < 0.1f && std::abs (outL + 12.0f) < 0.1f, "limiter meter reads the level going in and coming out");
+                check (inR < -90.0f && outR < -90.0f, "limiter meter is stereo: a silent right channel reads nothing");
+                check (std::abs (outPk + 12.0f) < 0.1f && gr < 0.01f, "limiter meter: peak of an untouched sine, no reduction");
+                run (18.0f, 0.5, 0.5, inL, inR, outL, outR, outPk, gr, grHold);
+                std::cout << "  limiter meter, -6 dbfs sine, gain +18, ceiling -1: in " << juce::String (inL, 2) << " / " << juce::String (inR, 2) << ", out " << juce::String (outL, 2) << " / " << juce::String (outR, 2)
+                          << ", out peak " << juce::String (outPk, 2) << " dbtp, gr " << juce::String (gr, 2) << " (hold " << juce::String (grHold, 2) << ")\n";
+                check (std::abs (inL - 12.0f) < 0.15f && std::abs (inR - 12.0f) < 0.15f, "limiter meter: level going in after the gain");
+                check (outPk <= -0.95f && outPk > -1.3f, "limiter meter: output peak sits at the ceiling");
+                check (std::abs (gr - (inL - outL)) < 0.5f && grHold >= gr - 0.01f, "limiter meter: reduction = in - out");
+            }
+
+            // ---- the dynamic eq's display ------------------------------------------------------------------
+            // the curve the editor draws for a dynamic band (DynResponse) against the plug-in: a band pinned at its
+            // range (threshold far below the tone), a sine at each frequency, level out / level in
+            {
+                auto measure = [&] (float freq, float q, float range, float eqGain, std::initializer_list<double> probes, const juce::String& what)
+                {
+                    DynResponse R; R.update (48000.0, freq, q);
+                    MasterParams mp; mp.eq[0].on = eqGain != 0.0f; mp.eq[0].type = 0; mp.eq[0].freq = freq; mp.eq[0].gain = eqGain; mp.eq[0].q = 0.7f;
+                    juce::String line = "  dynamic band " + what + " (" + juce::String (R.loHz, 1) + " - " + juce::String (R.hiHz, 1) + " hz, " + juce::String (R.octaves(), 2) + " oct, reach " + juce::String (R.peak * 100.0f, 0) + "%):";
+                    double worst = 0;
+                    for (double f : probes)
+                    {
+                        Processor m (Pid::ms0);
+                        for (auto id : { "mbon", "glueon", "limon", "saton", "ambon", "limos", "dcon" }) m.setParam (id, 0.0f);
+                        for (int b = 1; b <= 4; ++b) m.setParam ("b" + juce::String (b) + "width", 1.0f);
+                        m.setParam ("match", 0.0f); m.setParam ("dynon", 1.0f); m.setParam ("d1on", 1.0f); m.setParam ("d1ch", 0.0f);
+                        m.setParam ("d1freq", freq); m.setParam ("d1q", q); m.setParam ("d1thr", -60.0f); m.setParam ("d1range", range);
+                        if (eqGain != 0.0f) { m.setParam ("e1on", 1.0f); m.setParam ("e1type", 0.0f); m.setParam ("e1freq", freq); m.setParam ("e1gain", eqGain); m.setParam ("e1q", 0.7f); }
+                        const double sr = 48000.0; const int bs = 512, total = (int) (1.5 * sr);
+                        m.setRateAndBufferSizeDetails (sr, bs); m.prepareToPlay (sr, bs);
+                        juce::AudioBuffer<float> blk (2, bs); juce::MidiBuffer mb; double ph = 0, sum = 0; int cnt = 0;
+                        for (int pos = 0; pos < total; pos += bs)
+                        {
+                            for (int i = 0; i < bs; ++i) { const float v = (float) (0.25 * std::sin (ph)); blk.setSample (0, i, v); blk.setSample (1, i, v); ph += pi2 * f / sr; }
+                            m.processBlock (blk, mb);
+                            if (pos > (int) sr) for (int i = 0; i < bs; ++i) { sum += (double) blk.getSample (0, i) * blk.getSample (0, i); ++cnt; }
+                        }
+                        const double got = 10.0 * std::log10 (sum / cnt / (0.25 * 0.25 * 0.5));
+                        const double eq = MasterChain::eqMag (mp, f, 1), drawn = 20.0 * std::log10 (eq) + R.changeDb (f, range, eq);
+                        worst = std::max (worst, std::abs (got - drawn));
+                        line << "  " << juce::String (f, 0) << " hz " << juce::String (got, 2) << " (drawn " << juce::String (drawn, 2) << ")";
+                    }
+                    std::cout << line << "\n";
+                    check (worst < 0.15, "dynamic eq display matches the plug-in: " + what);
+                    return R.peak;
+                };
+                measure (1000.0f, 2.0f, -6.0f, 0.0f, { 1000.0, 800.0, 1250.0, 500.0, 2000.0, 4000.0 }, "1 khz q 2 range -6");
+                measure (3000.0f, 8.0f, 6.0f, 0.0f, { 3000.0, 2800.0, 3200.0, 2000.0 }, "3 khz q 8 range +6");
+                const float reach = measure (50.0f, 8.0f, -6.0f, 0.0f, { 50.0, 45.0, 56.0, 80.0 }, "50 hz q 8 range -6");
+                check (reach < 0.9f, "a narrow band low down is shown lower than its range (the filter has 8192 taps)");
+                measure (1000.0f, 2.0f, -6.0f, -4.0f, { 1000.0, 700.0, 1500.0 }, "1 khz q 2 range -6 on a -4 db eq bell");
+                // the width a q gives, on the analog prototype: q 1.41 = 1 octave
+                check (std::abs (DynResponse::octavesForQ (1.4142f) - 1.0f) < 0.01f, "q 1.41 is one octave");
+                DynResponse R; R.update (48000.0, 1000.0f, 1.4142f);
+                std::cout << "  1 khz q 1.41: edges " << R.loHz << " - " << R.hiHz << " hz, " << R.octaves() << " oct\n";
+                check (std::abs (R.loHz - 707.1f) < 4.0f && std::abs (R.hiHz - 1414.2f) < 6.0f, "measured -3 db edges of a one-octave band");
+            }
+            // typing values
+            {
+                Processor m (Pid::ms0);
+                auto typed = [&] (const char* id, const char* text) { float v = -999.0f; return ui::parseTyped (*m.apvts.getParameter (id), text, v) ? v : -999.0f; };
+                auto near = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f * std::max (1.0f, std::abs (b)); };
+                const std::tuple<const char*, const char*, float> cases[] = {
+                    { "d1freq", "1.2k", 1200.0f }, { "d1freq", "850", 850.0f }, { "d1freq", "850 hz", 850.0f }, { "d1freq", "2k5", 2500.0f }, { "d1freq", "12.5 khz", 12500.0f },
+                    { "d1freq", "1,2K", 1200.0f }, { "d1freq", "2.8", 2800.0f }, { "d1freq", "a4", 440.0f }, { "d1freq", "c#3", 138.5913f }, { "d1freq", "bb2", 116.5409f },
+                    { "d1freq", "a4 +50", 452.893f }, { "d1freq", "A4 -50 c", 427.474f }, { "d1freq", "5", 5000.0f }, { "d1freq", "99999", 20000.0f }, { "d1freq", "", -999.0f },
+                    { "d1freq", "hello", -999.0f }, { "d1freq", "c", -999.0f }, { "e3freq", "g2", 97.9989f }, { "hpfreq", "30", 30.0f },
+                    { "d1q", "2.5", 2.5f }, { "d1q", "99", 12.0f }, { "d1thr", "-24.5 db", -24.5f }, { "d1range", "+3", 3.0f }, { "d1range", "-30", -18.0f },
+                    { "d1att", "20", 20.0f }, { "d1att", "0.02 s", 20.0f }, { "ambdecay", "600 ms", 0.6f }, { "ambdecay", "1.5", 1.5f },
+                    { "b2width", "115%", 1.15f }, { "b2width", "115", 1.15f }, { "gratio", "2.5:1", 2.5f }, { "ceiling", "-0.3", -0.3f },
+                    { "balance", "l 20", -0.2f }, { "balance", "r20", 0.2f }, { "balance", "c", 0.0f }, { "balance", "-30", -0.3f } };
+                int bad = 0;
+                for (auto& [id, text, want] : cases)
+                {
+                    const float got = typed (id, text);
+                    if (! near (got, want)) { ++bad; std::cout << "    typed \"" << text << "\" into " << id << ": " << got << ", expected " << want << "\n"; }
+                }
+                std::cout << "  typed values: " << (int) std::size (cases) - bad << " of " << (int) std::size (cases) << " read as meant\n";
+                check (bad == 0, "typed values are read as meant");
+                check (ui::noteName (440.0f) == "a4" && ui::noteName (412.0f) == "g#4 -14 c" && ui::noteName (27.5f) == "a0", "note names");
+                // through the window: the text field over dynamic band 1's frequency, "1.2k", return
+                std::unique_ptr<juce::AudioProcessorEditor> ed (m.createEditor());
+                if (auto* fe = dynamic_cast<Editor*> (ed.get()))
+                {
+                    fe->pageForTest (2); fe->pageForTest (3);
+                    check (near (m.param ("d1freq"), 1200.0f), "typing 1.2k in the window sets the frequency");
+                    fe->pageForTest (0);
+                }
+                // the meter's reference level travels with the session; a session saved before it existed opens at -18
+                m.vuRef = -14;
+                juce::MemoryBlock mb; m.getStateInformation (mb);
+                Processor m2 (Pid::ms0); m2.setStateInformation (mb.getData(), (int) mb.getSize());
+                check (m2.vuRef == -14 && near (m2.param ("d1freq"), 1200.0f), "meter reference in the state");
+                if (auto xml = juce::AudioProcessor::getXmlFromBinary (mb.getData(), (int) mb.getSize()))
+                {
+                    xml->removeAttribute ("vuref");
+                    juce::MemoryBlock old; juce::AudioProcessor::copyXmlToBinary (*xml, old);
+                    Processor m3 (Pid::ms0); m3.vuRef = -10; m3.setStateInformation (old.getData(), (int) old.getSize());
+                    check (m3.vuRef == -18 && near (m3.param ("d1freq"), 1200.0f), "a session without the meter reference loads");
+                }
+            }
+        }
+
         if (pi.id == Pid::kt2)
         {
             // the sequencer alone: a ratchet with the AERIA-style curve crowds its hits toward the end ("in") and
@@ -854,13 +1050,36 @@ int main (int argc, char** argv)
         for (int k = 0; k < proc->getParameters().size(); ++k)
             same &= std::abs (proc->getParameters()[k]->getValue() - other.getParameters()[k]->getValue()) < 1.0e-5f;
         check (same, "state round trip");
+        if (proc->getNumPrograms() > 1)
+        {
+            // REAPER's VST2 restore: the chunk, then "select program n" for the program the chunk was saved on.
+            // The restored values must survive that; choosing another program afterwards still loads it
+            Processor host ((Pid) i);
+            auto* some = dynamic_cast<juce::RangedAudioParameter*> (proc->getParameters()[proc->getParameters().size() - 1]);
+            const float before = some->getValue();
+            some->setValueNotifyingHost (before > 0.5f ? 0.0f : 1.0f);
+            juce::MemoryBlock edited; proc->getStateInformation (edited);
+            host.setStateInformation (edited.getData(), (int) edited.getSize());
+            host.setCurrentProgram (host.getCurrentProgram());
+            bool kept = true;
+            for (int k = 0; k < proc->getParameters().size(); ++k)
+            {
+                const float a = proc->getParameters()[k]->getValue(), b = host.getParameters()[k]->getValue();
+                if (std::abs (a - b) >= 1.0e-5f) { kept = false; std::cout << "    " << proc->getParameters()[k]->getName (40) << ": " << a << " -> " << b << "\n"; }
+            }
+            check (kept, "state survives the host selecting its program after restoring (vst2)");
+            host.setCurrentProgram (0);
+            check (host.getCurrentProgram() == 0, "another program still loads after a restore");
+            some->setValueNotifyingHost (before);
+        }
         if (pi.id == Pid::kt1) check (proc->kitBank.toString() == other.kitBank.toString(), "kit bank round trip");
         if (pi.id == Pid::kt2) check (other.getSample() != nullptr && other.getSample()->buf.getNumSamples() > 1000, "sample round trip");
 
         if (shotDir != juce::File())
         {
             proc->setCurrentProgram (0);
-            if (pi.id == Pid::ms0) { proc->setCurrentProgram (2); double r4; render (*proc, &loop, 3.0, r4); }   // "dense experimental", with audio in the scopes
+            // "dense experimental", pushed into the limiter, with audio in the scopes and the meters (stopped just after a kick)
+            if (pi.id == Pid::ms0) { proc->setCurrentProgram (2); proc->setParam ("limgain", 9.0f); double r4; render (*proc, &loop, 3.2, r4); }
             std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
             ed->setSize (pi.w, pi.h);
             if (auto* fe = dynamic_cast<Editor*> (ed.get())) for (int t = 0; t < 12; ++t) fe->tickForTest();
@@ -888,6 +1107,19 @@ int main (int argc, char** argv)
                     juce::FileOutputStream os2 (f2); juce::PNGImageFormat png2; png2.writeImageToStream (im2, os2);
                     proc->setCurrentProgram (0);
                     for (int t = 0; t < 6; ++t) fe->tickForTest();
+                }
+            if (pi.id == Pid::ms0)
+                if (auto* fe = dynamic_cast<Editor*> (ed.get()))
+                {
+                    // more pictures: the mouse on dynamic band 1 (its read-out), and its frequency being typed
+                    for (int pg = 1; pg <= 2; ++pg)
+                    {
+                        fe->pageForTest (pg);
+                        juce::Image im2 = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
+                        const auto f2 = shotDir.getChildFile (pg == 1 ? "ms0-dyn.png" : "ms0-type.png"); f2.deleteFile();
+                        juce::FileOutputStream os2 (f2); juce::PNGImageFormat png2; png2.writeImageToStream (im2, os2);
+                    }
+                    fe->pageForTest (0);
                 }
             juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
             juce::PNGImageFormat png;
