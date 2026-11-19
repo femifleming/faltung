@@ -72,6 +72,10 @@ strips, lines and fills keep their hues a little dimmer. (Up to 1.1.0 it had a l
 record sleeve. Sounds, parameters, presets, plug-in ids and saved sessions are unchanged.) Before and after:
 [mockup/dark/index.html](mockup/dark/index.html).
 
+ballonwinkel and ballonpaleis have dark twins built the same way, *ballonwinkel deep* and *ballonpaleis deep*: the
+same plug-ins (same sounds and presets) on the dark counterparts of their colour fields, with their own names and ids so both
+install side by side; they come with faltung deep.
+
 Build: `cmake --build build --target faltung_deep_all faltungDeepTest`; `./build/faltungDeepTest_artefacts/Release/faltungDeepTest`.
 
 ## Automation

@@ -68,6 +68,9 @@ folded strips, Mark Fell's wireframe solids, Oval's coloured lines, stdio's chev
 twin's colour field: mustard becomes a dark olive, the pale papers go near black with their tint kept, and the strips, lines and
 fills keep their hues a little dimmer. (Up to version 1.1.0 faltung deep had a look of its own, a mirrored tree on a record sleeve; sounds,
 parameters, presets and saved sessions are unchanged.)</p>
+<p>ballonwinkel and ballonpaleis, faltung's twins of Pinkie Pie's Balloon Shop and Balloon Palace, come in the dark too, as
+<b>ballonwinkel deep</b> and <b>ballonpaleis deep</b>: the same plug-ins on the dark counterparts of their colour fields, installed
+with faltung deep. Their controls are described in the faltung manual.</p>
 <table class="params"><tr><th>id</th><th>name</th><th>what it is</th></tr>''' +
 ''.join(f'<tr><td class="n">{c}</td><td>{e(P[c]["name"])}</td><td>{e(P[c]["blurb"])}</td></tr>' for c in ORDER) + '''</table></section>''')
 

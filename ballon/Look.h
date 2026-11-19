@@ -65,26 +65,13 @@ inline const Product& product()
 }
 
 // ---- light / dark ------------------------------------------------------------------------------------
-constexpr bool kDark = FALTUNG_DEEP != 0;
-/** the dark counterpart of a colour field: the same hue, printed on dark stock (the suite's rule) */
-inline Colour darkField (Colour c)
-{
-    float h, s, l; c.getHSL (h, s, l);
-    const float chroma = s * (1.0f - std::abs (2.0f * l - 1.0f));
-    const float l2 = 0.085f + 0.085f * juce::jlimit (0.0f, 1.0f, chroma * 1.6f);
-    const float s2 = juce::jlimit (0.0f, 0.62f, 0.10f + 0.80f * chroma + (l > 0.9f ? 0.12f * s : 0.0f));
-    return Colour::fromHSL (h, s2, l2, 1.0f).withAlpha (c.getAlpha());
-}
-/** a strip / line / fill colour as it sits on a dark field: the same hue, a little dimmer */
-inline Colour darkAccent (Colour c)
-{
-    float h, s, l; c.getHSL (h, s, l);
-    const float l2 = 0.47f + (l - 0.47f) * 0.62f;
-    return Colour::fromHSL (h, juce::jmin (1.0f, s * 0.94f), l2, 1.0f).withAlpha (c.getAlpha());
-}
-inline Colour field (Colour c)  { return kDark ? darkField (c) : c; }
-inline Colour accent (Colour c) { return kDark ? darkAccent (c) : c; }
-inline Colour paperInk()        { return kDark ? Colour (0xfff6f6f0) : Colour (0xff1d1d1d); }
+// The suite's one rule (Source/Ui.h): a FALTUNG_DEEP=1 build draws every colour field on its dark counterpart.
+constexpr bool kDark = ui::kDark;
+inline Colour darkField (Colour c) { return ui::darkField (c); }
+inline Colour darkAccent (Colour c) { return ui::darkAccent (c); }
+inline Colour field (Colour c)  { return ui::field (c); }
+inline Colour accent (Colour c) { return ui::accent (c); }
+inline Colour paperInk()        { return ui::paperInk(); }
 
 // ---- the colours of a window -------------------------------------------------------------------------
 inline Colour ground()    { return field (Colour (product().ground)); }

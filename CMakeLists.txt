@@ -49,7 +49,7 @@ set(FAL_DEFS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUC
 set(FAL_ALL_TARGETS "")
 
 # faltung_plugin(<short> <index> <4-char code> <kind: machine|module|effect> <description> [DEEP])
-# DEEP builds the "faltung deep" flavour (deep house sounds, mirror look) as faltung_deep_<short>.
+# DEEP builds the "faltung deep" flavour (deep house sounds, drawn as faltung's dark mode) as faltung_deep_<short>.
 function(faltung_plugin SHORT INDEX CODE KIND DESC)
     set(DEEP 0)
     if(ARGC GREATER 5 AND ARGV5 STREQUAL "DEEP")

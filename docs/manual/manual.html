@@ -1,8 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>faltung manual</title><style>
-@font-face { font-family: Inter; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/Inter-Regular.ttf"); font-weight: 400; }
-@font-face { font-family: Inter; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/Inter-Medium.ttf"); font-weight: 600; }
-@font-face { font-family: Plex; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/IBMPlexMono-Regular.ttf"); font-weight: 400; }
-@font-face { font-family: Plex; src: url("file:///Users/femishonugafleming/faltung-ballon/Resources/fonts/IBMPlexMono-Medium.ttf"); font-weight: 600; }
+@font-face { font-family: Inter; src: url("../../Resources/fonts/Inter-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: Inter; src: url("../../Resources/fonts/Inter-Medium.ttf"); font-weight: 600; }
+@font-face { font-family: Plex; src: url("../../Resources/fonts/IBMPlexMono-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: Plex; src: url("../../Resources/fonts/IBMPlexMono-Medium.ttf"); font-weight: 600; }
 @page { size: A4; margin: 16mm 15mm 16mm 15mm; @bottom-right { content: counter(page); font: 8pt Plex; } }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { font: 9.4pt/1.5 Inter, Helvetica, sans-serif; color: #1d1c15; margin: 0; }
@@ -27,7 +27,7 @@ img.shot.half { width: 60%; }
 .crop.right { float: right; margin: 2pt 0 6pt 10pt; }
 .presets { font: 8pt Plex; margin-top: 8pt; } .presets span { background: #1d1c15; color: #fff; padding: 1px 5px; margin-right: 6px; }
 .small { font-size: 8pt; color: #555; }
-ol.toc { font: 10pt Plex; line-height: 1.9; }
+ol.toc { font: 10pt Plex; line-height: 1.9; padding-left: 24pt; }
 ul, ol { padding-left: 14pt; } li { margin: 2pt 0; }
 .dark { background: #2f4a52; padding: 8pt; } svg.flow { width: 100%; }
 .cover { position: relative; height: 262mm; overflow: hidden; background: #fbfcfc; }
@@ -61,7 +61,19 @@ The <b>processes</b> are the effects that make that music move: micro-sampling, 
 <b>wb1 wub</b> is a bass synth for wobbles, formants and reese, and <b>ms0 master</b> a linear-phase mastering bus.</p>
 <p>The look follows record sleeves of the period — Mark Fell's flat colour fields and wireframe solids, snd's folded pastel strips, Oval's coloured
 lines, stdio's chevrons and tracklists. The pictures are not decoration: they are drawn from the current settings and move as you play.</p>
-<table class="params"><tr><th>id</th><th>name</th><th>type</th><th>what it is</th></tr><tr><td class="n">kt1</td><td>kit</td><td>drum machine</td><td>eight-voice drum synth + microtime sequencer</td></tr><tr><td class="n">kt2</td><td>loop</td><td>drum machine</td><td>loop slicer + sequencer, cut-ups from any break</td></tr><tr><td class="n">bd1</td><td>kick</td><td>module</td><td>tok / thud / click kick designer</td></tr><tr><td class="n">sd2</td><td>snare</td><td>module</td><td>tuned modes + wires</td></tr><tr><td class="n">rm3</td><td>rim</td><td>module</td><td>modal rim, wood and tok</td></tr><tr><td class="n">hh4</td><td>hats</td><td>module</td><td>metallic hats, closed / open with choke</td></tr><tr><td class="n">cp6</td><td>clap</td><td>module</td><td>burst-train clap, snap and room</td></tr><tr><td class="n">pc7</td><td>perc</td><td>module</td><td>membranes, bells, glass</td></tr><tr><td class="n">cl8</td><td>click</td><td>module</td><td>ticks, pops, dust and blips</td></tr><tr><td class="n">tm9</td><td>tom</td><td>module</td><td>toms and minimal blips</td></tr><tr><td class="n">mc3</td><td>micro</td><td>effect</td><td>live micro-sampling: cuts, grains, clicks</td></tr><tr><td class="n">dl4</td><td>dub</td><td>effect</td><td>tape / bbd echo, filter in the loop</td></tr><tr><td class="n">rv5</td><td>room</td><td>effect</td><td>small rooms, plates, gated air</td></tr><tr><td class="n">sw6</td><td>swing</td><td>effect</td><td>moves the audio onto a groove</td></tr><tr><td class="n">fl7</td><td>filter</td><td>effect</td><td>3-band isolator + resonant sweep</td></tr><tr><td class="n">gl8</td><td>glue</td><td>effect</td><td>bus compressor + tape saturation</td></tr><tr><td class="n">wb1</td><td>wub</td><td>synth</td><td>dubstep + neuro bass synth</td></tr><tr><td class="n">ms0</td><td>master</td><td>mastering</td><td>mastering bus: linear-phase eq, mid / side, imaging, limiter</td></tr></table></section><section class="page"><h2 id="install">installing</h2>
+<table class="params"><tr><th>id</th><th>name</th><th>type</th><th>what it is</th></tr><tr><td class="n">kt1</td><td>kit</td><td>drum machine</td><td>eight-voice drum synth + microtime sequencer</td></tr><tr><td class="n">kt2</td><td>loop</td><td>drum machine</td><td>loop slicer + sequencer, cut-ups from any break</td></tr><tr><td class="n">bd1</td><td>kick</td><td>module</td><td>tok / thud / click kick designer</td></tr><tr><td class="n">sd2</td><td>snare</td><td>module</td><td>tuned modes + wires</td></tr><tr><td class="n">rm3</td><td>rim</td><td>module</td><td>modal rim, wood and tok</td></tr><tr><td class="n">hh4</td><td>hats</td><td>module</td><td>metallic hats, closed / open with choke</td></tr><tr><td class="n">cp6</td><td>clap</td><td>module</td><td>burst-train clap, snap and room</td></tr><tr><td class="n">pc7</td><td>perc</td><td>module</td><td>membranes, bells, glass</td></tr><tr><td class="n">cl8</td><td>click</td><td>module</td><td>ticks, pops, dust and blips</td></tr><tr><td class="n">tm9</td><td>tom</td><td>module</td><td>toms and minimal blips</td></tr><tr><td class="n">mc3</td><td>micro</td><td>effect</td><td>live micro-sampling: cuts, grains, clicks</td></tr><tr><td class="n">dl4</td><td>dub</td><td>effect</td><td>tape / bbd echo, filter in the loop</td></tr><tr><td class="n">rv5</td><td>room</td><td>effect</td><td>small rooms, plates, gated air</td></tr><tr><td class="n">sw6</td><td>swing</td><td>effect</td><td>moves the audio onto a groove</td></tr><tr><td class="n">fl7</td><td>filter</td><td>effect</td><td>3-band isolator + resonant sweep</td></tr><tr><td class="n">gl8</td><td>glue</td><td>effect</td><td>bus compressor + tape saturation</td></tr><tr><td class="n">wb1</td><td>wub</td><td>synth</td><td>dubstep + neuro bass synth</td></tr><tr><td class="n">ms0</td><td>master</td><td>mastering</td><td>mastering bus: linear-phase eq, mid / side, imaging, limiter</td></tr></table>
+<h3>the rest of the bundle</h3>
+<p>Five more plug-ins come with faltung, in the same look, each with its own manual in the download:</p>
+<table class="params"><tr><th>name</th><th>what it is</th><th>manual</th></tr>
+<tr><td class="n">Partials</td><td>additive / subtractive synthesizer with image and sound resynthesis</td><td>Partials Manual.pdf</td></tr>
+<tr><td class="n">Cloudfin</td><td>floating multi-effect: smear, pitch, formant, grains, delay, reverb, compander in any order</td><td>Cloudfin Manual.pdf</td></tr>
+<tr><td class="n">ConvoSolution</td><td>dual true-stereo convolution reverb with three lfos and a modulation matrix</td><td>convosolution Manual.pdf</td></tr>
+<tr><td class="n">ObliqSound</td><td>polyphonic synthesizer and field-recording instrument with a pin matrix and swarm modulation</td><td>obliqsound Manual.pdf</td></tr>
+<tr><td class="n">ObliqSonic</td><td>ObliqSound as a sound source for third-order Ambisonics (16 channels)</td><td>obliqsound Manual.pdf</td></tr></table>
+<h3>faltung deep: the dark mode</h3>
+<p><b>faltung deep</b> is the deep house twin of this suite — the same engines, retuned and re-preset, seventeen plug-ins named
+<i>faltung deep …</i> that install beside these. It is drawn as faltung's dark mode: the same layout, type and shapes on the dark
+counterpart of each plug-in's colour field. Its manual is <i>faltung deep Manual.pdf</i>.</p></section><section class="page"><h2 id="install">installing</h2>
 <p>Each plug-in comes as VST3, Audio Unit and VST2, plus a standalone app. On this Mac they are already installed:</p>
 <table class="params"><tr><th>format</th><th>folder</th></tr>
 <tr><td class="n">VST3</td><td>~/Library/Audio/Plug-Ins/VST3/faltung kt1.vst3 …</td></tr>
