@@ -1,4 +1,5 @@
 #include "Products.h"
+#include "Ui.h"
 #include "dsp/Sequencer.h"
 #include "dsp/Bass.h"
 
@@ -13,30 +14,6 @@ using NR = juce::NormalisableRange<float>;
 
 const ProductInfo& info (Pid p)
 {
-   #if FALTUNG_DEEP
-    // faltung deep: the deep house suite. Mirror look: a moving mirrored tree in one duotone per plug-in (dark, light)
-    static const ProductInfo d[kNumProducts] = {
-        { Pid::kt1, "kt1", "kit",    "deep house drum machine, eight voices + sequencer", Kind::Machine, Style::Mirror, 0xff1d3772, 0xffd8e3f7, VType::Kick,  1000, 640 },
-        { Pid::kt2, "kt2", "loop",   "loop slicer for breaks and chopped grooves",   Kind::Machine, Style::Mirror, 0xff33441c, 0xffe3ecc9, VType::Kick, 1000, 640 },
-        { Pid::bd1, "bd1", "kick",   "round, warm deep house kicks",                 Kind::Module,  Style::Mirror, 0xff5a2414, 0xfff3d6c8, VType::Kick,  760, 480 },
-        { Pid::sd2, "sd2", "snare",  "soft snares and brushes",                      Kind::Module,  Style::Mirror, 0xff2e3566, 0xffdfe2f7, VType::Snare, 760, 480 },
-        { Pid::rm3, "rm3", "rim",    "wooden rims and sticks",                       Kind::Module,  Style::Mirror, 0xff3b2c2a, 0xfff2dcd6, VType::Rim,   760, 480 },
-        { Pid::hh4, "hh4", "hats",   "hats and shakers",                             Kind::Module,  Style::Mirror, 0xff1f3d52, 0xffd5e6ef, VType::Hat,   760, 480 },
-        { Pid::cp6, "cp6", "clap",   "soft claps and snaps",                         Kind::Module,  Style::Mirror, 0xff5b3416, 0xfff1dcc4, VType::Clap,  760, 480 },
-        { Pid::pc7, "pc7", "perc",   "congas, bongos, bells",                        Kind::Module,  Style::Mirror, 0xff2c4a34, 0xffdbead9, VType::Perc,  760, 480 },
-        { Pid::cl8, "cl8", "dust",   "vinyl dust, ticks and pops",                   Kind::Module,  Style::Mirror, 0xff26355c, 0xffe1e8f6, VType::Click, 760, 480 },
-        { Pid::tm9, "tm9", "tom",    "deep toms",                                    Kind::Module,  Style::Mirror, 0xff4a1e1a, 0xfff0d6cf, VType::Tom,   760, 480 },
-        { Pid::mc3, "mc3", "micro",  "micro-sampling for chopped textures",          Kind::Effect,  Style::Mirror, 0xff2b2e5c, 0xffdfe0f5, VType::Kick,  760, 480 },
-        { Pid::dl4, "dl4", "dub",    "tape echo for chords and percussion",          Kind::Effect,  Style::Mirror, 0xff183d4a, 0xffd3e9ec, VType::Kick,  760, 480 },
-        { Pid::rv5, "rv5", "room",   "warm rooms and plates",                        Kind::Effect,  Style::Mirror, 0xff40331f, 0xffefe2cc, VType::Kick,  760, 480 },
-        { Pid::sw6, "sw6", "swing",  "the swing of a drum machine, on any audio",    Kind::Effect,  Style::Mirror, 0xff3b2450, 0xffeadcf2, VType::Kick,  760, 480 },
-        { Pid::fl7, "fl7", "filter", "dj isolator and warm sweep",                   Kind::Effect,  Style::Mirror, 0xff2f4316, 0xffe5efcf, VType::Kick,  760, 480 },
-        { Pid::gl8, "gl8", "glue",   "bus compressor and tape",                      Kind::Effect,  Style::Mirror, 0xff2a323c, 0xffe1e6eb, VType::Kick,  760, 480 },
-        { Pid::wb1, "sb1", "stabs",  "chord stabs, organs and sub bass",             Kind::Synth,   Style::Mirror, 0xff14123f, 0xfff0dfe6, VType::Kick, 1100, 760 },
-        { Pid::ms0, "ms0", "master", "(not part of faltung deep)",                   Kind::Effect,  Style::Mirror, 0xff1a242c, 0xff5aaad8, VType::Kick, 1320, 880 },
-    };
-    return d[(int) p];
-   #endif
     static const ProductInfo t[kNumProducts] = {
         { Pid::kt1, "kt1", "kit",    "eight-voice drum synth + microtime sequencer", Kind::Machine, Style::Snd,   0xffc9b53b, 0xffd8c64e, VType::Kick,  1000, 640 },
         { Pid::kt2, "kt2", "loop",   "loop slicer + sequencer, cut-ups from any break", Kind::Machine, Style::Oval, 0xfff4f2ec, 0xff2f7fd1, VType::Kick, 1000, 640 },
@@ -57,17 +34,62 @@ const ProductInfo& info (Pid p)
         { Pid::wb1, "wb1", "wub",    "dubstep + neuro bass synth",                   Kind::Synth,   Style::Fell,  0xff2f4a52, 0xff7fd3c8, VType::Kick, 1100, 760 },
         { Pid::ms0, "ms0", "master", "mastering bus: linear-phase eq, mid / side, imaging, limiter", Kind::Effect, Style::Stdio, 0xff1a242c, 0xff5aaad8, VType::Kick, 1320, 880 },
     };
+   #if FALTUNG_DEEP
+    // faltung deep: the deep house suite, drawn as faltung's dark mode. Every product keeps the look (style),
+    // the window and the layout of its faltung twin; its colour field and its second colour are the dark
+    // counterparts of the twin's (ui::darkField / ui::darkAccent). Only the names and the one-liners differ.
+    static const struct { const char* code; const char* name; const char* blurb; } dn[kNumProducts] = {
+        { "kt1", "kit",    "deep house drum machine, eight voices + sequencer" },
+        { "kt2", "loop",   "loop slicer for breaks and chopped grooves" },
+        { "bd1", "kick",   "round, warm deep house kicks" },
+        { "sd2", "snare",  "soft snares and brushes" },
+        { "rm3", "rim",    "wooden rims and sticks" },
+        { "hh4", "hats",   "hats and shakers" },
+        { "cp6", "clap",   "soft claps and snaps" },
+        { "pc7", "perc",   "congas, bongos, bells" },
+        { "cl8", "dust",   "vinyl dust, ticks and pops" },
+        { "tm9", "tom",    "deep toms" },
+        { "mc3", "micro",  "micro-sampling for chopped textures" },
+        { "dl4", "dub",    "tape echo for chords and percussion" },
+        { "rv5", "room",   "warm rooms and plates" },
+        { "sw6", "swing",  "the swing of a drum machine, on any audio" },
+        { "fl7", "filter", "dj isolator and warm sweep" },
+        { "gl8", "glue",   "bus compressor and tape" },
+        { "sb1", "stabs",  "chord stabs, organs and sub bass" },
+        { "ms0", "master", "(not part of faltung deep)" },
+    };
+    static const auto d = []
+    {
+        std::array<ProductInfo, kNumProducts> a;
+        for (int i = 0; i < kNumProducts; ++i)
+        {
+            a[(size_t) i] = t[i];
+            a[(size_t) i].code = dn[i].code; a[(size_t) i].name = dn[i].name; a[(size_t) i].blurb = dn[i].blurb;
+            a[(size_t) i].ground = ui::darkField (juce::Colour (t[i].ground)).getARGB();
+            a[(size_t) i].accent = ui::darkAccent (juce::Colour (t[i].accent)).getARGB();
+        }
+        return a;
+    }();
+    return d[(size_t) p];
+   #else
     return t[(int) p];
+   #endif
 }
 
 const KitVoiceInfo& kitVoice (int v)
 {
    #if FALTUNG_DEEP
-    static const KitVoiceInfo d[kKitVoices] = {
-        { "bd1", VType::Kick,  0xff5e8f6a, 36 }, { "rm2", VType::Rim,   0xff8dbb7a, 37 }, { "cp3", VType::Clap, 0xff8ec3e6, 38 }, { "ch4", VType::Hat, 0xff6e80c8, 39 },
-        { "oh5", VType::Hat,   0xffee8e6e, 40 }, { "sh6", VType::Hat,   0xff97adc4, 41 }, { "cg7", VType::Perc, 0xfff6c590, 42 }, { "tm8", VType::Tom, 0xffcfe6f0, 43 } };
-    return d[std::clamp (v, 0, kKitVoices - 1)];
-   #endif
+    // (the same eight strip colours as faltung's kit, as they sit on the dark field)
+    static const auto d = []
+    {
+        std::array<KitVoiceInfo, kKitVoices> a { {
+            { "bd1", VType::Kick,  0xff5e8f6a, 36 }, { "rm2", VType::Rim,   0xff8dbb7a, 37 }, { "cp3", VType::Clap, 0xff8ec3e6, 38 }, { "ch4", VType::Hat, 0xff6e80c8, 39 },
+            { "oh5", VType::Hat,   0xffee8e6e, 40 }, { "sh6", VType::Hat,   0xff97adc4, 41 }, { "cg7", VType::Perc, 0xfff6c590, 42 }, { "tm8", VType::Tom, 0xffcfe6f0, 43 } } };
+        for (auto& k : a) k.colour = ui::darkAccent (juce::Colour (k.colour)).getARGB();
+        return a;
+    }();
+    return d[(size_t) std::clamp (v, 0, kKitVoices - 1)];
+   #else
     static const KitVoiceInfo k[kKitVoices] = {
         { "bd1", VType::Kick,  0xff5e8f6a, 36 },
         { "sd2", VType::Snare, 0xff8dbb7a, 37 },
@@ -79,6 +101,18 @@ const KitVoiceInfo& kitVoice (int v)
         { "cl8", VType::Click, 0xffcfe6f0, 43 },
     };
     return k[std::clamp (v, 0, kKitVoices - 1)];
+   #endif
+}
+
+/** what a kit voice is called (the deep kit has three voices on the hat engine: closed, open, shaker) */
+const char* kitVoiceName (int v)
+{
+   #if FALTUNG_DEEP
+    static const char* n[kKitVoices] = { "kick", "rim", "clap", "closed hat", "open hat", "shaker", "conga", "tom" };
+    return n[std::clamp (v, 0, kKitVoices - 1)];
+   #else
+    return vtypeInfo (kitVoice (v).type).name;
+   #endif
 }
 
 juce::String kitPrefix (int v) { return "v" + juce::String (v + 1) + "_"; }

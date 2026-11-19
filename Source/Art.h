@@ -1,12 +1,12 @@
 #pragma once
 #include "Ui.h"
 #include "Processor.h"
-#include "MirrorTree.h"
 
 namespace fal
 {
 /** The picture at the top of every module and effect. It is drawn from the parameters, flashes on
-    hits and can be clicked to audition (modules). Four looks: Fell, Snd, Oval, Stdio. */
+    hits and can be clicked to audition (modules). Four looks: Fell, Snd, Oval, Stdio; in the faltung deep builds
+    the same four on their dark fields (ui::kDark). */
 class Art : public juce::Component
 {
 public:
@@ -15,8 +15,6 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void tick();          // ~30 Hz from the editor
     int focus = -1;       // slot being edited (highlighted)
-    bool sleeveText = true;   // mirror look: draw the sleeve typography (the kit draws its own)
-    void resized() override;
 
 private:
     Processor& p;
@@ -31,8 +29,6 @@ private:
     void paintSnd (juce::Graphics&, juce::Rectangle<float>);
     void paintOval (juce::Graphics&, juce::Rectangle<float>);
     void paintStdio (juce::Graphics&, juce::Rectangle<float>);
-    void paintMirror (juce::Graphics&, juce::Rectangle<float>);
-    MirrorTree tree; juce::Image treeImg; float levelSm = 0;
     void paintTitle (juce::Graphics&, juce::Rectangle<float>);
     std::vector<std::pair<juce::String, float>> values() const;  // short label, 0..1
 };

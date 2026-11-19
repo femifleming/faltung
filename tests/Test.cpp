@@ -3,7 +3,6 @@
 #include "Processor.h"
 #include "Editor.h"
 #include "ValueEntry.h"
-#include "MirrorTree.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
 using namespace fal;
@@ -101,19 +100,6 @@ int main (int argc, char** argv)
         if (a == "--only" && i + 1 < argc) only = argv[++i];
     }
     if (wavDir != juce::File()) wavDir.createDirectory();
-    for (int i = 1; i < argc; ++i)
-        if (juce::String (argv[i]) == "--tree" && i + 2 < argc)
-        {
-            // faltungDeepTest --tree out.png <product index> [w h] : a still of the mirrored tree, for the manual
-            const int idx = juce::String (argv[i + 2]).getIntValue();
-            const int w = i + 4 < argc ? juce::String (argv[i + 3]).getIntValue() : 1600, h = i + 4 < argc ? juce::String (argv[i + 4]).getIntValue() : 1000;
-            MirrorTree t; t.build ((uint32_t) (idx * 7919 + 17), w, h, 5, 10); t.setColours (juce::Colour (info (idx).ground), juce::Colour (info (idx).accent));
-            juce::Image im (juce::Image::RGB, w, h, true);
-            { juce::Graphics g (im); g.setImageResamplingQuality (juce::Graphics::highResamplingQuality); g.drawImage (t.render (3.0f, 0.35f, 0.0f), juce::Rectangle<float> (0, 0, (float) w, (float) h)); }
-            juce::File f (juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1])); f.deleteFile();
-            juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (im, os);
-            return 0;
-        }
     for (int i = 1; i < argc; ++i)
         if (juce::String (argv[i]) == "--pack" && i + 1 < argc)
         {

@@ -10,7 +10,7 @@ inline juce::String U (const char* s) { return juce::String::fromUTF8 (s); }
 // ---- type -----------------------------------------------------------------------------------------
 juce::Font sans (float size, bool medium = false);
 juce::Font mono (float size, bool medium = false);
-/** faltung deep: condensed DIN-like (Barlow Condensed) and light text (Barlow) */
+/** condensed DIN-like (Barlow Condensed) and light text (Barlow): the former faltung deep sleeve type, no longer used by the plug-ins */
 juce::Font cond (float size, bool medium = false);
 juce::Font light (float size);
 
@@ -28,8 +28,27 @@ inline juce::Colour edgeFor (juce::Colour ground)
 struct Theme
 {
     juce::Colour ground, ink, fill, edge;
-    bool mirror = false;   // faltung deep look
+    bool mirror = false;   // (unused: the former faltung deep sleeve look; the dark mode draws like faltung)
 };
+
+// ---- light / dark ---------------------------------------------------------------------------------
+// A product that is built with FALTUNG_DEEP=1 is the dark mode of its faltung twin: the same layout, type and
+// shapes, every colour field replaced by its dark counterpart. Colours are written once, as the light ones,
+// and pass through field() / accent() / paperInk() where they are used.
+#ifndef FALTUNG_DEEP
+ #define FALTUNG_DEEP 0
+#endif
+constexpr bool kDark = FALTUNG_DEEP != 0;
+/** the dark counterpart of a colour field: the same hue, printed on dark stock */
+juce::Colour darkField (juce::Colour light);
+/** a strip / line / fill colour as it sits on a dark field: the same hue, a little dimmer, never glaring */
+juce::Colour darkAccent (juce::Colour light);
+inline juce::Colour field (juce::Colour c, bool dark = kDark)  { return dark ? darkField (c) : c; }
+inline juce::Colour accent (juce::Colour c, bool dark = kDark) { return dark ? darkAccent (c) : c; }
+/** the near-black of marks drawn straight on a pale field (dots, hairlines, small type): pale on the dark one */
+inline juce::Colour paperInk (bool dark = kDark) { return dark ? juce::Colour (0xfff6f6f0) : juce::Colour (0xff1d1d1d); }
+/** a whole theme from a light ground and a light accent */
+Theme themeOf (juce::Colour lightGround, juce::Colour lightAccent, bool dark = kDark);
 
 // ---- a parallelogram, the house shape -------------------------------------------------------------
 juce::Path skewRect (juce::Rectangle<float> r, float skew = 0.55f);

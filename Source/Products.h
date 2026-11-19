@@ -10,9 +10,9 @@ enum class Pid { kt1, kt2, bd1, sd2, rm3, hh4, cp6, pc7, cl8, tm9, mc3, dl4, rv5
 constexpr int kNumProducts = 18;
 
 enum class Kind { Machine, Module, Effect, Synth };
-enum class Style { Snd, Fell, Oval, Stdio, Mirror };
+enum class Style { Snd, Fell, Oval, Stdio };
 
-/** true in the "faltung deep" builds (deep house flavour, mirror look) */
+/** true in the "faltung deep" builds: the deep house flavour, drawn as faltung's dark mode (ui::kDark) */
 #ifndef FALTUNG_DEEP
  #define FALTUNG_DEEP 0
 #endif
@@ -39,6 +39,8 @@ inline const ProductInfo& info (int i) { return info ((Pid) i); }
 constexpr int kKitVoices = 8;
 struct KitVoiceInfo { const char* id; VType type; juce::uint32 colour; int defaultNote; };
 const KitVoiceInfo& kitVoice (int v);
+/** what a kit voice is called, e.g. "kick", "closed hat" */
+const char* kitVoiceName (int v);
 /** the starting sound of a kit voice (differs per voice in the deep kit, where three voices share the hat engine) */
 VoiceParams kitDefaultVoice (int v);
 

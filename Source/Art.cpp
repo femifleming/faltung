@@ -9,7 +9,7 @@ using juce::Rectangle;
 juce::Colour Fold::palette (int i)
 {
     static const juce::uint32 c[8] = { 0xff5e8f6a, 0xff8dbb7a, 0xff8ec3e6, 0xff6e80c8, 0xffee8e6e, 0xfff6c590, 0xff97adc4, 0xffcfe6f0 };
-    return Colour (c[((i % 8) + 8) % 8]);
+    return ui::accent (Colour (c[((i % 8) + 8) % 8]));
 }
 
 Point<float> Fold::segment (juce::Graphics& g, Point<float> s, float len, float depth, bool up, Colour c,
@@ -60,67 +60,9 @@ void Art::mouseDown (const juce::MouseEvent& e)
     p.uiTrigger (open ? 1 : 0, 0.6f + 0.4f * (1.0f - (float) e.y / (float) std::max (1, getHeight())));
 }
 
-void Art::resized()
-{
-    if (pi.style == Style::Mirror && getWidth() > 0 && getHeight() > 0)
-    {
-        tree.build ((uint32_t) ((int) pi.id * 7919 + 17), getWidth(), getHeight(), getWidth() > 900 ? 5 : 4, getWidth() > 900 ? 9 : 8);
-        tree.setColours (Colour (pi.ground), Colour (pi.accent));
-    }
-}
-
-void Art::paintMirror (juce::Graphics& g, Rectangle<float> b)
-{
-    if (treeImg.isValid())
-    {
-        g.setImageResamplingQuality (juce::Graphics::mediumResamplingQuality);
-        g.drawImage (treeImg, b);
-        // let the tree sink into the ground where the controls are, as on the sleeves
-        juce::ColourGradient fade (Colour (pi.ground).withAlpha (0.0f), 0.0f, b.getHeight() * 0.38f, Colour (pi.ground).withAlpha (0.78f), 0.0f, b.getHeight() * 0.72f, false);
-        g.setGradientFill (fade); g.fillRect (b);
-    }
-    if (! sleeveText) return;
-    const Colour ink (pi.accent);
-    g.setColour (ink);
-    g.setFont (ui::cond (15.0f));
-    g.drawText ("faltung deep", Rectangle<float> (34, 28, 240, 18), juce::Justification::centredLeft);
-    g.drawText (juce::String (pi.code).toUpperCase() + " " + juce::String (pi.name).toUpperCase(), Rectangle<float> (34, 46, 240, 18), juce::Justification::centredLeft);
-    g.setFont (ui::cond (15.0f, true));
-    g.drawText ("FDP" + juce::String ((int) pi.id + 1).paddedLeft ('0', 3), Rectangle<float> (34, 90, 120, 18), juce::Justification::centredLeft);
-    // Side A: the current preset, Side B: what it is
-    const float ax = b.getWidth() * 0.34f, bx = b.getWidth() * 0.6f;
-    g.setFont (ui::cond (15.0f));
-    g.drawText ("Side A", Rectangle<float> (ax, 28, 200, 18), juce::Justification::centredLeft);
-    g.drawText ("1.   " + p.getProgramName (p.getCurrentProgram()), Rectangle<float> (ax, 46, 240, 18), juce::Justification::centredLeft);
-    g.drawText ("Side B", Rectangle<float> (bx, 28, 200, 18), juce::Justification::centredLeft);
-    g.drawFittedText (juce::String ("1.   ") + pi.blurb, juce::Rectangle<int> ((int) bx, 46, (int) (b.getWidth() - bx - 60), 36), juce::Justification::topLeft, 2);
-    // credits along the right edge: the first few values, as on the back of a sleeve
-    juce::String cred;
-    int n = 0;
-    for (auto* prm : p.getParameters())
-        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm))
-        {
-            if (n > 0) cred << "   " << ui::U ("\xc2\xb7") << "   ";
-            cred << r->getName (20) << " " << r->getCurrentValueAsText();
-            if (++n >= 5) break;
-        }
-    juce::Graphics::ScopedSaveState ss (g);
-    g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::halfPi, b.getRight() - 16.0f, 40.0f));
-    g.setFont (ui::light (10.0f));
-    g.setColour (ink.withAlpha (0.85f));
-    g.drawText (cred, Rectangle<float> (b.getRight() - 16.0f, 40.0f - 10.0f, b.getHeight() - 80.0f, 12.0f), juce::Justification::centredLeft, true);
-}
-
 void Art::tick()
 {
     time += 1.0f / 30.0f;
-    if (pi.style == Style::Mirror)
-    {
-        const float lv = std::sqrt (juce::jlimit (0.0f, 1.0f, p.outLevel.load()));
-        levelSm += (lv - levelSm) * (lv > levelSm ? 0.35f : 0.05f);
-        float fl = 0; for (auto f : flash) fl = std::max (fl, f);
-        treeImg = tree.render (time, levelSm, fl).createCopy();
-    }
     for (int i = 0; i < 16; ++i)
     {
         const int h = p.hitCount[(size_t) i].load();
@@ -172,7 +114,6 @@ void Art::paint (juce::Graphics& g)
         case Style::Snd:   paintSnd (g, b); break;
         case Style::Oval:  paintOval (g, b); break;
         case Style::Stdio: paintStdio (g, b); break;
-        case Style::Mirror: paintMirror (g, b); return;
     }
     paintTitle (g, b);
 }
@@ -353,7 +294,8 @@ void Art::paintSnd (juce::Graphics& g, Rectangle<float> b)
             c = Fold::palette (i + (int) pi.id + 3);
         return c;
     };
-    const Colour ink (0xff1e2a20);
+    const Colour ink (0xff1e2a20);                       // on the strips (they stay light enough for it in the dark mode)
+    const Colour onField = ui::kDark ? ui::inkFor (ground) : ink;   // straight on the field
     const float fl = flash[0] + flash[1];
 
     if (pi.id == Pid::fl7)
@@ -373,7 +315,7 @@ void Art::paintSnd (juce::Graphics& g, Rectangle<float> b)
             topF.startNewSubPath (x, y - h); topF.lineTo (x + w, y - h); topF.lineTo (x + w + d * 0.62f, y - h - d * 0.78f); topF.lineTo (x + d * 0.62f, y - h - d * 0.78f); topF.closeSubPath();
             if (h01 <= 0.0f)
             {
-                g.setColour (ink.withAlpha (0.5f));
+                g.setColour (onField.withAlpha (0.5f));
                 const float dash[2] = { 4, 4 };
                 juce::Path out; juce::PathStrokeType (1.0f).createDashedStroke (out, topF, dash, 2);
                 g.fillPath (out);
@@ -384,7 +326,7 @@ void Art::paintSnd (juce::Graphics& g, Rectangle<float> b)
                 g.setColour (c.darker (0.3f)); g.fillPath (side);
                 g.setColour (c.brighter (0.25f)); g.fillPath (topF);
             }
-            g.setColour (ink); g.setFont (ui::sans (15.0f));
+            g.setColour (h01 <= 0.0f ? onField : ink); g.setFont (ui::sans (15.0f));
             g.drawText (names[i], Rectangle<float> (x, y - 22, w, 20), juce::Justification::centred);
         }
         // the sweep: a translucent plane crossing the bands
@@ -450,7 +392,7 @@ void Art::paintOval (juce::Graphics& g, Rectangle<float> b)
         const float y0 = b.getY() + 40.0f + k * spacing;
         arc.startNewSubPath (b.getX() - 40, y0 + 20);
         arc.quadraticTo (b.getCentreX() - 60 + j, y0 - 120 + j, b.getRight() - 120, y0 - 10);
-        g.setColour (Colour (cols[k % 4]).withAlpha (0.35f + 0.65f * std::min (1.0f, lvl)));
+        g.setColour (ui::accent (Colour (cols[k % 4])).withAlpha (0.35f + 0.65f * std::min (1.0f, lvl)));
         juce::PathStrokeType st (1.0f + 6.0f * std::min (1.0f, lvl), juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
         if (frz) { juce::Path dashed; const float d[2] = { 10, 6 }; st.createDashedStroke (dashed, arc, d, 2); g.fillPath (dashed); }
         else g.strokePath (arc, st);
@@ -461,12 +403,12 @@ void Art::paintOval (juce::Graphics& g, Rectangle<float> b)
     const juce::uint32 bc[4] = { 0xff2f7fd1, 0xffe06a2e, 0xff8f6bb8, 0x99c9c2a8 };
     for (int i = 0; i < 4; ++i)
     {
-        g.setColour (Colour (bc[i]));
+        g.setColour (ui::accent (Colour (bc[i])));
         g.drawLine ({ a + Point<float> (0, i * 12.0f), e + Point<float> (0, i * 12.0f) }, widths[i]);
     }
     // taps: one dot per repeat, sized by its level
     lvl = 1.0f;
-    g.setColour (Colour (0xff1d1d1d));
+    g.setColour (ui::paperInk());
     for (int k = 1; k <= 8; ++k)
     {
         lvl = frz ? 1.0f : lvl * std::max (0.02f, fb);
@@ -477,7 +419,7 @@ void Art::paintOval (juce::Graphics& g, Rectangle<float> b)
         g.drawLine (pnt.x, pnt.y, pnt.x, pnt.y + 30 + 12 * k, 1.0f);
     }
     // age: hatching
-    g.setColour (Colour (0xff1d1d1d).withAlpha (0.55f));
+    g.setColour (ui::paperInk().withAlpha (0.55f));
     const int hatch = (int) (age * 14.0f);
     for (int i = 0; i < hatch; ++i)
         g.drawLine (b.getX() + 360.0f + i * 6.0f, b.getBottom() - 70.0f, b.getX() + 368.0f + i * 6.0f, b.getBottom() - 84.0f, 0.8f);
@@ -490,7 +432,7 @@ void Art::paintOval (juce::Graphics& g, Rectangle<float> b)
 // ---- Stdio: pale chevrons, the yellow cube, a tracklist --------------------------------------------
 void Art::paintStdio (juce::Graphics& g, Rectangle<float> b)
 {
-    const Colour chev (0xff9fd3ec);
+    const Colour chev (ui::accent (Colour (0xff9fd3ec)));
     int count = 5; float step = 80.0f; float alpha = 0.34f;
     if (pi.id == Pid::rv5)
     {
@@ -516,7 +458,7 @@ void Art::paintStdio (juce::Graphics& g, Rectangle<float> b)
         const float k = 1.0f - s.life;
         chevron (b.getX() + 260.0f + k * 300.0f, b.getY() + 120.0f - k * 120.0f, 60.0f, 160.0f, 0.5f * s.life);
     }
-    g.setColour (Colour (0xff7cc2e4).withAlpha (0.7f));
+    g.setColour (ui::accent (Colour (0xff7cc2e4)).withAlpha (0.7f));
     for (int i = 0; i < 3; ++i)
     {
         const float x = b.getX() + 340.0f + i * 160.0f, y = b.getY() + 280.0f - i * 100.0f;
@@ -531,9 +473,9 @@ void Art::paintStdio (juce::Graphics& g, Rectangle<float> b)
     topF.startNewSubPath (P (0, 30)); topF.lineTo (P (52, 0)); topF.lineTo (P (104, 30)); topF.lineTo (P (52, 60)); topF.closeSubPath();
     l.startNewSubPath (P (0, 30)); l.lineTo (P (52, 60)); l.lineTo (P (52, 112)); l.lineTo (P (0, 82)); l.closeSubPath();
     r.startNewSubPath (P (52, 60)); r.lineTo (P (104, 30)); r.lineTo (P (104, 82)); r.lineTo (P (52, 112)); r.closeSubPath();
-    g.setColour (Colour (0xffffe15a)); g.fillPath (topF);
-    g.setColour (Colour (0xfff2c100)); g.fillPath (l);
-    g.setColour (Colour (0xffd8a800)); g.fillPath (r);
+    g.setColour (ui::accent (Colour (0xffffe15a))); g.fillPath (topF);
+    g.setColour (ui::accent (Colour (0xfff2c100))); g.fillPath (l);
+    g.setColour (ui::accent (Colour (0xffd8a800))); g.fillPath (r);
     g.setColour (Colour (0xff2a2100)); g.setFont (ui::sans (13.0f, true));
     g.drawText (pi.code, Rectangle<float> (cx + 22, cy + 22, 60, 16), juce::Justification::centred);
 
@@ -561,7 +503,7 @@ void Art::paintStdio (juce::Graphics& g, Rectangle<float> b)
             const float grDb = gl->gr.load();
             g.setColour (ink);
             g.setFont (ui::mono (11.0f, true));
-            g.drawText ("gr -" + juce::String (grDb, 1) + " db", Rectangle<float> (b.getX() + 40, b.getBottom() - 40, 140, 16), juce::Justification::centredLeft);
+            g.drawText ("gr -" + juce::String (grDb, 1) + " db", Rectangle<float> (b.getX() + 290, b.getBottom() - 22, 140, 16), juce::Justification::centredLeft);   // beside its bar (it sat on the title)
             g.setColour (Colour (pi.accent));
             g.fillPath (ui::skewRect ({ b.getX() + 40, b.getBottom() - 18, std::min (240.0f, grDb * 16.0f), 8 }));
         }
@@ -577,7 +519,7 @@ void Art::paintTitle (juce::Graphics& g, Rectangle<float> b)
         case Style::Fell:
             g.setColour (juce::Colours::white);
             g.setFont (ui::sans (26.0f, true));
-            g.drawText ("FALTUNG", Rectangle<float> (40, 26, 300, 32), juce::Justification::centredLeft);
+            g.drawText (kDeep ? "FALTUNG DEEP" : "FALTUNG", Rectangle<float> (40, 26, 300, 32), juce::Justification::centredLeft);
             g.setColour (ink);
             g.setFont (ui::sans (13.0f));
             g.drawText (juce::String (pi.code).toUpperCase() + " " + juce::String (pi.name).toUpperCase(), Rectangle<float> (40, 56, 300, 18), juce::Justification::centredLeft);
@@ -594,7 +536,7 @@ void Art::paintTitle (juce::Graphics& g, Rectangle<float> b)
             g.setFont (ui::sans (15.0f));
             g.drawText (pi.name, box.reduced (16, 12).withTrimmedTop (22).removeFromTop (20), juce::Justification::topLeft);
             g.setFont (ui::mono (10.0f));
-            g.drawText ("faltung", box.reduced (16, 10), juce::Justification::bottomLeft);
+            g.drawText (kDeep ? "faltung deep" : "faltung", box.reduced (16, 10), juce::Justification::bottomLeft);
             break;
         }
         case Style::Oval:
@@ -611,7 +553,7 @@ void Art::paintTitle (juce::Graphics& g, Rectangle<float> b)
         case Style::Stdio:
             g.setColour (ink);
             g.setFont (ui::sans (15.0f, true));
-            g.drawText (juce::String ("faltung ") + pi.name, Rectangle<float> (40, 240, 240, 20), juce::Justification::centredLeft);
+            g.drawText (juce::String (kDeep ? "faltung deep " : "faltung ") + pi.name, Rectangle<float> (40, 240, 240, 20), juce::Justification::centredLeft);
             g.setFont (ui::mono (10.0f));
             g.drawText (pi.blurb, Rectangle<float> (40, 258, 300, 14), juce::Justification::centredLeft);
             break;
