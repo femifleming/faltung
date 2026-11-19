@@ -1060,7 +1060,8 @@ juce::Array<juce::File> Session::suitePlugins()
 {
     // the plug-ins that ship with the suite but are not compiled into the studio; found in the usual VST3 folders
     // (and three of the same maker's that belong in a studio: the Leitner spatializer, openfield, Quell)
-    static const char* names[] = { "Partials", "Cloudfin", "ConvoSolution", "ObliqSound", "ObliqSonic", "Leitner", "openfield", "openprocess", "Quell" };
+    static const char* names[] = { "Partials", "Cloudfin", "ConvoSolution", "ObliqSound", "ObliqSonic", "ballonwinkel", "ballonpaleis",
+                                   "ballonwinkel deep", "ballonpaleis deep", "Leitner", "openfield", "openprocess", "Quell" };
     juce::Array<juce::File> out;
     juce::VST3PluginFormat fmt;
     const auto paths = fmt.getDefaultLocationsToSearch();

@@ -305,7 +305,7 @@ add('''<section class="page"><h2 id="devices2">more studio devices</h2>
 <tr><td class="n">skip</td><td>an instrument that reads a sample like a skipping disc: a fragment repeats, the read point jumps on, back or anywhere; read errors drop out or hold a frame. <i>intensity</i> sets how broken it is; fragments on the grid or in ms; <i>from</i> / <i>to</i> bound the region; pitch; it plays until the next note or while the note is held; steps address places in the file.</td></tr>
 <tr><td class="n">tone (more)</td><td>a <b>second tone</b>, a difference in hz or a ratio away (1.22 by default), each tone on its own channel (<i>one tone per channel</i>), so the difference tone is made in the ear; a <b>tuning</b> for key-tracked notes: equal, just (5-limit), just (7-limit), the harmonic series.</td></tr></table>
 <p>Also in the device list, without a scan: the suite's kit and loop (<b>kt1</b>, <b>kt2</b>) as track instruments, and the house's other plug-ins when they are installed
-(Partials, Cloudfin, openprocess, openfield, Leitner and the rest) — hosted as VST3 / AU like any plug-in.</p>
+(Partials, Cloudfin, ConvoSolution, ObliqSound, ObliqSonic, ballonwinkel, ballonpaleis, and openprocess, openfield, Leitner, Quell) — hosted as VST3 / AU like any plug-in.</p>
 <h3>routes that close a loop</h3>
 <p>A route into a track that already feeds the source closes a loop. The popup says so; if you accept, it becomes a <b>feedback route</b>: one buffer late and soft-limited, so the
 loop sings but cannot run away.</p>

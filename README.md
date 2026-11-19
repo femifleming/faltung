@@ -70,7 +70,7 @@ and the master can be recorded on its own channel in Ableton (or any other DAW) 
   routed over 16 channels to a 24-channel decoder, the master at 24 channels).
 - **sequencer**: 64 patterns of up to 64 steps per track; per step velocity, pitch, chance, ratchet 1–8, micro-timing, length,
   18 conditions (1:2 … 8:8, fill, first, prev), four parameter locks on any parameter with slides between them; per track length,
-  speed (x1/4 … x4), a free clock in ms, swing, shift, chance, root note, pattern chains; tools: euclid, rotate, reverse, mutate,
+  speed (x1/4 … x8), a free clock in ms, swing, shift, chance, root note, pattern chains; tools: euclid, rotate, reverse, mutate,
   humanise, random, markov, rewrite, double, copy / paste.
 - **arrangement**: scenes (launch quantised), song mode (scenes × bars), a timeline of pattern and audio clips, loop region,
   markers, automation lanes on any parameter (linear / curved, drawn or recorded) — sends, mutes, macros, tempo, swing included.
