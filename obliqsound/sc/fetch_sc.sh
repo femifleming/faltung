@@ -6,6 +6,8 @@ set -e
 cd "$(dirname "$0")/.."
 mkdir -p third_party && cd third_party
 [ -d supercollider ] || git clone --depth 1 --branch Version-3.13.0 --recurse-submodules --shallow-submodules https://github.com/supercollider/supercollider.git
+# (SuperCollider 3.13's Windows install step passes COMMENT to install(CODE ...), which CMake 4 rejects: drop that line)
+perl -0pi -e 's/\n[ \t]*COMMENT "Looking for libraries\.\.\."[ \t]*\n/\n/' supercollider/lang/CMakeLists.txt
 mkdir -p sc-build && cd sc-build
 case "$(uname -s)" in
   Darwin) EXTRA=(-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0) ;;
