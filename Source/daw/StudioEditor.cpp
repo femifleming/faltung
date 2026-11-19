@@ -253,7 +253,7 @@ public:
     {
         g.fillAll (theme.ground);
         if (theme.mirror) { g.setColour (theme.ink.withAlpha (0.08f)); for (int y = 90; y < getHeight(); y += 90) g.fillRect (0, y, getWidth(), 1); }
-        g.setColour (theme.ink); g.setFont (kDeep ? ui::cond (15.0f, true) : ui::sans (14.0f, true));
+        g.setColour (theme.ink); g.setFont (theme.mirror ? ui::cond (15.0f, true) : ui::sans (14.0f, true));
         g.drawText (juce::String (studioInfo().code), 12, 8, 120, 18, juce::Justification::centredLeft);
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.75f));
         g.drawText (s.projectName + (s.dirty.load() ? " *" : ""), 12, 26, 136, 14, juce::Justification::centredLeft, true);

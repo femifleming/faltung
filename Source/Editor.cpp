@@ -6,7 +6,7 @@ namespace fal
 using juce::Colour;
 using juce::Rectangle;
 
-static ui::Theme themeFor (const ProductInfo& pi)
+ui::Theme themeFor (const ProductInfo& pi)
 {
     const Colour ground (pi.ground);   // (the faltung deep builds carry the dark counterparts in the product table)
     Colour fill (pi.accent);

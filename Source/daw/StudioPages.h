@@ -1109,7 +1109,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto t = studioTheme();
-        g.fillAll (t.ground.brighter (kDeep ? 0.25f : 0.14f)); g.setColour (t.ink); g.drawRect (getLocalBounds(), 1);
+        g.fillAll (t.ground.brighter (t.mirror ? 0.25f : 0.14f)); g.setColour (t.ink); g.drawRect (getLocalBounds(), 1);
         g.setFont (uiFont (11.0f, true)); g.drawText ("route " + src.name + " (" + juce::String (src.width.load()) + " ch)" + ui::U (" → ") + dst.name + " (" + juce::String (dst.width.load()) + " ch)", 8, 6, getWidth() - 16, 16, juce::Justification::centredLeft, true);
         g.setFont (uiFont (10.5f));
         g.drawText (feedback ? ui::U ("how many channels?  ·  this closes a loop: a feedback route, one buffer late, limited") : juce::String ("how many channels?"), 8, 26, getWidth() - 16, 16, juce::Justification::centredLeft, true);

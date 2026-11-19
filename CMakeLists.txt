@@ -293,7 +293,7 @@ endif()
 # Windows gives a program's main thread 1 MB of stack (macOS / Linux: 8 MB). The tests keep whole processors as
 # locals of main(), which grew past it in 1.1.0: every test program gets the same 8 MB everywhere.
 if(MSVC)
-    foreach(T faltungTest faltungDeepTest faltungHostCheck PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
+    foreach(T faltungTest faltungDeepTest faltungHostCheck sndstudioTest sndstudioDeepTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
               ObliqSoundTest ObliqSonicTest obliq_smoke
               ballonwinkelTest ballonwinkelDspTest ballonpaleisTest ballonpaleisDspTest ballonpaleisSphereTest)
         if(TARGET ${T})
@@ -301,7 +301,7 @@ if(MSVC)
         endif()
     endforeach()
 elseif(MINGW)
-    foreach(T faltungTest faltungDeepTest faltungHostCheck PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
+    foreach(T faltungTest faltungDeepTest faltungHostCheck sndstudioTest sndstudioDeepTest PartialsTest CloudfinTest CloudfinHostTest ECRTest ECREngineTest
               ObliqSoundTest ObliqSonicTest obliq_smoke
               ballonwinkelTest ballonwinkelDspTest ballonpaleisTest ballonpaleisDspTest ballonpaleisSphereTest)
         if(TARGET ${T})

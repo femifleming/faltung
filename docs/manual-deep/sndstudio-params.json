@@ -1,0 +1,6969 @@
+{
+  "suite": "faltung deep",
+  "devices": [
+    {
+      "type": "fal:bd1",
+      "name": "bd1 kick",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "deep round",
+        "lofi 909",
+        "soft sine",
+        "dusty tok",
+        "long thud"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "tok",
+          "max": "sine",
+          "default": "thud",
+          "choices": [
+            "tok",
+            "thud",
+            "909",
+            "sine"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "30.0 hz",
+          "max": "140 hz",
+          "default": "47.6 hz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "35 ms",
+          "max": "1.60 s",
+          "default": "286 ms"
+        },
+        {
+          "id": "click",
+          "name": "click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.22"
+        },
+        {
+          "id": "sub",
+          "name": "sub",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "tok",
+          "name": "tok",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.10"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "+0.0 st",
+          "max": "+48.0 st",
+          "default": "+15.4 st"
+        },
+        {
+          "id": "bend",
+          "name": "bend",
+          "min": "2.0 ms",
+          "max": "140 ms",
+          "default": "12 ms"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.12"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-1.6 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "c"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:sd2",
+      "name": "sd2 snare",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "brush",
+        "soft tuned",
+        "808 warm"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "tuned",
+          "max": "808",
+          "default": "brush",
+          "choices": [
+            "tuned",
+            "fm",
+            "brush",
+            "808"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "110 hz",
+          "max": "420 hz",
+          "default": "188 hz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "40 ms",
+          "max": "900 ms",
+          "default": "222 ms"
+        },
+        {
+          "id": "snap",
+          "name": "snap",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.08"
+        },
+        {
+          "id": "body",
+          "name": "body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.15"
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.78"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+0.0 st"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "1.80 khz",
+          "max": "13.0 khz",
+          "default": "3.39 khz"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-4.8 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "c"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:rm3",
+      "name": "rm3 rim",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "wooden rim",
+        "deep tok",
+        "soft rimshot",
+        "stick"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "rim",
+          "max": "metal",
+          "default": "wood",
+          "choices": [
+            "rim",
+            "wood",
+            "tok",
+            "metal"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "180 hz",
+          "max": "2.40 khz",
+          "default": "692 hz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "8.0 ms",
+          "max": "600 ms",
+          "default": "19 ms"
+        },
+        {
+          "id": "click",
+          "name": "click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "body",
+          "name": "body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.62"
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+1.2 st"
+        },
+        {
+          "id": "hard",
+          "name": "hard",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-4.8 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "l 6"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:hh4",
+      "name": "hh4 hats",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "warm hats",
+        "shaker",
+        "noise hats",
+        "tick hats"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "808",
+          "max": "tick",
+          "default": "808",
+          "choices": [
+            "808",
+            "noise",
+            "ring",
+            "tick"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "x0.50",
+          "max": "x2.00",
+          "default": "x0.93"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "6.0 ms",
+          "max": "1.40 s",
+          "default": "20 ms"
+        },
+        {
+          "id": "click",
+          "name": "click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.18"
+        },
+        {
+          "id": "metal",
+          "name": "metal",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.55"
+        },
+        {
+          "id": "air",
+          "name": "air",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "chirp",
+          "name": "chirp",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+0.6 st"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "5.00 khz",
+          "max": "15.0 khz",
+          "default": "7.93 khz"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-8.0 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 7"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "open",
+          "name": "open decay",
+          "min": "6.0 ms",
+          "max": "1.40 s",
+          "default": "176 ms"
+        }
+      ]
+    },
+    {
+      "type": "fal:cp6",
+      "name": "cp6 clap",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "soft room clap",
+        "snap",
+        "tight clap"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "clap",
+          "max": "tight",
+          "default": "room",
+          "choices": [
+            "clap",
+            "snap",
+            "room",
+            "tight"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "500 hz",
+          "max": "3.20 khz",
+          "default": "957 hz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "30 ms",
+          "max": "1.00 s",
+          "default": "145 ms"
+        },
+        {
+          "id": "snap",
+          "name": "snap",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.35"
+        },
+        {
+          "id": "claps",
+          "name": "claps",
+          "min": "2 claps",
+          "max": "6 claps",
+          "default": "5 claps"
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.35"
+        },
+        {
+          "id": "spread",
+          "name": "spread",
+          "min": "4.0 ms",
+          "max": "26 ms",
+          "default": "11 ms"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.22"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-4.8 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "c"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:pc7",
+      "name": "pc7 perc",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "conga low",
+        "conga high",
+        "bongo",
+        "soft bell"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "conga",
+          "max": "glass",
+          "default": "conga",
+          "choices": [
+            "conga",
+            "bongo",
+            "bell",
+            "glass"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "60.0 hz",
+          "max": "1.40 khz",
+          "default": "154 hz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "20 ms",
+          "max": "2.50 s",
+          "default": "114 ms"
+        },
+        {
+          "id": "click",
+          "name": "click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "body",
+          "name": "body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.65"
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.08"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+2.4 st"
+        },
+        {
+          "id": "hard",
+          "name": "hard",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.40"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-4.8 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 2"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:cl8",
+      "name": "cl8 dust",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "vinyl dust",
+        "soft tick",
+        "pop"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "tick",
+          "max": "blip",
+          "default": "dust",
+          "choices": [
+            "tick",
+            "pop",
+            "dust",
+            "blip"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "300 hz",
+          "max": "14.0 khz",
+          "default": "2.48 khz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "0.8 ms",
+          "max": "80 ms",
+          "default": "25 ms"
+        },
+        {
+          "id": "click",
+          "name": "click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.10"
+        },
+        {
+          "id": "res",
+          "name": "res",
+          "min": "0.8 ms",
+          "max": "40 ms",
+          "default": "2.1 ms"
+        },
+        {
+          "id": "dust",
+          "name": "dust",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.40"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "+0.0 st",
+          "max": "+48.0 st",
+          "default": "+0.0 st"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "30.0 hz",
+          "max": "4.00 khz",
+          "default": "271 hz"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-4.8 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "l 15"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:tm9",
+      "name": "tm9 tom",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "deep tom",
+        "low tom",
+        "blip"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "tom",
+          "max": "low",
+          "default": "tom",
+          "choices": [
+            "tom",
+            "blip",
+            "fm",
+            "low"
+          ]
+        },
+        {
+          "id": "tune",
+          "name": "tune",
+          "min": "45.0 hz",
+          "max": "420 hz",
+          "default": "78.7 hz"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "50 ms",
+          "max": "1.60 s",
+          "default": "283 ms"
+        },
+        {
+          "id": "click",
+          "name": "click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "body",
+          "name": "body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.70"
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.10"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "+0.0 st",
+          "max": "+36.0 st",
+          "default": "+9.0 st"
+        },
+        {
+          "id": "bend",
+          "name": "bend",
+          "min": "3.0 ms",
+          "max": "220 ms",
+          "default": "21 ms"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-10.2 db"
+        },
+        {
+          "id": "pan",
+          "name": "pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 18"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:sb1",
+      "name": "sb1 stabs",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "minor 9 stab",
+        "organ stab",
+        "electric piano",
+        "dub chord",
+        "warm pad",
+        "deep sub",
+        "round bass",
+        "plucked chord"
+      ],
+      "params": [
+        {
+          "id": "a_shape",
+          "name": "a wave",
+          "min": "sine",
+          "max": "hard",
+          "default": "saw>square 30%"
+        },
+        {
+          "id": "a_pw",
+          "name": "a width",
+          "min": "5%",
+          "max": "95%",
+          "default": "50%"
+        },
+        {
+          "id": "a_oct",
+          "name": "a octave",
+          "min": "-3",
+          "max": "+3",
+          "default": "0",
+          "choices": [
+            "-3",
+            "-2",
+            "-1",
+            "0",
+            "+1",
+            "+2",
+            "+3"
+          ]
+        },
+        {
+          "id": "a_semi",
+          "name": "a semi",
+          "min": "-12 st",
+          "max": "+12 st",
+          "default": "0 st"
+        },
+        {
+          "id": "a_fine",
+          "name": "a fine",
+          "min": "-100 ct",
+          "max": "100 ct",
+          "default": "0 ct"
+        },
+        {
+          "id": "a_level",
+          "name": "a level",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "a_uni",
+          "name": "a unison",
+          "min": "1",
+          "max": "7",
+          "default": "1",
+          "choices": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7"
+          ]
+        },
+        {
+          "id": "a_detune",
+          "name": "a detune",
+          "min": "0%",
+          "max": "100%",
+          "default": "25%"
+        },
+        {
+          "id": "a_spread",
+          "name": "a spread",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "b_shape",
+          "name": "b wave",
+          "min": "sine",
+          "max": "hard",
+          "default": "square"
+        },
+        {
+          "id": "b_pw",
+          "name": "b width",
+          "min": "5%",
+          "max": "95%",
+          "default": "50%"
+        },
+        {
+          "id": "b_oct",
+          "name": "b octave",
+          "min": "-3",
+          "max": "+3",
+          "default": "0",
+          "choices": [
+            "-3",
+            "-2",
+            "-1",
+            "0",
+            "+1",
+            "+2",
+            "+3"
+          ]
+        },
+        {
+          "id": "b_semi",
+          "name": "b semi",
+          "min": "-12 st",
+          "max": "+12 st",
+          "default": "0 st"
+        },
+        {
+          "id": "b_fine",
+          "name": "b fine",
+          "min": "-100 ct",
+          "max": "100 ct",
+          "default": "0 ct"
+        },
+        {
+          "id": "b_level",
+          "name": "b level",
+          "min": "0%",
+          "max": "100%",
+          "default": "35%"
+        },
+        {
+          "id": "b_uni",
+          "name": "b unison",
+          "min": "1",
+          "max": "7",
+          "default": "1",
+          "choices": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7"
+          ]
+        },
+        {
+          "id": "b_detune",
+          "name": "b detune",
+          "min": "0%",
+          "max": "100%",
+          "default": "25%"
+        },
+        {
+          "id": "b_spread",
+          "name": "b spread",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "fm",
+          "name": "fm b>a",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "sub",
+          "name": "sub",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "subwave",
+          "name": "sub wave",
+          "min": "sine",
+          "max": "round",
+          "default": "sine",
+          "choices": [
+            "sine",
+            "round"
+          ]
+        },
+        {
+          "id": "suboct",
+          "name": "sub octave",
+          "min": "-2",
+          "max": "0",
+          "default": "-1",
+          "choices": [
+            "-2",
+            "-1",
+            "0"
+          ]
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "ftype",
+          "name": "filter",
+          "min": "lp24",
+          "max": "notch",
+          "default": "lp12",
+          "choices": [
+            "lp24",
+            "lp12",
+            "bp",
+            "hp",
+            "notch"
+          ]
+        },
+        {
+          "id": "cutoff",
+          "name": "cutoff",
+          "min": "20.0 hz",
+          "max": "20.0 khz",
+          "default": "900 hz"
+        },
+        {
+          "id": "res",
+          "name": "resonance",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "fdrive",
+          "name": "filter drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "keytrack",
+          "name": "key track",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "vowel",
+          "name": "vowel",
+          "min": "a",
+          "max": "u",
+          "default": "a"
+        },
+        {
+          "id": "fmtq",
+          "name": "formant q",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "fmtshift",
+          "name": "formant shift",
+          "min": "-12 st",
+          "max": "+12 st",
+          "default": "0 st"
+        },
+        {
+          "id": "fmtmix",
+          "name": "formant mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "combtune",
+          "name": "comb tune",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "combfb",
+          "name": "comb feedback",
+          "min": "-95%",
+          "max": "+95%",
+          "default": "+60%"
+        },
+        {
+          "id": "combmix",
+          "name": "comb mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "dmode",
+          "name": "distortion",
+          "min": "soft",
+          "max": "smooth",
+          "default": "soft",
+          "choices": [
+            "soft",
+            "fold",
+            "hard",
+            "tube",
+            "crush",
+            "smooth"
+          ]
+        },
+        {
+          "id": "ddrive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.25"
+        },
+        {
+          "id": "dtone",
+          "name": "dist tone",
+          "min": "1.20 khz",
+          "max": "20.0 khz",
+          "default": "11.4 khz"
+        },
+        {
+          "id": "dmix",
+          "name": "dist mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "order",
+          "name": "order",
+          "min": "filter > dist",
+          "max": "dist > filter",
+          "default": "filter > dist",
+          "choices": [
+            "filter > dist",
+            "dist > filter"
+          ]
+        },
+        {
+          "id": "wdiv",
+          "name": "wobble rate",
+          "min": "1/64",
+          "max": "free",
+          "default": "1/8",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars",
+            "free"
+          ]
+        },
+        {
+          "id": "wshape",
+          "name": "wobble shape",
+          "min": "sine",
+          "max": "random",
+          "default": "sine",
+          "choices": [
+            "sine",
+            "triangle",
+            "ramp down",
+            "ramp up",
+            "square",
+            "wow",
+            "yoy",
+            "random"
+          ]
+        },
+        {
+          "id": "wretrig",
+          "name": "wobble retrigger",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "wphase",
+          "name": "wobble phase",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "wcut",
+          "name": "wob > cutoff",
+          "min": "-6.0 oct",
+          "max": "+6.0 oct",
+          "default": "0.0 oct"
+        },
+        {
+          "id": "wvowel",
+          "name": "wob > vowel",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "wfm",
+          "name": "wob > fm",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "wdrive",
+          "name": "wob > drive",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "wpitch",
+          "name": "wob > pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "wamp",
+          "name": "wob > volume",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "wcomb",
+          "name": "wob > comb",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "ma",
+          "name": "env attack",
+          "min": "0 ms",
+          "max": "2.00 s",
+          "default": "1 ms"
+        },
+        {
+          "id": "md",
+          "name": "env decay",
+          "min": "5 ms",
+          "max": "4.00 s",
+          "default": "260 ms"
+        },
+        {
+          "id": "ms",
+          "name": "env sustain",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "mr",
+          "name": "env release",
+          "min": "5 ms",
+          "max": "4.00 s",
+          "default": "200 ms"
+        },
+        {
+          "id": "mcut",
+          "name": "env > cutoff",
+          "min": "-6.0 oct",
+          "max": "+6.0 oct",
+          "default": "+2.2 oct"
+        },
+        {
+          "id": "mpitch",
+          "name": "env > pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "mfm",
+          "name": "env > fm",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "mvowel",
+          "name": "env > vowel",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "aa",
+          "name": "amp attack",
+          "min": "0 ms",
+          "max": "2.00 s",
+          "default": "2 ms"
+        },
+        {
+          "id": "ad",
+          "name": "amp decay",
+          "min": "5 ms",
+          "max": "4.00 s",
+          "default": "600 ms"
+        },
+        {
+          "id": "as",
+          "name": "amp sustain",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "ar",
+          "name": "amp release",
+          "min": "5 ms",
+          "max": "4.00 s",
+          "default": "300 ms"
+        },
+        {
+          "id": "ott",
+          "name": "ott",
+          "min": "0%",
+          "max": "100%",
+          "default": "15%"
+        },
+        {
+          "id": "otttime",
+          "name": "ott time",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.40"
+        },
+        {
+          "id": "voices",
+          "name": "voices",
+          "min": "mono",
+          "max": "poly",
+          "default": "poly",
+          "choices": [
+            "mono",
+            "poly"
+          ]
+        },
+        {
+          "id": "legato",
+          "name": "legato",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "glide",
+          "name": "glide",
+          "min": "0 ms",
+          "max": "1.00 s",
+          "default": "0 ms"
+        },
+        {
+          "id": "bend",
+          "name": "bend range",
+          "min": "0 st",
+          "max": "+24 st",
+          "default": "+2 st"
+        },
+        {
+          "id": "wheel",
+          "name": "mod wheel",
+          "min": "off",
+          "max": "wobble rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble depth",
+            "wobble rate"
+          ]
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "width",
+          "name": "width",
+          "min": "0%",
+          "max": "100%",
+          "default": "80%"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-24.0 db",
+          "max": "+6.0 db",
+          "default": "-6.0 db"
+        },
+        {
+          "id": "chord",
+          "name": "chord",
+          "min": "off",
+          "max": "deep stack",
+          "default": "minor 9",
+          "choices": [
+            "off",
+            "fifth",
+            "octave",
+            "major",
+            "minor",
+            "major 7",
+            "minor 7",
+            "dominant 7",
+            "major 9",
+            "minor 9",
+            "minor 11",
+            "sus 4",
+            "6 / 9",
+            "minor 9 (no 5th)",
+            "deep stack"
+          ]
+        },
+        {
+          "id": "voicing",
+          "name": "chord voicing",
+          "min": "close",
+          "max": "drop 2",
+          "default": "close",
+          "choices": [
+            "close",
+            "open",
+            "drop 2"
+          ]
+        },
+        {
+          "id": "l2div",
+          "name": "lfo 2 rate",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "4 bars",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "l2sync",
+          "name": "lfo 2 sync",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "l2hz",
+          "name": "lfo 2 free rate",
+          "min": "0.01 hz",
+          "max": "40.0 hz",
+          "default": "1.00 hz"
+        },
+        {
+          "id": "l2shape",
+          "name": "lfo 2 shape",
+          "min": "sine",
+          "max": "smooth random",
+          "default": "ramp up",
+          "choices": [
+            "sine",
+            "triangle",
+            "ramp down",
+            "ramp up",
+            "square",
+            "wow",
+            "yoy",
+            "random",
+            "smooth random"
+          ]
+        },
+        {
+          "id": "l2retrig",
+          "name": "lfo 2 retrigger",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "l2phase",
+          "name": "lfo 2 phase",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "l2mode",
+          "name": "lfo 2 mode",
+          "min": "loop",
+          "max": "one-shot",
+          "default": "loop",
+          "choices": [
+            "loop",
+            "one-shot"
+          ]
+        },
+        {
+          "id": "l2skew",
+          "name": "lfo 2 skew",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "l2smooth",
+          "name": "lfo 2 smooth",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "l3div",
+          "name": "lfo 3 rate",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1/4",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "l3sync",
+          "name": "lfo 3 sync",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "l3hz",
+          "name": "lfo 3 free rate",
+          "min": "0.01 hz",
+          "max": "40.0 hz",
+          "default": "1.00 hz"
+        },
+        {
+          "id": "l3shape",
+          "name": "lfo 3 shape",
+          "min": "sine",
+          "max": "smooth random",
+          "default": "sine",
+          "choices": [
+            "sine",
+            "triangle",
+            "ramp down",
+            "ramp up",
+            "square",
+            "wow",
+            "yoy",
+            "random",
+            "smooth random"
+          ]
+        },
+        {
+          "id": "l3retrig",
+          "name": "lfo 3 retrigger",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "l3phase",
+          "name": "lfo 3 phase",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "l3mode",
+          "name": "lfo 3 mode",
+          "min": "loop",
+          "max": "one-shot",
+          "default": "loop",
+          "choices": [
+            "loop",
+            "one-shot"
+          ]
+        },
+        {
+          "id": "l3skew",
+          "name": "lfo 3 skew",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "l3smooth",
+          "name": "lfo 3 smooth",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "stp1",
+          "name": "step 1",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "stp2",
+          "name": "step 2",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "stp3",
+          "name": "step 3",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "stp4",
+          "name": "step 4",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "stp5",
+          "name": "step 5",
+          "min": "0%",
+          "max": "100%",
+          "default": "90%"
+        },
+        {
+          "id": "stp6",
+          "name": "step 6",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "stp7",
+          "name": "step 7",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "stp8",
+          "name": "step 8",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "stp9",
+          "name": "step 9",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "stp10",
+          "name": "step 10",
+          "min": "0%",
+          "max": "100%",
+          "default": "40%"
+        },
+        {
+          "id": "stp11",
+          "name": "step 11",
+          "min": "0%",
+          "max": "100%",
+          "default": "70%"
+        },
+        {
+          "id": "stp12",
+          "name": "step 12",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "stp13",
+          "name": "step 13",
+          "min": "0%",
+          "max": "100%",
+          "default": "80%"
+        },
+        {
+          "id": "stp14",
+          "name": "step 14",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "stp15",
+          "name": "step 15",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "stp16",
+          "name": "step 16",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "steplen",
+          "name": "steps length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "stepdiv",
+          "name": "steps rate",
+          "min": "1/64",
+          "max": "free",
+          "default": "1/16",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars",
+            "free"
+          ]
+        },
+        {
+          "id": "stepglide",
+          "name": "steps glide",
+          "min": "0%",
+          "max": "100%",
+          "default": "15%"
+        },
+        {
+          "id": "stepretrig",
+          "name": "steps retrigger",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "m1src",
+          "name": "mod 1 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m1dst",
+          "name": "mod 1 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m1amt",
+          "name": "mod 1 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m2src",
+          "name": "mod 2 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m2dst",
+          "name": "mod 2 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m2amt",
+          "name": "mod 2 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m3src",
+          "name": "mod 3 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m3dst",
+          "name": "mod 3 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m3amt",
+          "name": "mod 3 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m4src",
+          "name": "mod 4 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m4dst",
+          "name": "mod 4 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m4amt",
+          "name": "mod 4 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m5src",
+          "name": "mod 5 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m5dst",
+          "name": "mod 5 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m5amt",
+          "name": "mod 5 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m6src",
+          "name": "mod 6 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m6dst",
+          "name": "mod 6 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m6amt",
+          "name": "mod 6 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m7src",
+          "name": "mod 7 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m7dst",
+          "name": "mod 7 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m7amt",
+          "name": "mod 7 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "m8src",
+          "name": "mod 8 source",
+          "min": "off",
+          "max": "aftertouch",
+          "default": "off",
+          "choices": [
+            "off",
+            "wobble",
+            "lfo 2",
+            "lfo 3",
+            "steps",
+            "mod env",
+            "amp env",
+            "velocity",
+            "mod wheel",
+            "note",
+            "random",
+            "aftertouch"
+          ]
+        },
+        {
+          "id": "m8dst",
+          "name": "mod 8 destination",
+          "min": "off",
+          "max": "steps rate",
+          "default": "off",
+          "choices": [
+            "off",
+            "cutoff",
+            "resonance",
+            "vowel",
+            "formant shift",
+            "fm",
+            "drive",
+            "pitch",
+            "volume",
+            "comb tune",
+            "comb feedback",
+            "osc a wave",
+            "osc b wave",
+            "pulse width",
+            "detune",
+            "noise",
+            "sub",
+            "dist mix",
+            "wobble rate",
+            "lfo 2 rate",
+            "lfo 3 rate",
+            "fine pitch",
+            "formant mix",
+            "steps rate"
+          ]
+        },
+        {
+          "id": "m8amt",
+          "name": "mod 8 amount",
+          "min": "-100%",
+          "max": "+100%",
+          "default": "0%"
+        },
+        {
+          "id": "wfree",
+          "name": "wobble free rate",
+          "min": "0.020 hz",
+          "max": "40.00 hz",
+          "default": "2.00 hz"
+        },
+        {
+          "id": "stepfree",
+          "name": "steps free time",
+          "min": "5.0 ms",
+          "max": "4.00 s",
+          "default": "125 ms"
+        }
+      ]
+    },
+    {
+      "type": "fal:kt1",
+      "name": "kt1 kit",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "warehouse",
+        "jazzy",
+        "minimal deep",
+        "broken",
+        "empty"
+      ],
+      "params": [
+        {
+          "id": "run",
+          "name": "run (internal clock)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "bpm",
+          "name": "internal bpm",
+          "min": "60.00 bpm",
+          "max": "180.00 bpm",
+          "default": "124.00 bpm"
+        },
+        {
+          "id": "swing",
+          "name": "swing",
+          "min": "50%",
+          "max": "75%",
+          "default": "56%"
+        },
+        {
+          "id": "micro",
+          "name": "micro range",
+          "min": "±0.0 ms",
+          "max": "±40.0 ms",
+          "default": "±12.0 ms"
+        },
+        {
+          "id": "pattern",
+          "name": "pattern",
+          "min": "a1",
+          "max": "a8",
+          "default": "a1",
+          "choices": [
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a5",
+            "a6",
+            "a7",
+            "a8"
+          ]
+        },
+        {
+          "id": "master",
+          "name": "master",
+          "min": "-24.0 db",
+          "max": "+6.0 db",
+          "default": "-4.0 db"
+        },
+        {
+          "id": "v1_model",
+          "name": "bd1 model",
+          "min": "tok",
+          "max": "sine",
+          "default": "thud",
+          "choices": [
+            "tok",
+            "thud",
+            "909",
+            "sine"
+          ]
+        },
+        {
+          "id": "v1_tune",
+          "name": "bd1 tune",
+          "min": "30.0 hz",
+          "max": "140 hz",
+          "default": "47.6 hz"
+        },
+        {
+          "id": "v1_decay",
+          "name": "bd1 decay",
+          "min": "35 ms",
+          "max": "1.60 s",
+          "default": "286 ms"
+        },
+        {
+          "id": "v1_click",
+          "name": "bd1 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.22"
+        },
+        {
+          "id": "v1_sub",
+          "name": "bd1 sub",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "v1_tok",
+          "name": "bd1 tok",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.10"
+        },
+        {
+          "id": "v1_sweep",
+          "name": "bd1 sweep",
+          "min": "+0.0 st",
+          "max": "+48.0 st",
+          "default": "+15.4 st"
+        },
+        {
+          "id": "v1_bend",
+          "name": "bd1 bend",
+          "min": "2.0 ms",
+          "max": "140 ms",
+          "default": "12 ms"
+        },
+        {
+          "id": "v1_drive",
+          "name": "bd1 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.12"
+        },
+        {
+          "id": "v1_level",
+          "name": "bd1 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-1.6 db"
+        },
+        {
+          "id": "v1_pan",
+          "name": "bd1 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "c"
+        },
+        {
+          "id": "v1_vel",
+          "name": "bd1 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v1_len",
+          "name": "bd1 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v1_prob",
+          "name": "bd1 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v1_shift",
+          "name": "bd1 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v1_mute",
+          "name": "bd1 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v2_model",
+          "name": "rm2 model",
+          "min": "rim",
+          "max": "metal",
+          "default": "wood",
+          "choices": [
+            "rim",
+            "wood",
+            "tok",
+            "metal"
+          ]
+        },
+        {
+          "id": "v2_tune",
+          "name": "rm2 tune",
+          "min": "180 hz",
+          "max": "2.40 khz",
+          "default": "692 hz"
+        },
+        {
+          "id": "v2_decay",
+          "name": "rm2 decay",
+          "min": "8.0 ms",
+          "max": "600 ms",
+          "default": "19 ms"
+        },
+        {
+          "id": "v2_click",
+          "name": "rm2 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "v2_body",
+          "name": "rm2 body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.62"
+        },
+        {
+          "id": "v2_noise",
+          "name": "rm2 noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "v2_sweep",
+          "name": "rm2 sweep",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+1.2 st"
+        },
+        {
+          "id": "v2_hard",
+          "name": "rm2 hard",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "v2_drive",
+          "name": "rm2 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "v2_level",
+          "name": "rm2 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-9.1 db"
+        },
+        {
+          "id": "v2_pan",
+          "name": "rm2 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "l 9"
+        },
+        {
+          "id": "v2_vel",
+          "name": "rm2 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v2_len",
+          "name": "rm2 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v2_prob",
+          "name": "rm2 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v2_shift",
+          "name": "rm2 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v2_mute",
+          "name": "rm2 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v3_model",
+          "name": "cp3 model",
+          "min": "clap",
+          "max": "tight",
+          "default": "room",
+          "choices": [
+            "clap",
+            "snap",
+            "room",
+            "tight"
+          ]
+        },
+        {
+          "id": "v3_tune",
+          "name": "cp3 tune",
+          "min": "500 hz",
+          "max": "3.20 khz",
+          "default": "957 hz"
+        },
+        {
+          "id": "v3_decay",
+          "name": "cp3 decay",
+          "min": "30 ms",
+          "max": "1.00 s",
+          "default": "145 ms"
+        },
+        {
+          "id": "v3_snap",
+          "name": "cp3 snap",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.35"
+        },
+        {
+          "id": "v3_claps",
+          "name": "cp3 claps",
+          "min": "2 claps",
+          "max": "6 claps",
+          "default": "5 claps"
+        },
+        {
+          "id": "v3_noise",
+          "name": "cp3 noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.35"
+        },
+        {
+          "id": "v3_spread",
+          "name": "cp3 spread",
+          "min": "4.0 ms",
+          "max": "26 ms",
+          "default": "11 ms"
+        },
+        {
+          "id": "v3_tone",
+          "name": "cp3 tone",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.22"
+        },
+        {
+          "id": "v3_drive",
+          "name": "cp3 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "v3_level",
+          "name": "cp3 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-7.0 db"
+        },
+        {
+          "id": "v3_pan",
+          "name": "cp3 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 2"
+        },
+        {
+          "id": "v3_vel",
+          "name": "cp3 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v3_len",
+          "name": "cp3 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v3_prob",
+          "name": "cp3 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v3_shift",
+          "name": "cp3 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v3_mute",
+          "name": "cp3 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v4_model",
+          "name": "ch4 model",
+          "min": "808",
+          "max": "tick",
+          "default": "808",
+          "choices": [
+            "808",
+            "noise",
+            "ring",
+            "tick"
+          ]
+        },
+        {
+          "id": "v4_tune",
+          "name": "ch4 tune",
+          "min": "x0.50",
+          "max": "x2.00",
+          "default": "x0.93"
+        },
+        {
+          "id": "v4_decay",
+          "name": "ch4 decay",
+          "min": "6.0 ms",
+          "max": "1.40 s",
+          "default": "20 ms"
+        },
+        {
+          "id": "v4_click",
+          "name": "ch4 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.18"
+        },
+        {
+          "id": "v4_metal",
+          "name": "ch4 metal",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.55"
+        },
+        {
+          "id": "v4_air",
+          "name": "ch4 air",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "v4_chirp",
+          "name": "ch4 chirp",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+0.6 st"
+        },
+        {
+          "id": "v4_tone",
+          "name": "ch4 tone",
+          "min": "5.00 khz",
+          "max": "15.0 khz",
+          "default": "7.93 khz"
+        },
+        {
+          "id": "v4_drive",
+          "name": "ch4 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "v4_level",
+          "name": "ch4 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-13.4 db"
+        },
+        {
+          "id": "v4_pan",
+          "name": "ch4 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 6"
+        },
+        {
+          "id": "v4_vel",
+          "name": "ch4 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v4_len",
+          "name": "ch4 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v4_prob",
+          "name": "ch4 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v4_shift",
+          "name": "ch4 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v4_mute",
+          "name": "ch4 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v5_model",
+          "name": "oh5 model",
+          "min": "808",
+          "max": "tick",
+          "default": "808",
+          "choices": [
+            "808",
+            "noise",
+            "ring",
+            "tick"
+          ]
+        },
+        {
+          "id": "v5_tune",
+          "name": "oh5 tune",
+          "min": "x0.50",
+          "max": "x2.00",
+          "default": "x0.90"
+        },
+        {
+          "id": "v5_decay",
+          "name": "oh5 decay",
+          "min": "6.0 ms",
+          "max": "1.40 s",
+          "default": "120 ms"
+        },
+        {
+          "id": "v5_click",
+          "name": "oh5 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.15"
+        },
+        {
+          "id": "v5_metal",
+          "name": "oh5 metal",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.50"
+        },
+        {
+          "id": "v5_air",
+          "name": "oh5 air",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.50"
+        },
+        {
+          "id": "v5_chirp",
+          "name": "oh5 chirp",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+0.6 st"
+        },
+        {
+          "id": "v5_tone",
+          "name": "oh5 tone",
+          "min": "5.00 khz",
+          "max": "15.0 khz",
+          "default": "7.76 khz"
+        },
+        {
+          "id": "v5_drive",
+          "name": "oh5 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "v5_level",
+          "name": "oh5 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-12.4 db"
+        },
+        {
+          "id": "v5_pan",
+          "name": "oh5 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "l 4"
+        },
+        {
+          "id": "v5_vel",
+          "name": "oh5 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v5_len",
+          "name": "oh5 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v5_prob",
+          "name": "oh5 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v5_shift",
+          "name": "oh5 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v5_mute",
+          "name": "oh5 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v6_model",
+          "name": "sh6 model",
+          "min": "808",
+          "max": "tick",
+          "default": "noise",
+          "choices": [
+            "808",
+            "noise",
+            "ring",
+            "tick"
+          ]
+        },
+        {
+          "id": "v6_tune",
+          "name": "sh6 tune",
+          "min": "x0.50",
+          "max": "x2.00",
+          "default": "x1.18"
+        },
+        {
+          "id": "v6_decay",
+          "name": "sh6 decay",
+          "min": "6.0 ms",
+          "max": "1.40 s",
+          "default": "18 ms"
+        },
+        {
+          "id": "v6_click",
+          "name": "sh6 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "v6_metal",
+          "name": "sh6 metal",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "v6_air",
+          "name": "sh6 air",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.95"
+        },
+        {
+          "id": "v6_chirp",
+          "name": "sh6 chirp",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+0.0 st"
+        },
+        {
+          "id": "v6_tone",
+          "name": "sh6 tone",
+          "min": "5.00 khz",
+          "max": "15.0 khz",
+          "default": "7.76 khz"
+        },
+        {
+          "id": "v6_drive",
+          "name": "sh6 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "v6_level",
+          "name": "sh6 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-17.8 db"
+        },
+        {
+          "id": "v6_pan",
+          "name": "sh6 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 12"
+        },
+        {
+          "id": "v6_vel",
+          "name": "sh6 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v6_len",
+          "name": "sh6 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v6_prob",
+          "name": "sh6 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v6_shift",
+          "name": "sh6 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v6_mute",
+          "name": "sh6 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v7_model",
+          "name": "cg7 model",
+          "min": "conga",
+          "max": "glass",
+          "default": "conga",
+          "choices": [
+            "conga",
+            "bongo",
+            "bell",
+            "glass"
+          ]
+        },
+        {
+          "id": "v7_tune",
+          "name": "cg7 tune",
+          "min": "60.0 hz",
+          "max": "1.40 khz",
+          "default": "154 hz"
+        },
+        {
+          "id": "v7_decay",
+          "name": "cg7 decay",
+          "min": "20 ms",
+          "max": "2.50 s",
+          "default": "114 ms"
+        },
+        {
+          "id": "v7_click",
+          "name": "cg7 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.45"
+        },
+        {
+          "id": "v7_body",
+          "name": "cg7 body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.65"
+        },
+        {
+          "id": "v7_noise",
+          "name": "cg7 noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.08"
+        },
+        {
+          "id": "v7_sweep",
+          "name": "cg7 sweep",
+          "min": "+0.0 st",
+          "max": "+12.0 st",
+          "default": "+2.4 st"
+        },
+        {
+          "id": "v7_hard",
+          "name": "cg7 hard",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.40"
+        },
+        {
+          "id": "v7_drive",
+          "name": "cg7 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.00"
+        },
+        {
+          "id": "v7_level",
+          "name": "cg7 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-8.0 db"
+        },
+        {
+          "id": "v7_pan",
+          "name": "cg7 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "l 14"
+        },
+        {
+          "id": "v7_vel",
+          "name": "cg7 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v7_len",
+          "name": "cg7 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v7_prob",
+          "name": "cg7 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v7_shift",
+          "name": "cg7 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v7_mute",
+          "name": "cg7 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "v8_model",
+          "name": "tm8 model",
+          "min": "tom",
+          "max": "low",
+          "default": "tom",
+          "choices": [
+            "tom",
+            "blip",
+            "fm",
+            "low"
+          ]
+        },
+        {
+          "id": "v8_tune",
+          "name": "tm8 tune",
+          "min": "45.0 hz",
+          "max": "420 hz",
+          "default": "78.7 hz"
+        },
+        {
+          "id": "v8_decay",
+          "name": "tm8 decay",
+          "min": "50 ms",
+          "max": "1.60 s",
+          "default": "283 ms"
+        },
+        {
+          "id": "v8_click",
+          "name": "tm8 click",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "v8_body",
+          "name": "tm8 body",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.70"
+        },
+        {
+          "id": "v8_noise",
+          "name": "tm8 noise",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.10"
+        },
+        {
+          "id": "v8_sweep",
+          "name": "tm8 sweep",
+          "min": "+0.0 st",
+          "max": "+36.0 st",
+          "default": "+9.0 st"
+        },
+        {
+          "id": "v8_bend",
+          "name": "tm8 bend",
+          "min": "3.0 ms",
+          "max": "220 ms",
+          "default": "21 ms"
+        },
+        {
+          "id": "v8_drive",
+          "name": "tm8 drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.05"
+        },
+        {
+          "id": "v8_level",
+          "name": "tm8 level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-8.0 db"
+        },
+        {
+          "id": "v8_pan",
+          "name": "tm8 pan",
+          "min": "l 50",
+          "max": "r 50",
+          "default": "r 10"
+        },
+        {
+          "id": "v8_vel",
+          "name": "tm8 velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "v8_len",
+          "name": "tm8 length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "v8_prob",
+          "name": "tm8 probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "v8_shift",
+          "name": "tm8 shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "v8_mute",
+          "name": "tm8 mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "outs",
+          "name": "separate outputs",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "fal:kt2",
+      "name": "kt2 loop",
+      "family": "instrument",
+      "instrument": true,
+      "blurb": "",
+      "presets": [
+        "straight",
+        "chopped",
+        "half",
+        "sparse",
+        "pitched roll"
+      ],
+      "params": [
+        {
+          "id": "run",
+          "name": "run (internal clock)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "bpm",
+          "name": "internal bpm",
+          "min": "60.00 bpm",
+          "max": "180.00 bpm",
+          "default": "124.00 bpm"
+        },
+        {
+          "id": "swing",
+          "name": "swing",
+          "min": "50%",
+          "max": "75%",
+          "default": "54%"
+        },
+        {
+          "id": "micro",
+          "name": "micro range",
+          "min": "±0.0 ms",
+          "max": "±40.0 ms",
+          "default": "±12.0 ms"
+        },
+        {
+          "id": "pattern",
+          "name": "pattern",
+          "min": "a1",
+          "max": "a8",
+          "default": "a1",
+          "choices": [
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a5",
+            "a6",
+            "a7",
+            "a8"
+          ]
+        },
+        {
+          "id": "master",
+          "name": "master",
+          "min": "-24.0 db",
+          "max": "+6.0 db",
+          "default": "+0.0 db"
+        },
+        {
+          "id": "slices",
+          "name": "slices",
+          "min": "4",
+          "max": "32",
+          "default": "16",
+          "choices": [
+            "4",
+            "8",
+            "16",
+            "32"
+          ]
+        },
+        {
+          "id": "slicemode",
+          "name": "slice mode",
+          "min": "grid",
+          "max": "onsets",
+          "default": "grid",
+          "choices": [
+            "grid",
+            "onsets"
+          ]
+        },
+        {
+          "id": "start",
+          "name": "start",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch",
+          "min": "-24.00 st",
+          "max": "+24.00 st",
+          "default": "-0.00 st"
+        },
+        {
+          "id": "gate",
+          "name": "gate",
+          "min": "2%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "attack",
+          "name": "attack",
+          "min": "0.0 ms",
+          "max": "30.0 ms",
+          "default": "0.5 ms"
+        },
+        {
+          "id": "release",
+          "name": "release",
+          "min": "0.5 ms",
+          "max": "200.0 ms",
+          "default": "8.0 ms"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "300 hz",
+          "max": "20.0 khz",
+          "default": "20.0 khz"
+        },
+        {
+          "id": "revprob",
+          "name": "reverse chance",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "spread",
+          "name": "spread",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "off",
+          "max": "6.0 db",
+          "default": "-2.1 db"
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "fit",
+          "name": "fit loop to tempo",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "loopbeats",
+          "name": "loop length",
+          "min": "1 beats",
+          "max": "16 beats",
+          "default": "4 beats"
+        },
+        {
+          "id": "len",
+          "name": "length",
+          "min": "1",
+          "max": "16",
+          "default": "16"
+        },
+        {
+          "id": "prob",
+          "name": "probability",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "shift",
+          "name": "shift",
+          "min": "-30.0 ms",
+          "max": "+30.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "mute",
+          "name": "mute",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "curve",
+          "name": "clock curve",
+          "min": "off",
+          "max": "rand",
+          "default": "off",
+          "choices": [
+            "off",
+            "accel",
+            "decel",
+            "arch",
+            "bulge",
+            "wave",
+            "rand"
+          ]
+        },
+        {
+          "id": "curveamt",
+          "name": "curve amount",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "pitch1",
+          "name": "step 1 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch2",
+          "name": "step 2 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch3",
+          "name": "step 3 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch4",
+          "name": "step 4 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch5",
+          "name": "step 5 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch6",
+          "name": "step 6 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch7",
+          "name": "step 7 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch8",
+          "name": "step 8 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch9",
+          "name": "step 9 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch10",
+          "name": "step 10 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch11",
+          "name": "step 11 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch12",
+          "name": "step 12 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch13",
+          "name": "step 13 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch14",
+          "name": "step 14 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch15",
+          "name": "step 15 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        },
+        {
+          "id": "pitch16",
+          "name": "step 16 pitch",
+          "min": "-24 st",
+          "max": "+24 st",
+          "default": "0 st"
+        }
+      ]
+    },
+    {
+      "type": "fal:mc3",
+      "name": "mc3 micro",
+      "family": "effect",
+      "instrument": false,
+      "blurb": "",
+      "presets": [
+        "soft grains",
+        "stutter fill",
+        "dust from audio"
+      ],
+      "params": [
+        {
+          "id": "mode",
+          "name": "mode",
+          "min": "cut",
+          "max": "click",
+          "default": "grain",
+          "choices": [
+            "cut",
+            "grain",
+            "click"
+          ]
+        },
+        {
+          "id": "division",
+          "name": "rate",
+          "min": "1/64",
+          "max": "free",
+          "default": "1/16",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars",
+            "free"
+          ]
+        },
+        {
+          "id": "freerate",
+          "name": "free rate",
+          "min": "0.50 hz",
+          "max": "200.0 hz",
+          "default": "8.00 hz"
+        },
+        {
+          "id": "density",
+          "name": "density",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "size",
+          "name": "size",
+          "min": "2.0 ms",
+          "max": "250.0 ms",
+          "default": "80.0 ms"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch",
+          "min": "-24.00 st",
+          "max": "+24.00 st",
+          "default": "-0.00 st"
+        },
+        {
+          "id": "scatter",
+          "name": "scatter",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "reverse",
+          "name": "reverse",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "shape",
+          "name": "shape",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.50"
+        },
+        {
+          "id": "hold",
+          "name": "hold",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        }
+      ]
+    },
+    {
+      "type": "fal:dl4",
+      "name": "dl4 dub",
+      "family": "effect",
+      "instrument": false,
+      "blurb": "",
+      "presets": [
+        "chord echo 1/8 d",
+        "tape space 3/16",
+        "dub throw"
+      ],
+      "params": [
+        {
+          "id": "sync",
+          "name": "sync",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "division",
+          "name": "division",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1/8 d",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "time",
+          "name": "time",
+          "min": "2.0 ms",
+          "max": "2000 ms",
+          "default": "375 ms"
+        },
+        {
+          "id": "feedback",
+          "name": "feedback",
+          "min": "0%",
+          "max": "110%",
+          "default": "45%"
+        },
+        {
+          "id": "age",
+          "name": "age",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "wow",
+          "name": "wow",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.20"
+        },
+        {
+          "id": "hp",
+          "name": "loop hp",
+          "min": "20.0 hz",
+          "max": "2.00 khz",
+          "default": "300 hz"
+        },
+        {
+          "id": "lp",
+          "name": "loop lp",
+          "min": "500 hz",
+          "max": "20.0 khz",
+          "default": "4.50 khz"
+        },
+        {
+          "id": "spread",
+          "name": "spread",
+          "min": "0%",
+          "max": "100%",
+          "default": "80%"
+        },
+        {
+          "id": "mode",
+          "name": "mode",
+          "min": "tape",
+          "max": "clean",
+          "default": "tape",
+          "choices": [
+            "tape",
+            "bbd",
+            "clean"
+          ]
+        },
+        {
+          "id": "freeze",
+          "name": "freeze",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "input",
+          "name": "send",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        }
+      ]
+    },
+    {
+      "type": "fal:rv5",
+      "name": "rv5 room",
+      "family": "effect",
+      "instrument": false,
+      "blurb": "",
+      "presets": [
+        "warm room",
+        "plate",
+        "big chamber"
+      ],
+      "params": [
+        {
+          "id": "model",
+          "name": "model",
+          "min": "room",
+          "max": "chamber",
+          "default": "room",
+          "choices": [
+            "room",
+            "plate",
+            "air",
+            "chamber"
+          ]
+        },
+        {
+          "id": "size",
+          "name": "size",
+          "min": "0%",
+          "max": "100%",
+          "default": "40%"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "0.10 s",
+          "max": "8.00 s",
+          "default": "0.90 s"
+        },
+        {
+          "id": "predelay",
+          "name": "predelay",
+          "min": "0.0 ms",
+          "max": "120.0 ms",
+          "default": "6.0 ms"
+        },
+        {
+          "id": "damp",
+          "name": "damp",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.60"
+        },
+        {
+          "id": "lowcut",
+          "name": "low cut",
+          "min": "20.0 hz",
+          "max": "1.00 khz",
+          "default": "160 hz"
+        },
+        {
+          "id": "diffusion",
+          "name": "diffusion",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.70"
+        },
+        {
+          "id": "mod",
+          "name": "modulation",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.25"
+        },
+        {
+          "id": "gate",
+          "name": "gate",
+          "min": "off",
+          "max": "-12 db",
+          "default": "off"
+        },
+        {
+          "id": "width",
+          "name": "width",
+          "min": "0%",
+          "max": "150%",
+          "default": "100%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "22%"
+        }
+      ]
+    },
+    {
+      "type": "fal:sw6",
+      "name": "sw6 swing",
+      "family": "effect",
+      "instrument": false,
+      "blurb": "",
+      "presets": [
+        "deep swing 56",
+        "mpc 58",
+        "shuffle",
+        "loose"
+      ],
+      "params": [
+        {
+          "id": "template",
+          "name": "template",
+          "min": "straight",
+          "max": "drunk",
+          "default": "mpc",
+          "choices": [
+            "straight",
+            "mpc",
+            "shuffle",
+            "push",
+            "drag",
+            "drunk"
+          ]
+        },
+        {
+          "id": "swing",
+          "name": "swing",
+          "min": "50%",
+          "max": "75%",
+          "default": "56%"
+        },
+        {
+          "id": "amount",
+          "name": "amount",
+          "min": "0%",
+          "max": "200%",
+          "default": "100%"
+        },
+        {
+          "id": "humanize",
+          "name": "humanize",
+          "min": "0.0 ms",
+          "max": "15.0 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "accent",
+          "name": "accent",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "xfade",
+          "name": "crossfade",
+          "min": "1.0 ms",
+          "max": "12.0 ms",
+          "default": "4.0 ms"
+        },
+        {
+          "id": "step1",
+          "name": "step 1",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step2",
+          "name": "step 2",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step3",
+          "name": "step 3",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step4",
+          "name": "step 4",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step5",
+          "name": "step 5",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step6",
+          "name": "step 6",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step7",
+          "name": "step 7",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step8",
+          "name": "step 8",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step9",
+          "name": "step 9",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step10",
+          "name": "step 10",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step11",
+          "name": "step 11",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step12",
+          "name": "step 12",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step13",
+          "name": "step 13",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step14",
+          "name": "step 14",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step15",
+          "name": "step 15",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        },
+        {
+          "id": "step16",
+          "name": "step 16",
+          "min": "-50%",
+          "max": "+50%",
+          "default": "0%"
+        }
+      ]
+    },
+    {
+      "type": "fal:fl7",
+      "name": "fl7 filter",
+      "family": "effect",
+      "instrument": false,
+      "blurb": "",
+      "presets": [
+        "flat",
+        "warm lowpass",
+        "dj sweep 4 bars",
+        "low kill"
+      ],
+      "params": [
+        {
+          "id": "low",
+          "name": "low",
+          "min": "kill",
+          "max": "+6.0 db",
+          "default": "-0.0 db"
+        },
+        {
+          "id": "mid",
+          "name": "mid",
+          "min": "kill",
+          "max": "+6.0 db",
+          "default": "-0.0 db"
+        },
+        {
+          "id": "high",
+          "name": "high",
+          "min": "kill",
+          "max": "+6.0 db",
+          "default": "-0.0 db"
+        },
+        {
+          "id": "xlow",
+          "name": "low / mid",
+          "min": "40.0 hz",
+          "max": "1.20 khz",
+          "default": "250 hz"
+        },
+        {
+          "id": "xhigh",
+          "name": "mid / high",
+          "min": "600 hz",
+          "max": "14.0 khz",
+          "default": "2.50 khz"
+        },
+        {
+          "id": "sweep",
+          "name": "filter",
+          "min": "lp 45.0 hz",
+          "max": "hp 12.0 khz",
+          "default": "off"
+        },
+        {
+          "id": "res",
+          "name": "resonance",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.10"
+        },
+        {
+          "id": "lfodiv",
+          "name": "lfo rate",
+          "min": "1/64",
+          "max": "free",
+          "default": "1/2",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars",
+            "free"
+          ]
+        },
+        {
+          "id": "lfodepth",
+          "name": "lfo depth",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "lfoshape",
+          "name": "lfo shape",
+          "min": "sine",
+          "max": "s&h",
+          "default": "sine",
+          "choices": [
+            "sine",
+            "triangle",
+            "square",
+            "s&h"
+          ]
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "lfofree",
+          "name": "lfo free rate",
+          "min": "0.010 hz",
+          "max": "40.00 hz",
+          "default": "0.250 hz"
+        }
+      ]
+    },
+    {
+      "type": "fal:gl8",
+      "name": "gl8 glue",
+      "family": "effect",
+      "instrument": false,
+      "blurb": "",
+      "presets": [
+        "warm glue",
+        "tape only",
+        "pumping"
+      ],
+      "params": [
+        {
+          "id": "threshold",
+          "name": "threshold",
+          "min": "-40.0 db",
+          "max": "0.0 db",
+          "default": "-16.0 db"
+        },
+        {
+          "id": "ratio",
+          "name": "ratio",
+          "min": "1.5",
+          "max": "10",
+          "default": "2",
+          "choices": [
+            "1.5",
+            "2",
+            "4",
+            "10"
+          ]
+        },
+        {
+          "id": "attack",
+          "name": "attack",
+          "min": "0.10 ms",
+          "max": "30.0 ms",
+          "default": "15.0 ms"
+        },
+        {
+          "id": "release",
+          "name": "release",
+          "min": "50 ms",
+          "max": "1200 ms",
+          "default": "200 ms"
+        },
+        {
+          "id": "auto",
+          "name": "auto release",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "schp",
+          "name": "sidechain hp",
+          "min": "20.0 hz",
+          "max": "300 hz",
+          "default": "90.0 hz"
+        },
+        {
+          "id": "makeup",
+          "name": "makeup",
+          "min": "-6.0 db",
+          "max": "+18.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "tape",
+          "name": "tape",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "bump",
+          "name": "head bump",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.60"
+        },
+        {
+          "id": "hf",
+          "name": "hf loss",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.30"
+        },
+        {
+          "id": "bias",
+          "name": "bias",
+          "min": "0.00",
+          "max": "1.00",
+          "default": "0.20"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "out",
+          "name": "output",
+          "min": "-18.0 db",
+          "max": "+6.0 db",
+          "default": "0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:strip",
+      "name": "strip",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "channel strip: hp, lp, four bands, tilt, saturation, gate / expander",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "hpon",
+          "name": "high-pass on",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "hp",
+          "name": "high-pass",
+          "min": "20.0 hz",
+          "max": "500 hz",
+          "default": "60.0 hz"
+        },
+        {
+          "id": "lpon",
+          "name": "low-pass on",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "lp",
+          "name": "low-pass",
+          "min": "2.00 khz",
+          "max": "20.0 khz",
+          "default": "18.0 khz"
+        },
+        {
+          "id": "b1on",
+          "name": "band 1 on",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "b1f",
+          "name": "band 1 freq",
+          "min": "20.0 hz",
+          "max": "20.0 khz",
+          "default": "90.0 hz"
+        },
+        {
+          "id": "b1g",
+          "name": "band 1 gain",
+          "min": "-18.0 db",
+          "max": "+18.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "b1q",
+          "name": "band 1 q",
+          "min": "0.20",
+          "max": "12.00",
+          "default": "0.80"
+        },
+        {
+          "id": "b1t",
+          "name": "band 1 type",
+          "min": "low shelf",
+          "max": "high shelf",
+          "default": "low shelf",
+          "choices": [
+            "low shelf",
+            "bell",
+            "high shelf"
+          ]
+        },
+        {
+          "id": "b2on",
+          "name": "band 2 on",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "b2f",
+          "name": "band 2 freq",
+          "min": "20.0 hz",
+          "max": "20.0 khz",
+          "default": "300 hz"
+        },
+        {
+          "id": "b2g",
+          "name": "band 2 gain",
+          "min": "-18.0 db",
+          "max": "+18.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "b2q",
+          "name": "band 2 q",
+          "min": "0.20",
+          "max": "12.00",
+          "default": "0.80"
+        },
+        {
+          "id": "b2t",
+          "name": "band 2 type",
+          "min": "low shelf",
+          "max": "high shelf",
+          "default": "bell",
+          "choices": [
+            "low shelf",
+            "bell",
+            "high shelf"
+          ]
+        },
+        {
+          "id": "b3on",
+          "name": "band 3 on",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "b3f",
+          "name": "band 3 freq",
+          "min": "20.0 hz",
+          "max": "20.0 khz",
+          "default": "1.80 khz"
+        },
+        {
+          "id": "b3g",
+          "name": "band 3 gain",
+          "min": "-18.0 db",
+          "max": "+18.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "b3q",
+          "name": "band 3 q",
+          "min": "0.20",
+          "max": "12.00",
+          "default": "0.80"
+        },
+        {
+          "id": "b3t",
+          "name": "band 3 type",
+          "min": "low shelf",
+          "max": "high shelf",
+          "default": "bell",
+          "choices": [
+            "low shelf",
+            "bell",
+            "high shelf"
+          ]
+        },
+        {
+          "id": "b4on",
+          "name": "band 4 on",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "b4f",
+          "name": "band 4 freq",
+          "min": "20.0 hz",
+          "max": "20.0 khz",
+          "default": "8.00 khz"
+        },
+        {
+          "id": "b4g",
+          "name": "band 4 gain",
+          "min": "-18.0 db",
+          "max": "+18.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "b4q",
+          "name": "band 4 q",
+          "min": "0.20",
+          "max": "12.00",
+          "default": "0.80"
+        },
+        {
+          "id": "b4t",
+          "name": "band 4 type",
+          "min": "low shelf",
+          "max": "high shelf",
+          "default": "high shelf",
+          "choices": [
+            "low shelf",
+            "bell",
+            "high shelf"
+          ]
+        },
+        {
+          "id": "tilt",
+          "name": "tilt",
+          "min": "-6.0 db",
+          "max": "+6.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "sat",
+          "name": "saturation",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "gthr",
+          "name": "gate threshold",
+          "min": "-80.0 db",
+          "max": "0.0 db",
+          "default": "-80.0 db"
+        },
+        {
+          "id": "gratio",
+          "name": "gate ratio",
+          "min": "1:1.0",
+          "max": "1:8.0",
+          "default": "1:1.0"
+        },
+        {
+          "id": "gatt",
+          "name": "gate attack",
+          "min": "0.1 ms",
+          "max": "50 ms",
+          "default": "1.0 ms"
+        },
+        {
+          "id": "grel",
+          "name": "gate release",
+          "min": "5.0 ms",
+          "max": "1.00 s",
+          "default": "80 ms"
+        },
+        {
+          "id": "grange",
+          "name": "gate range",
+          "min": "-80.0 db",
+          "max": "0.0 db",
+          "default": "-60.0 db"
+        },
+        {
+          "id": "out",
+          "name": "output",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:transient",
+      "name": "transient",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "transient designer: attack and sustain",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "attack",
+          "name": "attack",
+          "min": "-100%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "sustain",
+          "name": "sustain",
+          "min": "-100%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "speed",
+          "name": "speed",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        }
+      ]
+    },
+    {
+      "type": "st:sidechain",
+      "name": "sidechain",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "compressor keyed from any track, with duck and pump shapes",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "threshold",
+          "name": "threshold",
+          "min": "-60.0 db",
+          "max": "0.0 db",
+          "default": "-24.0 db"
+        },
+        {
+          "id": "ratio",
+          "name": "ratio",
+          "min": "1.0:1",
+          "max": "20.0:1",
+          "default": "4.0:1"
+        },
+        {
+          "id": "attack",
+          "name": "attack",
+          "min": "0.1 ms",
+          "max": "100 ms",
+          "default": "5.0 ms"
+        },
+        {
+          "id": "release",
+          "name": "release",
+          "min": "10 ms",
+          "max": "2.00 s",
+          "default": "120 ms"
+        },
+        {
+          "id": "knee",
+          "name": "knee",
+          "min": "0.0 db",
+          "max": "+18.0 db",
+          "default": "+6.0 db"
+        },
+        {
+          "id": "makeup",
+          "name": "makeup",
+          "min": "-12.0 db",
+          "max": "+24.0 db",
+          "default": "+0.0 db"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "range",
+          "name": "range",
+          "min": "-60.0 db",
+          "max": "0.0 db",
+          "default": "-60.0 db"
+        },
+        {
+          "id": "key",
+          "name": "key",
+          "min": "internal",
+          "max": "external (key track)",
+          "default": "external (key track)",
+          "choices": [
+            "internal",
+            "external (key track)"
+          ]
+        },
+        {
+          "id": "keyhp",
+          "name": "key high-pass",
+          "min": "20.0 hz",
+          "max": "1.00 khz",
+          "default": "80.0 hz"
+        },
+        {
+          "id": "shape",
+          "name": "shape",
+          "min": "compressor",
+          "max": "pump (hold)",
+          "default": "compressor",
+          "choices": [
+            "compressor",
+            "duck",
+            "pump (hold)"
+          ]
+        },
+        {
+          "id": "hold",
+          "name": "hold",
+          "min": "1.0 ms",
+          "max": "500 ms",
+          "default": "60 ms"
+        }
+      ]
+    },
+    {
+      "type": "st:colour",
+      "name": "colour",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "tape / console stage with drift",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "mode",
+          "name": "mode",
+          "min": "tape",
+          "max": "console",
+          "default": "tape",
+          "choices": [
+            "tape",
+            "console"
+          ]
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "bias",
+          "name": "bias",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "hf",
+          "name": "hf loss",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "bump",
+          "name": "head bump",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "drift",
+          "name": "drift",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        }
+      ]
+    },
+    {
+      "type": "st:stereo",
+      "name": "stereo",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "width, mid / side, haas, mono below, balance",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "width",
+          "name": "width",
+          "min": "0%",
+          "max": "200%",
+          "default": "100%"
+        },
+        {
+          "id": "mid",
+          "name": "mid",
+          "min": "-12.0 db",
+          "max": "+12.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "side",
+          "name": "side",
+          "min": "-12.0 db",
+          "max": "+12.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "haas",
+          "name": "haas",
+          "min": "0.0 ms",
+          "max": "30 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "mono",
+          "name": "mono below",
+          "min": "0.0 hz",
+          "max": "400 hz",
+          "default": "0.0 hz"
+        },
+        {
+          "id": "balance",
+          "name": "balance",
+          "min": "-100%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "swap",
+          "name": "swap",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "st:throw",
+      "name": "throw",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "dub send delay with a throw button, hold, filtered saturating feedback",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "sync",
+          "name": "sync",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "division",
+          "name": "division",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1/8 d",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "time",
+          "name": "time",
+          "min": "1.0 ms",
+          "max": "3.00 s",
+          "default": "375 ms"
+        },
+        {
+          "id": "feedback",
+          "name": "feedback",
+          "min": "0%",
+          "max": "110%",
+          "default": "60%"
+        },
+        {
+          "id": "hp",
+          "name": "loop hp",
+          "min": "20.0 hz",
+          "max": "2.00 khz",
+          "default": "150 hz"
+        },
+        {
+          "id": "lp",
+          "name": "loop lp",
+          "min": "500 hz",
+          "max": "20.0 khz",
+          "default": "4.00 khz"
+        },
+        {
+          "id": "sat",
+          "name": "saturation",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "wow",
+          "name": "wow",
+          "min": "0%",
+          "max": "100%",
+          "default": "15%"
+        },
+        {
+          "id": "spread",
+          "name": "ping-pong",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "throw",
+          "name": "throw (input in)",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "hold",
+          "name": "hold",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "input",
+          "name": "input",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        }
+      ]
+    },
+    {
+      "type": "st:spring",
+      "name": "spring",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "spring reverb with freeze",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "tension",
+          "name": "tension",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "drip",
+          "name": "drip",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "freeze",
+          "name": "freeze",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "st:vinyl",
+      "name": "vinyl",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "wow, flutter, crackle, bandwidth, saturation",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "wow",
+          "name": "wow",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "wowrate",
+          "name": "wow rate",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "flutter",
+          "name": "flutter",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "crackle",
+          "name": "crackle",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "cracklelevel",
+          "name": "crackle level",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "noise",
+          "name": "noise floor",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "bandwidth",
+          "name": "bandwidth",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "lowcut",
+          "name": "low cut",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "sat",
+          "name": "saturation",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        }
+      ]
+    },
+    {
+      "type": "st:repeat",
+      "name": "repeat",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "beat repeat / buffer glitch with pitch, reverse, bits and rate",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "sync",
+          "name": "sync",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "grid",
+          "name": "grid",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1/16",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "gridms",
+          "name": "grid ms",
+          "min": "5.0 ms",
+          "max": "2.00 s",
+          "default": "125 ms"
+        },
+        {
+          "id": "length",
+          "name": "length",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1/16",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "lengthms",
+          "name": "length ms",
+          "min": "5.0 ms",
+          "max": "2.00 s",
+          "default": "125 ms"
+        },
+        {
+          "id": "chance",
+          "name": "chance",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "repeats",
+          "name": "repeats",
+          "min": "1",
+          "max": "32",
+          "default": "4"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch decay",
+          "min": "-12.0 st",
+          "max": "+12.0 st",
+          "default": "0.0 st"
+        },
+        {
+          "id": "reverse",
+          "name": "reverse",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "bits",
+          "name": "bits",
+          "min": "2 bit",
+          "max": "24 bit",
+          "default": "24 bit"
+        },
+        {
+          "id": "rate",
+          "name": "rate divide",
+          "min": "1/1",
+          "max": "1/64",
+          "default": "1/1"
+        },
+        {
+          "id": "gate",
+          "name": "gate",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "force",
+          "name": "override (repeat now)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "variation",
+          "name": "variation",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        }
+      ]
+    },
+    {
+      "type": "st:grain",
+      "name": "grain",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "granular cloud from the live input",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "size",
+          "name": "size",
+          "min": "5.0 ms",
+          "max": "500 ms",
+          "default": "80 ms"
+        },
+        {
+          "id": "density",
+          "name": "density",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch",
+          "min": "-24.0 st",
+          "max": "+24.0 st",
+          "default": "0.0 st"
+        },
+        {
+          "id": "spray",
+          "name": "spray",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "jitter",
+          "name": "jitter",
+          "min": "0%",
+          "max": "100%",
+          "default": "20%"
+        },
+        {
+          "id": "reverse",
+          "name": "reverse",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "shape",
+          "name": "shape",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "freeze",
+          "name": "freeze",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "spread",
+          "name": "spread",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        }
+      ]
+    },
+    {
+      "type": "st:multiband",
+      "name": "multiband",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "three-band distortion",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "xlo",
+          "name": "low / mid",
+          "min": "40.0 hz",
+          "max": "1.00 khz",
+          "default": "200 hz"
+        },
+        {
+          "id": "xhi",
+          "name": "mid / high",
+          "min": "800 hz",
+          "max": "12.0 khz",
+          "default": "2.50 khz"
+        },
+        {
+          "id": "drive1",
+          "name": "low drive",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "mode1",
+          "name": "low mode",
+          "min": "soft",
+          "max": "hard",
+          "default": "soft",
+          "choices": [
+            "soft",
+            "fold",
+            "hard"
+          ]
+        },
+        {
+          "id": "level1",
+          "name": "low level",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        },
+        {
+          "id": "drive2",
+          "name": "mid drive",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "mode2",
+          "name": "mid mode",
+          "min": "soft",
+          "max": "hard",
+          "default": "soft",
+          "choices": [
+            "soft",
+            "fold",
+            "hard"
+          ]
+        },
+        {
+          "id": "level2",
+          "name": "mid level",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        },
+        {
+          "id": "drive3",
+          "name": "high drive",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "mode3",
+          "name": "high mode",
+          "min": "soft",
+          "max": "hard",
+          "default": "soft",
+          "choices": [
+            "soft",
+            "fold",
+            "hard"
+          ]
+        },
+        {
+          "id": "level3",
+          "name": "high level",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        }
+      ]
+    },
+    {
+      "type": "st:clip",
+      "name": "clip",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "digital clipper, bits and rate",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0.0 db",
+          "max": "+36.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "ceiling",
+          "name": "ceiling",
+          "min": "-24.0 db",
+          "max": "0.0 db",
+          "default": "0.0 db"
+        },
+        {
+          "id": "bits",
+          "name": "bits",
+          "min": "2 bit",
+          "max": "24 bit",
+          "default": "24 bit"
+        },
+        {
+          "id": "rate",
+          "name": "rate divide",
+          "min": "1/1",
+          "max": "1/64",
+          "default": "1/1"
+        },
+        {
+          "id": "mode",
+          "name": "mode",
+          "min": "hard",
+          "max": "fold",
+          "default": "hard",
+          "choices": [
+            "hard",
+            "soft",
+            "fold"
+          ]
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "dc",
+          "name": "dc filter",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        }
+      ]
+    },
+    {
+      "type": "st:noise",
+      "name": "noise bed",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "tape hiss / noise floor with drift and crackle",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "colour",
+          "name": "colour",
+          "min": "white",
+          "max": "brown",
+          "default": "tape",
+          "choices": [
+            "white",
+            "pink",
+            "tape",
+            "brown"
+          ]
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-80.0 db",
+          "max": "0.0 db",
+          "default": "-40.0 db"
+        },
+        {
+          "id": "hp",
+          "name": "high-pass",
+          "min": "20.0 hz",
+          "max": "2.00 khz",
+          "default": "100.0 hz"
+        },
+        {
+          "id": "lp",
+          "name": "low-pass",
+          "min": "1.00 khz",
+          "max": "20.0 khz",
+          "default": "9.00 khz"
+        },
+        {
+          "id": "drift",
+          "name": "drift",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "crackle",
+          "name": "crackle",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        }
+      ]
+    },
+    {
+      "type": "st:encoder",
+      "name": "encoder",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "ambisonic encoder: mono / stereo to order 1 - 7 (acn, sn3d)",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "azimuth",
+          "name": "azimuth",
+          "min": "180° right",
+          "max": "180° left",
+          "default": "front"
+        },
+        {
+          "id": "elevation",
+          "name": "elevation",
+          "min": "-90°",
+          "max": "90°",
+          "default": "0°"
+        },
+        {
+          "id": "width",
+          "name": "stereo width",
+          "min": "0°",
+          "max": "180°",
+          "default": "60°"
+        },
+        {
+          "id": "order",
+          "name": "order",
+          "min": "as wide as the track",
+          "max": "7 (64 ch)",
+          "default": "as wide as the track",
+          "choices": [
+            "as wide as the track",
+            "1 (4 ch)",
+            "2 (9 ch)",
+            "3 (16 ch)",
+            "4 (25 ch)",
+            "5 (36 ch)",
+            "6 (49 ch)",
+            "7 (64 ch)"
+          ]
+        },
+        {
+          "id": "gain",
+          "name": "gain",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:decoder",
+      "name": "decoder",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "ambisonic decoder to a ring, dome or sphere of speakers",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "layout",
+          "name": "speakers",
+          "min": "ring",
+          "max": "sphere",
+          "default": "ring",
+          "choices": [
+            "ring",
+            "dome",
+            "sphere"
+          ]
+        },
+        {
+          "id": "rotate",
+          "name": "rotate",
+          "min": "-180°",
+          "max": "180°",
+          "default": "0°"
+        },
+        {
+          "id": "direction",
+          "name": "numbering",
+          "min": "anticlockwise",
+          "max": "clockwise",
+          "default": "clockwise",
+          "choices": [
+            "anticlockwise",
+            "clockwise"
+          ]
+        },
+        {
+          "id": "front",
+          "name": "front",
+          "min": "a speaker at the front",
+          "max": "a pair around the front",
+          "default": "a speaker at the front",
+          "choices": [
+            "a speaker at the front",
+            "a pair around the front"
+          ]
+        },
+        {
+          "id": "gain",
+          "name": "gain",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:binaural",
+      "name": "binaural",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "ambisonics to headphones",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "yaw",
+          "name": "head turn",
+          "min": "180° right",
+          "max": "180° left",
+          "default": "ahead"
+        },
+        {
+          "id": "size",
+          "name": "head size",
+          "min": "80%",
+          "max": "120%",
+          "default": "100%"
+        },
+        {
+          "id": "gain",
+          "name": "gain",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:line",
+      "name": "line",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "lines of sound travelling through the speakers of a wide track",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "sync",
+          "name": "pass on the grid",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "division",
+          "name": "pass",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "2 bars",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "time",
+          "name": "pass time",
+          "min": "0.05 s",
+          "max": "60.0 s",
+          "default": "4.00 s"
+        },
+        {
+          "id": "rest",
+          "name": "rest",
+          "min": "0%",
+          "max": "90%",
+          "default": "0%"
+        },
+        {
+          "id": "legato",
+          "name": "legato",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "figure",
+          "name": "figure",
+          "min": "there and back",
+          "max": "at random",
+          "default": "there and back",
+          "choices": [
+            "there and back",
+            "round",
+            "swinging",
+            "at random"
+          ]
+        },
+        {
+          "id": "counter",
+          "name": "second line against the first",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "sieve",
+          "name": "speakers",
+          "min": "every speaker",
+          "max": "3@1 | 5@2 | 7@0",
+          "default": "every speaker",
+          "choices": [
+            "every speaker",
+            "2@0",
+            "3@0 | 4@1",
+            "5@0 | 7@3",
+            "3@1 | 5@2 | 7@0"
+          ]
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:wear",
+      "name": "wear",
+      "family": "studio",
+      "instrument": false,
+      "blurb": "a loop of the input that wears out a little on every pass",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "sync",
+          "name": "sync",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "division",
+          "name": "loop",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1 bar",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "time",
+          "name": "loop time",
+          "min": "50 ms",
+          "max": "16.00 s",
+          "default": "2.00 s"
+        },
+        {
+          "id": "record",
+          "name": "record",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "wear",
+          "name": "wear",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "dropouts",
+          "name": "dropouts",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "mix",
+          "name": "mix",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:skip",
+      "name": "skip",
+      "family": "studio",
+      "instrument": true,
+      "blurb": "a sample read like a skipping disc: fragments repeat, the read point jumps",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "intensity",
+          "name": "intensity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "sync",
+          "name": "fragments on the grid",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "division",
+          "name": "fragment",
+          "min": "1/64",
+          "max": "16 bars",
+          "default": "1/16",
+          "choices": [
+            "1/64",
+            "1/32",
+            "1/32 d",
+            "1/16 t",
+            "1/16",
+            "3/32",
+            "1/16 d",
+            "1/8 t",
+            "1/8",
+            "1/8 d",
+            "1/4 t",
+            "1/4",
+            "1/4 d",
+            "1/2",
+            "1 bar",
+            "2 bars",
+            "4 bars",
+            "8 bars",
+            "16 bars"
+          ]
+        },
+        {
+          "id": "fragment",
+          "name": "fragment length",
+          "min": "x0.25",
+          "max": "x4.00",
+          "default": "x1.00"
+        },
+        {
+          "id": "start",
+          "name": "from",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "end",
+          "name": "to",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch",
+          "min": "-24.0 st",
+          "max": "+24.0 st",
+          "default": "0.0 st"
+        },
+        {
+          "id": "errors",
+          "name": "read errors",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "play",
+          "name": "plays",
+          "min": "until the next note",
+          "max": "while the note is held",
+          "default": "until the next note",
+          "choices": [
+            "until the next note",
+            "while the note is held"
+          ]
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        }
+      ]
+    },
+    {
+      "type": "st:tone",
+      "name": "tone",
+      "family": "studio",
+      "instrument": true,
+      "blurb": "precision sine / pulse / click / impulse / noise generator",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "wave",
+          "name": "wave",
+          "min": "sine",
+          "max": "pink",
+          "default": "sine",
+          "choices": [
+            "sine",
+            "pulse",
+            "click",
+            "impulse",
+            "white",
+            "pink"
+          ]
+        },
+        {
+          "id": "hz",
+          "name": "frequency",
+          "min": "0.100 hz",
+          "max": "20000.000 hz",
+          "default": "1000.000 hz"
+        },
+        {
+          "id": "pw",
+          "name": "pulse width",
+          "min": "1%",
+          "max": "99%",
+          "default": "50%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "gate",
+          "name": "gate (note length)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "duration",
+          "name": "duration",
+          "min": "0.1 ms",
+          "max": "10.00 s",
+          "default": "10 ms"
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-60.0 db",
+          "max": "0.0 db",
+          "default": "-12.0 db"
+        },
+        {
+          "id": "attack",
+          "name": "attack",
+          "min": "0.0 ms",
+          "max": "100 ms",
+          "default": "0.0 ms"
+        },
+        {
+          "id": "pair",
+          "name": "second tone",
+          "min": "off",
+          "max": "a ratio away",
+          "default": "off",
+          "choices": [
+            "off",
+            "a difference away",
+            "a ratio away"
+          ]
+        },
+        {
+          "id": "difference",
+          "name": "difference",
+          "min": "0.10 hz",
+          "max": "2000.00 hz",
+          "default": "40.00 hz"
+        },
+        {
+          "id": "ratio",
+          "name": "ratio",
+          "min": "1.010",
+          "max": "2.000",
+          "default": "1.220"
+        },
+        {
+          "id": "apart",
+          "name": "one tone per channel",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "tuning",
+          "name": "tuning",
+          "min": "equal",
+          "max": "harmonic series",
+          "default": "equal",
+          "choices": [
+            "equal",
+            "just (5-limit)",
+            "just (7-limit)",
+            "harmonic series"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "st:data",
+      "name": "data",
+      "family": "studio",
+      "instrument": true,
+      "blurb": "byte-to-pulse bursts",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "bitrate",
+          "name": "bit rate",
+          "min": "50 bit/s",
+          "max": "20000 bit/s",
+          "default": "2000 bit/s"
+        },
+        {
+          "id": "bits",
+          "name": "bits per hit",
+          "min": "1",
+          "max": "512",
+          "default": "64"
+        },
+        {
+          "id": "density",
+          "name": "density",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "seed",
+          "name": "pattern",
+          "min": "from the note",
+          "max": "random each hit",
+          "default": "from the note",
+          "choices": [
+            "from the note",
+            "random each hit"
+          ]
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-60.0 db",
+          "max": "0.0 db",
+          "default": "-12.0 db"
+        },
+        {
+          "id": "tone",
+          "name": "tone",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        }
+      ]
+    },
+    {
+      "type": "st:fm",
+      "name": "fm perc",
+      "family": "studio",
+      "instrument": true,
+      "blurb": "four-operator fm percussion",
+      "presets": [
+        "init",
+        "fm kick",
+        "tom",
+        "bell",
+        "snare",
+        "ring hat",
+        "wood",
+        "zap",
+        "glass"
+      ],
+      "params": [
+        {
+          "id": "ratio1",
+          "name": "op 1 ratio",
+          "min": "x0.25",
+          "max": "x16.00",
+          "default": "x1.00"
+        },
+        {
+          "id": "level1",
+          "name": "op 1 level",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "decay1",
+          "name": "op 1 decay",
+          "min": "5.0 ms",
+          "max": "3.00 s",
+          "default": "400 ms"
+        },
+        {
+          "id": "ratio2",
+          "name": "op 2 ratio",
+          "min": "x0.25",
+          "max": "x16.00",
+          "default": "x2.00"
+        },
+        {
+          "id": "level2",
+          "name": "op 2 level",
+          "min": "0%",
+          "max": "100%",
+          "default": "60%"
+        },
+        {
+          "id": "decay2",
+          "name": "op 2 decay",
+          "min": "5.0 ms",
+          "max": "3.00 s",
+          "default": "250 ms"
+        },
+        {
+          "id": "ratio3",
+          "name": "op 3 ratio",
+          "min": "x0.25",
+          "max": "x16.00",
+          "default": "x3.50"
+        },
+        {
+          "id": "level3",
+          "name": "op 3 level",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "decay3",
+          "name": "op 3 decay",
+          "min": "5.0 ms",
+          "max": "3.00 s",
+          "default": "150 ms"
+        },
+        {
+          "id": "ratio4",
+          "name": "op 4 ratio",
+          "min": "x0.25",
+          "max": "x16.00",
+          "default": "x7.00"
+        },
+        {
+          "id": "level4",
+          "name": "op 4 level",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "decay4",
+          "name": "op 4 decay",
+          "min": "5.0 ms",
+          "max": "3.00 s",
+          "default": "100 ms"
+        },
+        {
+          "id": "algo",
+          "name": "algorithm",
+          "min": "4>3>2>1",
+          "max": "2>1 and 4>3",
+          "default": "4>3>2>1",
+          "choices": [
+            "4>3>2>1",
+            "2+3+4>1",
+            "2>1 and 4>3"
+          ]
+        },
+        {
+          "id": "feedback",
+          "name": "feedback",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch",
+          "min": "30.0 hz",
+          "max": "2.00 khz",
+          "default": "244.949 hz"
+        },
+        {
+          "id": "sweep",
+          "name": "sweep",
+          "min": "0%",
+          "max": "100%",
+          "default": "30%"
+        },
+        {
+          "id": "sweepms",
+          "name": "sweep time",
+          "min": "1.0 ms",
+          "max": "500 ms",
+          "default": "40 ms"
+        },
+        {
+          "id": "noise",
+          "name": "noise",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "noisedecay",
+          "name": "noise decay",
+          "min": "5.0 ms",
+          "max": "2.00 s",
+          "default": "100 ms"
+        },
+        {
+          "id": "drive",
+          "name": "drive",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "keytrack",
+          "name": "key tracking",
+          "min": "off",
+          "max": "on",
+          "default": "on",
+          "switch": true
+        },
+        {
+          "id": "level",
+          "name": "level",
+          "min": "-24.0 db",
+          "max": "+6.0 db",
+          "default": "-6.0 db"
+        },
+        {
+          "id": "morphto",
+          "name": "morph to",
+          "min": "init",
+          "max": "glass",
+          "default": "bell",
+          "choices": [
+            "init",
+            "fm kick",
+            "tom",
+            "bell",
+            "snare",
+            "ring hat",
+            "wood",
+            "zap",
+            "glass"
+          ]
+        },
+        {
+          "id": "morph",
+          "name": "morph",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        }
+      ]
+    },
+    {
+      "type": "st:sampler",
+      "name": "sampler",
+      "family": "studio",
+      "instrument": true,
+      "blurb": "one-shots, loops and slices to steps",
+      "presets": [
+        "init"
+      ],
+      "params": [
+        {
+          "id": "mode",
+          "name": "mode",
+          "min": "one-shot",
+          "max": "slices",
+          "default": "one-shot",
+          "choices": [
+            "one-shot",
+            "loop",
+            "slices"
+          ]
+        },
+        {
+          "id": "root",
+          "name": "root note",
+          "min": "C-2",
+          "max": "G8",
+          "default": "C3"
+        },
+        {
+          "id": "pitch",
+          "name": "pitch",
+          "min": "-24.0 st",
+          "max": "+24.0 st",
+          "default": "0.0 st"
+        },
+        {
+          "id": "start",
+          "name": "start",
+          "min": "0%",
+          "max": "100%",
+          "default": "0%"
+        },
+        {
+          "id": "end",
+          "name": "end",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "slices",
+          "name": "slices",
+          "min": "1",
+          "max": "64",
+          "default": "16"
+        },
+        {
+          "id": "slicemode",
+          "name": "slice mode",
+          "min": "grid",
+          "max": "onsets",
+          "default": "grid",
+          "choices": [
+            "grid",
+            "onsets"
+          ]
+        },
+        {
+          "id": "cutoff",
+          "name": "cutoff",
+          "min": "20.0 hz",
+          "max": "20.0 khz",
+          "default": "20.0 khz"
+        },
+        {
+          "id": "res",
+          "name": "resonance",
+          "min": "0%",
+          "max": "100%",
+          "default": "10%"
+        },
+        {
+          "id": "attack",
+          "name": "attack",
+          "min": "0.0 ms",
+          "max": "2.00 s",
+          "default": "1.0 ms"
+        },
+        {
+          "id": "decay",
+          "name": "decay",
+          "min": "1.0 ms",
+          "max": "4.00 s",
+          "default": "400 ms"
+        },
+        {
+          "id": "sustain",
+          "name": "sustain",
+          "min": "0%",
+          "max": "100%",
+          "default": "100%"
+        },
+        {
+          "id": "release",
+          "name": "release",
+          "min": "1.0 ms",
+          "max": "4.00 s",
+          "default": "30 ms"
+        },
+        {
+          "id": "gain",
+          "name": "gain",
+          "min": "-24.0 db",
+          "max": "+12.0 db",
+          "default": "+0.0 db"
+        },
+        {
+          "id": "choke",
+          "name": "choke (mono)",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "reverse",
+          "name": "reverse",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        },
+        {
+          "id": "vel",
+          "name": "velocity",
+          "min": "0%",
+          "max": "100%",
+          "default": "50%"
+        },
+        {
+          "id": "loopnote",
+          "name": "loop while held",
+          "min": "off",
+          "max": "on",
+          "default": "off",
+          "switch": true
+        }
+      ]
+    }
+  ],
+  "templates": [
+    "empty",
+    "deep house starter",
+    "dub house",
+    "long form (deep)",
+    "multi-out to ableton",
+    "bass first (half time, 172)",
+    "two-step (garage, 132)",
+    "spatial (encoder, 24 speakers, binaural)",
+    "half-step (140)"
+  ],
+  "divisions": [
+    "1/64",
+    "1/32",
+    "1/32 d",
+    "1/16 t",
+    "1/16",
+    "3/32",
+    "1/16 d",
+    "1/8 t",
+    "1/8",
+    "1/8 d",
+    "1/4 t",
+    "1/4",
+    "1/4 d",
+    "1/2",
+    "1 bar",
+    "2 bars",
+    "4 bars",
+    "8 bars",
+    "16 bars"
+  ]
+}

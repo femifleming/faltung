@@ -649,9 +649,11 @@ int main (int argc, char** argv)
                     head.ppq += bs / sr * head.bpm / 60.0;
                 }
                 q.setPlayHead (nullptr);
-                float lo = 1e9f, hi = 0; for (size_t i = 40; i < level.size(); ++i) { lo = std::min (lo, level[i]); hi = std::max (hi, level[i]); }
-                const float mid = std::sqrt (lo * hi); int n = 0;
-                for (size_t i = 41; i < level.size(); ++i) if ((level[i] > mid) != (level[i - 1] > mid)) ++n;
+                // the level in db, smoothed over a few blocks, read with hysteresis (noise through a 60 hz low-pass is itself restless)
+                std::vector<float> sm; for (size_t i = 3; i < level.size(); ++i) sm.push_back (10.0f * std::log10 ((level[i] * level[i] + level[i - 1] * level[i - 1] + level[i - 2] * level[i - 2] + level[i - 3] * level[i - 3]) * 0.25f + 1.0e-12f));
+                float lo = 1e9f, hi = -1e9f; for (size_t i = 40; i < sm.size(); ++i) { lo = std::min (lo, sm[i]); hi = std::max (hi, sm[i]); }
+                const float up = lo + (hi - lo) * 0.7f, down = lo + (hi - lo) * 0.45f; int n = 0; bool high = sm[40] > (up + down) * 0.5f;
+                for (size_t i = 41; i < sm.size(); ++i) { if (! high && sm[i] > up) { high = true; ++n; } else if (high && sm[i] < down) { high = false; ++n; } }
                 return n;
             };
             const int s124 = flips (11.0f, 5.0f, 124.0), s90 = flips (11.0f, 5.0f, 90.0);   // 1/4

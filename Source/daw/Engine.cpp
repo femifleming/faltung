@@ -140,6 +140,21 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         for (auto& t : tracks) allOff (*t);
         for (auto& t : tracks) if (mode.load() == (int) PlayMode::Session) { t->pendingPattern.store (t->pattern.load()); t->pendingAt.store (0.0); }
     }
+    if (playing && ! wasPlaying)
+    {
+        // every start begins the same way: the steps' chance, the modulators and the drift start over, so a host that
+        // renders the same bars twice gets the same notes twice
+        auto fresh = [] (Track& t)
+        {
+            t.rng.seed ((uint32_t) (t.uid * 7919 + 13)); t.evoRng.seed ((uint32_t) (t.uid * 104729 + 7));
+            t.flip.fill (0); t.drift.fill (0.0f); t.evoPass = -1; t.prevFired = false;
+            for (auto& m : t.modState) m = ModState();
+        };
+        for (auto& t : tracks) fresh (*t);
+        for (auto& r : returns) fresh (*r);
+        fresh (*master);
+    }
+    wasPlaying = playing;
     automate (ppq);
     global->apply (nullptr, ppq);
     const double bpm = host ? h.bpm : (double) tempo();

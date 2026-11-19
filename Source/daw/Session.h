@@ -327,7 +327,7 @@ private:
     std::vector<Target> gestures; mutable juce::CriticalSection gestureLock; double lastRecorded = 0;
     std::atomic<bool> panicFlag { false }, relocate { false };
     int nextUid = 1, nextClipId = 1, nextModId = 1;
-    bool prepared = false;
+    bool prepared = false, wasPlaying = false;
     std::map<juce::String, std::weak_ptr<const Sample>> sampleCache;
     juce::AudioFormatManager audioFormats;
     std::vector<std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter>> recWriters;

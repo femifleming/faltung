@@ -9,13 +9,21 @@
 
 namespace fal::daw
 {
+/** the studio's theme comes from the suite's own palette code (fal::themeFor), fed with the studio's entry in the product
+    table (studioInfo, Products.cpp): whatever a suite's look becomes there, the studio follows */
 inline ui::Theme studioTheme()
 {
-    const juce::Colour ground (studioInfo().ground), accent (studioInfo().accent);
-    if (kDeep) return { ground, accent, accent, juce::Colours::white, true };
-    return { ground, ui::inkFor (ground), accent, juce::Colours::white, false };
+    static const ui::Theme t = []
+    {
+        const auto& si = studioInfo();
+        const ProductInfo pi { Pid::kt1, si.code, si.name, si.blurb, fal::Kind::Machine, kDeep ? Style::Mirror : Style::Snd, si.ground, si.accent, VType::Kick, si.w, si.h };
+        auto th = themeFor (pi);
+        if (! th.mirror) th.edge = juce::Colours::white;   // (the studio's ground is dark: its slider marks stay white)
+        return th;
+    }();
+    return t;
 }
-inline juce::Font uiFont (float size, bool medium = false) { return kDeep ? ui::cond (size + 1.5f, medium) : ui::mono (size, medium); }
+inline juce::Font uiFont (float size, bool medium = false) { return studioTheme().mirror ? ui::cond (size + 1.5f, medium) : ui::mono (size, medium); }
 inline juce::Colour trackColour (const Track& t) { return juce::Colour (t.colour); }
 
 /** a generic "label · value" row: drag to change, click a choice for its menu, double-click to reset */
@@ -330,7 +338,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto t = studioTheme();
-        g.fillAll (t.ground.brighter (kDeep ? 0.25f : 0.12f));
+        g.fillAll (t.ground.brighter (t.mirror ? 0.25f : 0.12f));
         g.setColour (t.ink); g.setFont (uiFont (11.0f, true));
         g.drawText ("modulator " + juce::String (id) + ui::U ("  ·  ") + session.targetName (target()), 8, 4, getWidth() - 16, 16, juce::Justification::centredLeft);
         if (! stepBox.isEmpty())

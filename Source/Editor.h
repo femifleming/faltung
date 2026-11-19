@@ -3,6 +3,10 @@
 
 namespace fal
 {
+/** the colours and the style of a product's window, from its entry in the product table: the one place the suite's
+    palette is turned into a theme (sndstudio takes its own from here too) */
+ui::Theme themeFor (const ProductInfo&);
+
 /** base for the three page types */
 class View : public juce::Component
 {

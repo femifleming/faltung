@@ -53,6 +53,7 @@ well. Same columns, same rule: what a source does not say is marked as missing, 
 - a live-coding language (Orca, Fish, TidalCycles themselves): a different instrument; they play the studio over midi, and the standalone sends midi clock.
 - measured-ear (HRTF set) binaural decoding: `st:binaural` is a spherical-head model for placing things while arranging; hosted decoders (IEM, SPARTA) do the rest.
 - visual artists and inventors the user named for the look of other instruments (not methods for a studio).
+- Aleksi Perälä (named in a background note, not in a request): his Colundi work rests on a fixed set of chosen frequencies rather than a scale formula; `st:tone` takes exact frequencies per step (the `frequency` lock), but no such table is built in.
 
 ## cross-cutting, and where they live in sndstudio
 1. non-isochronous and per-step-length sequencing → `step time`, the tools `ratios` and `accelerate`, speed, free clock, ratchets with a curve

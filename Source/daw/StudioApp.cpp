@@ -25,7 +25,19 @@ public:
         processor->midiClockOut = [this] (const juce::MidiMessage& m) { if (clockOut) clockOut->sendMessageNow (m); };
         processor->openAudioSettings = [this] { menuItemSelected (10, 1); };
         std::unique_ptr<juce::XmlElement> saved (settings->getXmlValue ("audio"));
-        deviceManager.initialise (kOutChannels, kOutChannels, saved.get(), true);
+        const auto self = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SELFTEST", {});
+        if (self.isNotEmpty())
+        {
+            // the self-check opens one output device, by name (the built-in speakers unless SNDSTUDIO_DEVICE says otherwise),
+            // no input, at the rate the device already runs at, and nothing it plays reaches the device: the output is
+            // measured and then silenced. It never falls back to another device.
+            selfTesting = true;
+            juce::AudioDeviceManager::AudioDeviceSetup setup;
+            setup.outputDeviceName = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_DEVICE", "MacBook Pro Speakers");
+            setup.inputDeviceName = {}; setup.useDefaultInputChannels = false; setup.inputChannels.clear(); setup.useDefaultOutputChannels = true;
+            selfDeviceError = deviceManager.initialise (0, kOutChannels, nullptr, false, {}, &setup);
+        }
+        else deviceManager.initialise (kOutChannels, kOutChannels, saved.get(), true);
         for (auto& d : juce::MidiInput::getAvailableDevices()) deviceManager.setMidiInputDeviceEnabled (d.identifier, true);
         deviceManager.addMidiInputDeviceCallback ({}, &collector);
         setClockOut (settings->getValue ("clockOut"));
@@ -38,8 +50,7 @@ public:
         if (last.existsAsFile() && processor->loadProject (last, err)) {}
         else processor->session.newFromTemplate (1);
         // SNDSTUDIO_SELFTEST=<folder>: the app drives itself once (pages, playback, the outputs, recording) and writes
-        // pictures and a log there, then quits. For checking a build on a real audio device without hands.
-        const auto self = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SELFTEST", {});
+        // pictures and a log there, then quits. For checking a build on a real audio device without hands (and without sound).
         if (self.isNotEmpty()) { selfTest = std::make_unique<SelfTest> (*this, juce::File (self)); }
     }
     void shutdown() override
@@ -99,6 +110,7 @@ public:
         {
             for (int c = 0; c < nOut && c < kOutChannels; ++c) { const auto r = juce::FloatVectorOperations::findMinAndMax (out[c], n); const float pk = std::max (std::abs (r.getStart()), std::abs (r.getEnd())); if (pk > outPeak[(size_t) c].load()) outPeak[(size_t) c].store (pk); }
             for (int c = 0; c < nIn && c < kOutChannels; ++c) { const auto r = juce::FloatVectorOperations::findMinAndMax (in[c], n); const float pk = std::max (std::abs (r.getStart()), std::abs (r.getEnd())); if (pk > inPeak[(size_t) c].load()) inPeak[(size_t) c].store (pk); }
+            for (int c = 0; c < nOut; ++c) juce::FloatVectorOperations::clear (out[c], n);   // measured, not played
             callbacks.fetch_add (1);
         }
     }
@@ -166,17 +178,9 @@ private:
     {
         SelfTest (StudioApp& a, juce::File d) : app (a), dir (std::move (d))
         {
-            dir.createDirectory(); app.selfTesting = true;
+            dir.createDirectory();
             log = dir.getChildFile ("selftest.txt"); log.deleteFile();
-            const auto dev = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_DEVICE", {});
-            if (dev.isNotEmpty())
-            {
-                auto setup = app.deviceManager.getAudioDeviceSetup();
-                setup.outputDeviceName = dev; setup.inputDeviceName = dev; setup.useDefaultInputChannels = false; setup.useDefaultOutputChannels = false;
-                setup.inputChannels.setRange (0, kOutChannels, true); setup.outputChannels.setRange (0, kOutChannels, true);
-                const auto err = app.deviceManager.setAudioDeviceSetup (setup, true);
-                say ("device asked for: " + dev + (err.isNotEmpty() ? "  (" + err + ")" : juce::String()));
-            }
+            if (app.selfDeviceError.isNotEmpty()) say ("audio device: " + app.selfDeviceError);
             startTimer (700);
         }
         void say (const juce::String& line) { log.appendText (line + "\n"); }
@@ -212,17 +216,15 @@ private:
                 case 8: case 9: break;
                 case 10:
                     say ("produce, the starter playing: output channels 1-8 (db) " + peaks (app.outPeak, 8) + "   audio callbacks " + juce::String (app.callbacks.load()));
-                    say ("  the same through the device's inputs 1-8 (a loopback device hears itself) " + peaks (app.inPeak, 8));
                     shot ("app-session-playing"); e->showPage (3); break;
                 case 11: shot ("app-mix-playing"); s.assignOutputs(); clearPeaks(); break;
                 case 12: case 13: break;
                 case 14:
                     say ("multi-out, assign all: output channels 1-24 (db) " + peaks (app.outPeak, 24) + "   channels with sound in 3..22: " + juce::String (lit (app.outPeak, 2, 22)));
-                    say ("  inputs 1-24 " + peaks (app.inPeak, 24));
                     shot ("app-mix-multiout");
                     s.stop(); s.newFromTemplate (1); s.launchScene (4);
-                    // record the main output back in through inputs 1-2 (needs a loopback device and the microphone permission)
-                    if (auto* t = s.addTrack ("loopback", -1, TrackKind::Audio)) { t->armed.store (true); t->inputSource.store (-2); t->inputChannel.store (1); t->inputCount.store (2); t->monitor.store ((int) Monitor::Off); t->toMaster.store (false); recUid = t->uid; }
+                    // record what the master plays onto a new audio track, in real time (no device input is opened in a self-check)
+                    if (auto* t = s.addTrack ("resampled", -1, TrackKind::Audio)) { t->armed.store (true); t->inputSource.store (0); t->monitor.store ((int) Monitor::Off); t->toMaster.store (false); recUid = t->uid; }
                     s.projectFile = dir.getChildFile ("selftest.fstudio"); s.projectName = "selftest";
                     s.locate (0.0); s.startRecording(); s.play();
                     break;
@@ -243,7 +245,6 @@ private:
                 case 21: case 22: break;
                 case 23:
                     say ("spatial template, master 24 wide: outputs with sound in 1..24: " + juce::String (lit (app.outPeak, 0, 24)) + ", in 25..128: " + juce::String (lit (app.outPeak, 24, kOutChannels)) + "   master meters moving: " + juce::String ([&] { int k = 0; for (int c = 0; c < 24; ++c) if (s.master->meter[(size_t) c].load() > 1.0e-5f) ++k; return k; }()));
-                    say ("  inputs with sound in 1..24: " + juce::String (lit (app.inPeak, 0, 24)));
                     shot ("app-mix-spatial"); s.stop(); break;
                 case 24:
                 {
@@ -259,7 +260,7 @@ private:
         }
         StudioApp& app; juce::File dir, log; int step = 0, recUid = 0;
     };
-    std::unique_ptr<SelfTest> selfTest; bool selfTesting = false;
+    std::unique_ptr<SelfTest> selfTest; bool selfTesting = false; juce::String selfDeviceError;
     std::array<std::atomic<float>, kOutChannels> outPeak {}, inPeak {}; std::atomic<int> callbacks { 0 };
 
     std::unique_ptr<StudioProcessor> processor;
