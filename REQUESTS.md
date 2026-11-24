@@ -245,3 +245,5 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 
 
 1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)
+
+> push putz to github under faltung suite. and add homebrew cask for it
