@@ -261,7 +261,7 @@ add('''<section class="page"><h2 id="install">installing</h2>
 <tr><td class="n">apps</td><td>/Applications/faltung/faltung kt1.app …</td></tr></table>
 <p>To reinstall after building from source, run <code>scripts/install-mac.sh</code> in the faltung folder. In Ableton Live, open
 <i>Settings → Plug-Ins</i>, make sure <i>Use VST3 Plug-In System Folders</i> (or Audio Units) is on, and press <i>Rescan</i>. The plug-ins appear
-under <b>FreakiePie</b> as <i>faltung kt1</i>, <i>faltung bd1</i> and so on. The drum machines, modules and wb1 are instruments; mc3 … gl8 are audio effects.</p>
+under <b>faltung</b> as <i>faltung kt1</i>, <i>faltung bd1</i> and so on. The drum machines, modules and wb1 are instruments; mc3 … gl8 are audio effects.</p>
 <p>In the standalone apps there is no host clock: switch on <b>run</b> in kt1 or kt2 to start the internal sequencer, and set the tempo with <b>internal bpm</b>.
 Choose the audio and midi devices with the options button at the top of the window.</p>
 

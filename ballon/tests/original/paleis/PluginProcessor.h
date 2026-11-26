@@ -109,11 +109,11 @@ namespace ids
     }
 }
 
-class FreakiePieProcessor : public juce::AudioProcessor, private juce::Timer
+class BalloonProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
-    FreakiePieProcessor();
-    ~FreakiePieProcessor() override;
+    BalloonProcessor();
+    ~BalloonProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -407,5 +407,5 @@ private:
     std::atomic<float>* p_grFreeze = nullptr; std::atomic<float>* p_rvDecay = nullptr;
     std::atomic<float>* p_rvMix = nullptr;    std::atomic<float>* p_masterFb = nullptr;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreakiePieProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BalloonProcessor)
 };

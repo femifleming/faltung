@@ -54,12 +54,12 @@ namespace original
  #include "PluginEditor.h"
  #include "MoreUi.h"
 #else
- juce::AudioProcessorEditor* FreakiePieProcessor::createEditor() { return nullptr; }
+ juce::AudioProcessorEditor* BalloonProcessor::createEditor() { return nullptr; }
 #endif
 
 using namespace juce;
-using New = ::FreakiePieProcessor;
-using Old = original::FreakiePieProcessor;
+using New = ::BalloonProcessor;
+using Old = original::BalloonProcessor;
 
 static constexpr bool kPaleis = BALLON_PRODUCT == 1;
 static int fails = 0, checks = 0;

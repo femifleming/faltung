@@ -2,9 +2,9 @@
 // page comes forward and goes back, every parameter is on a control somewhere (a balloon, a token, a switch, a
 // gumball), nothing draws outside the window, and with --screenshots <dir> a picture of every page is saved.
 
-struct FreakieTestAccess
+struct BalloonTestAccess
 {
-    static void run (FreakiePieEditor& e, float seconds)
+    static void run (BalloonEditor& e, float seconds)
     {
         for (int i = 0; i < (int) std::lround (seconds * 60.0f); ++i)
         {
@@ -12,27 +12,27 @@ struct FreakieTestAccess
             e.timerCallback();
         }
     }
-    static void openStore (FreakiePieEditor& e)    { e.openStore(); }
-    static void openGumballs (FreakiePieEditor& e) { e.openGumballs(); }
-    static void openHelp (FreakiePieEditor& e)     { e.library->open(); }
-    static void closeHelp (FreakiePieEditor& e)    { e.library->close(); }
-    static bool helpShowing (FreakiePieEditor& e)  { return e.library->isVisible(); }
-    static int  helpChapters (FreakiePieEditor& e) { return e.library->numChapters(); }
-    static void helpChapter (FreakiePieEditor& e, int c) { e.library->showChapter (c); }
-    static void openChalk (FreakiePieEditor& e)    { e.chalkboard->bringForward(); }
-    static void chalkPage (FreakiePieEditor& e, int pg) { e.chalkboard->setPage (pg); }
-    static void chalkAway (FreakiePieEditor& e)    { e.chalkboard->putBack(); }
-    static void openPresets (FreakiePieEditor& e)  { e.presetStrip->open(); }
-    static void closePresets (FreakiePieEditor& e) { e.presetStrip->close(); }
-    static void showOrder (FreakiePieEditor& e)    { e.orderRow->step (1.0f, true); }
-    static void showCard (FreakiePieEditor& e, bool on) { e.cardShown = on ? 1.0f : 0.0f; e.placeCard(); }
-    static void weather (FreakiePieEditor& e, int which) { e.weatherBar->toggle (which); }
-    static void buyAll (FreakiePieEditor& e, bool b) { for (int fx : e.shelfItems()) e.setBought (fx, b); }
-    static bool gumballsShowing (FreakiePieEditor& e) { return e.gumballPage != nullptr && e.gumballPage->isVisible(); }
-    static void closeGumballs (FreakiePieEditor& e) { e.gumballPage->close(); }
+    static void openStore (BalloonEditor& e)    { e.openStore(); }
+    static void openGumballs (BalloonEditor& e) { e.openGumballs(); }
+    static void openHelp (BalloonEditor& e)     { e.library->open(); }
+    static void closeHelp (BalloonEditor& e)    { e.library->close(); }
+    static bool helpShowing (BalloonEditor& e)  { return e.library->isVisible(); }
+    static int  helpChapters (BalloonEditor& e) { return e.library->numChapters(); }
+    static void helpChapter (BalloonEditor& e, int c) { e.library->showChapter (c); }
+    static void openChalk (BalloonEditor& e)    { e.chalkboard->bringForward(); }
+    static void chalkPage (BalloonEditor& e, int pg) { e.chalkboard->setPage (pg); }
+    static void chalkAway (BalloonEditor& e)    { e.chalkboard->putBack(); }
+    static void openPresets (BalloonEditor& e)  { e.presetStrip->open(); }
+    static void closePresets (BalloonEditor& e) { e.presetStrip->close(); }
+    static void showOrder (BalloonEditor& e)    { e.orderRow->step (1.0f, true); }
+    static void showCard (BalloonEditor& e, bool on) { e.cardShown = on ? 1.0f : 0.0f; e.placeCard(); }
+    static void weather (BalloonEditor& e, int which) { e.weatherBar->toggle (which); }
+    static void buyAll (BalloonEditor& e, bool b) { for (int fx : e.shelfItems()) e.setBought (fx, b); }
+    static bool gumballsShowing (BalloonEditor& e) { return e.gumballPage != nullptr && e.gumballPage->isVisible(); }
+    static void closeGumballs (BalloonEditor& e) { e.gumballPage->close(); }
 };
 
-static void saveShot (FreakiePieEditor& e, const File& dir, const String& name)
+static void saveShot (BalloonEditor& e, const File& dir, const String& name)
 {
     if (dir == File()) return;
     auto img = e.createComponentSnapshot (e.getLocalBounds(), true, 1.0f);
@@ -60,7 +60,7 @@ int editorChecks (const File& shots)
     p.setRateAndBufferSizeDetails (48000.0, 512);
     p.prepareToPlay (48000.0, 512);
     std::unique_ptr<AudioProcessorEditor> ed (p.createEditor());
-    auto* e = dynamic_cast<FreakiePieEditor*> (ed.get());
+    auto* e = dynamic_cast<BalloonEditor*> (ed.get());
     check (e != nullptr, "the processor makes its own window");
     if (e == nullptr) return 1;
     check (ed->getWidth() > 0 && ed->getHeight() > 0, String::formatted ("it opens at %d x %d", ed->getWidth(), ed->getHeight()));
@@ -76,7 +76,7 @@ int editorChecks (const File& shots)
             buf.clear();
             for (int i = 0; i < 512; ++i) { float l, r; sig.next (48000.0, l, r); buf.setSample (0, i, l); buf.setSample (1, i, r); }
             p.processBlock (buf, midi);
-            if (b % 6 == 5) FreakieTestAccess::run (*e, 6.0f * 512.0f / 48000.0f);
+            if (b % 6 == 5) BalloonTestAccess::run (*e, 6.0f * 512.0f / 48000.0f);
         }
     };
     play (4.0f);
@@ -93,66 +93,66 @@ int editorChecks (const File& shots)
 
     // every parameter has a control: the gumball page lists every balloon's control (the originals' rule)
     {
-        FreakieTestAccess::openGumballs (*e);
-        FreakieTestAccess::run (*e, 1.0f);
-        check (FreakieTestAccess::gumballsShowing (*e), "the sliders page (the original's gumball menu) comes forward");
+        BalloonTestAccess::openGumballs (*e);
+        BalloonTestAccess::run (*e, 1.0f);
+        check (BalloonTestAccess::gumballsShowing (*e), "the sliders page (the original's gumball menu) comes forward");
         saveShot (*e, shots, "sliders");
-        FreakieTestAccess::closeGumballs (*e);
-        FreakieTestAccess::run (*e, 1.0f);
-        check (! FreakieTestAccess::gumballsShowing (*e), "and goes back");
+        BalloonTestAccess::closeGumballs (*e);
+        BalloonTestAccess::run (*e, 1.0f);
+        check (! BalloonTestAccess::gumballsShowing (*e), "and goes back");
     }
-    FreakieTestAccess::openStore (*e);
-    FreakieTestAccess::run (*e, 1.0f);
+    BalloonTestAccess::openStore (*e);
+    BalloonTestAccess::run (*e, 1.0f);
     saveShot (*e, shots, "store");
-    FreakieTestAccess::openStore (*e);
-    FreakieTestAccess::run (*e, 1.0f);
+    BalloonTestAccess::openStore (*e);
+    BalloonTestAccess::run (*e, 1.0f);
 
-    FreakieTestAccess::buyAll (*e, true);
+    BalloonTestAccess::buyAll (*e, true);
     play (3.0f);
     saveShot (*e, shots, "everything_bought");
 
-    FreakieTestAccess::openChalk (*e);
-    FreakieTestAccess::run (*e, 0.8f);
+    BalloonTestAccess::openChalk (*e);
+    BalloonTestAccess::run (*e, 0.8f);
     saveShot (*e, shots, "board_shape");
-    FreakieTestAccess::chalkPage (*e, 1);
-    FreakieTestAccess::run (*e, 0.2f);
+    BalloonTestAccess::chalkPage (*e, 1);
+    BalloonTestAccess::run (*e, 0.2f);
     saveShot (*e, shots, "board_eq");
-    FreakieTestAccess::chalkPage (*e, 0);
-    FreakieTestAccess::chalkAway (*e);
-    FreakieTestAccess::run (*e, 1.0f);
+    BalloonTestAccess::chalkPage (*e, 0);
+    BalloonTestAccess::chalkAway (*e);
+    BalloonTestAccess::run (*e, 1.0f);
 
-    FreakieTestAccess::openHelp (*e);
-    FreakieTestAccess::run (*e, 0.8f);
-    check (FreakieTestAccess::helpShowing (*e), "the help comes forward");
+    BalloonTestAccess::openHelp (*e);
+    BalloonTestAccess::run (*e, 0.8f);
+    check (BalloonTestAccess::helpShowing (*e), "the help comes forward");
     saveShot (*e, shots, "help");
     {
         int painted = 0;
-        for (int c = 0; c < FreakieTestAccess::helpChapters (*e); ++c)
+        for (int c = 0; c < BalloonTestAccess::helpChapters (*e); ++c)
         {
-            FreakieTestAccess::helpChapter (*e, c);
-            FreakieTestAccess::run (*e, 0.6f);
+            BalloonTestAccess::helpChapter (*e, c);
+            BalloonTestAccess::run (*e, 0.6f);
             painted += coloursIn (e->createComponentSnapshot (e->getLocalBounds(), true, 1.0f)) > 4 ? 1 : 0;
         }
-        check (painted == FreakieTestAccess::helpChapters (*e), String::formatted ("every chapter of the help is drawn (%d)", painted));
+        check (painted == BalloonTestAccess::helpChapters (*e), String::formatted ("every chapter of the help is drawn (%d)", painted));
     }
-    FreakieTestAccess::closeHelp (*e);
-    FreakieTestAccess::run (*e, 1.0f);
-    check (! FreakieTestAccess::helpShowing (*e), "and goes back");
+    BalloonTestAccess::closeHelp (*e);
+    BalloonTestAccess::run (*e, 1.0f);
+    check (! BalloonTestAccess::helpShowing (*e), "and goes back");
 
-    FreakieTestAccess::openPresets (*e);
-    FreakieTestAccess::run (*e, 0.8f);
+    BalloonTestAccess::openPresets (*e);
+    BalloonTestAccess::run (*e, 0.8f);
     saveShot (*e, shots, "presets");
-    FreakieTestAccess::closePresets (*e);
-    FreakieTestAccess::run (*e, 0.8f);
+    BalloonTestAccess::closePresets (*e);
+    BalloonTestAccess::run (*e, 0.8f);
 
-    FreakieTestAccess::showOrder (*e);
-    FreakieTestAccess::run (*e, 0.1f);
-    FreakieTestAccess::showOrder (*e);
+    BalloonTestAccess::showOrder (*e);
+    BalloonTestAccess::run (*e, 0.1f);
+    BalloonTestAccess::showOrder (*e);
     saveShot (*e, shots, "order");
-    FreakieTestAccess::showCard (*e, true);
-    FreakieTestAccess::run (*e, 0.1f);
+    BalloonTestAccess::showCard (*e, true);
+    BalloonTestAccess::run (*e, 0.1f);
     saveShot (*e, shots, "card");
-    FreakieTestAccess::showCard (*e, false);
+    BalloonTestAccess::showCard (*e, false);
 
     // the weather (the bar's own switches: rain, cloud, snow, heat, …)
     setParam (p, "cloudy", 1.0f); setParam (p, "rain", 1.0f);
@@ -170,12 +170,12 @@ int editorChecks (const File& shots)
     // a few sizes: drawn at each, nothing thrown
     for (float k : { 0.75f, 1.5f })
     {
-        ed->setSize (roundToInt (FreakiePieEditor::designW * k), roundToInt (FreakiePieEditor::designH * k));
-        FreakieTestAccess::run (*e, 0.2f);
+        ed->setSize (roundToInt (BalloonEditor::designW * k), roundToInt (BalloonEditor::designH * k));
+        BalloonTestAccess::run (*e, 0.2f);
         const auto img = e->createComponentSnapshot (e->getLocalBounds(), true, 1.0f);
         check (coloursIn (img) > 12, String::formatted ("drawn at %d x %d", ed->getWidth(), ed->getHeight()));
     }
-    ed->setSize (FreakiePieEditor::designW, FreakiePieEditor::designH);
+    ed->setSize (BalloonEditor::designW, BalloonEditor::designH);
     ed.reset();
     check (true, "the window closes cleanly");
     return 0;

@@ -24,7 +24,7 @@ struct EngineParams
 };
 
 //==============================================================================
-// The whole FreakiePie chain, processed sample by sample so the global
+// The whole balloon chain, processed sample by sample so the global
 // output -> input feedback loop has no block-size dependence.
 //   in (+ feedback) -> [the shelf, in your order] -> out
 // The shelf holds the spectral smear, the pitch shifter, the grains, the reverb, the stutter and

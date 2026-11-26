@@ -247,3 +247,9 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 1. "for every single app and vst on my github, just make the app logo icon extremely minimal, a letter from this font [Septambres Neau] in some color, on some color background, update all the app icons." (New app icons: one Septambres Neau glyph, one colour on one colour.)
 
 > push putz to github under faltung suite. and add homebrew cask for it
+
+## 2026-11-26 — the old project name removed
+
+> remove the old project name from everything on this computer and on github, it was an old name for something, i dont want it to show up next to plugins or anywhere on here or github, everything has its own name now, remove that title from things.
+
+(Each plug-in now lists under its own maker name in hosts; bundle IDs, LV2 URIs, preset/last-patch folders, docs and code follow. The hidden 4-letter manufacturer code is unchanged, so saved sessions still open.)

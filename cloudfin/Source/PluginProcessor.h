@@ -115,7 +115,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     // Your own presets: each is a file holding everything a session would save, kept in a folder
-    // of your user account (Application Support/FreakiePie/<plug-in>/Presets on macOS, AppData\Roaming
+    // of your user account (Application Support/<plug-in>/Presets on macOS, AppData\Roaming
     // on Windows, ~/.config on Linux). Message thread.
     juce::File userPresetFolder() const;
     juce::Array<juce::File> userPresets() const;

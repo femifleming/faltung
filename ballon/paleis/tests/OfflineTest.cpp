@@ -1,4 +1,4 @@
-// Offline DSP checks for FreakiePie (not shipped).
+// Offline DSP checks for the balloon effect (not shipped).
 #include <juce_dsp/juce_dsp.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "../Source/dsp/Engine.h"
@@ -173,7 +173,7 @@ int main()
             const float v = (float) (0.4 * std::exp (-ph * 3.0) * (std::sin (kTwoPi * f * t) + 0.3 * std::sin (kTwoPi * 2 * f * t)));
             return std::make_pair (v, v); };
         run (p, 20.0, pluck, [] (EngineParams& q, int pos) { q.grFreeze = pos > 10 * SR && pos < 16 * SR; }, &cap, 0.0);
-        juce::File out = juce::File::getCurrentWorkingDirectory().getChildFile ("freakiepie_demo.wav");
+        juce::File out = juce::File::getCurrentWorkingDirectory().getChildFile ("balloon_demo.wav");
         out.deleteFile();
         juce::WavAudioFormat wav;
         std::unique_ptr<juce::OutputStream> os (out.createOutputStream().release());

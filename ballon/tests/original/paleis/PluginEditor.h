@@ -3,8 +3,8 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 
-class FreakiePieEditor : public juce::AudioProcessorEditor
+class BalloonEditor : public juce::AudioProcessorEditor
 {
 public:
-    explicit FreakiePieEditor (juce::AudioProcessor& p) : juce::AudioProcessorEditor (p) { setSize (100, 100); }
+    explicit BalloonEditor (juce::AudioProcessor& p) : juce::AudioProcessorEditor (p) { setSize (100, 100); }
 };

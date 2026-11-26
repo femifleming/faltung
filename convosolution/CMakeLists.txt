@@ -44,9 +44,9 @@ set(ECR_DEFS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUC
 
 juce_add_plugin(ConvoSolution
     VERSION ${ECR_VERSION}
-    COMPANY_NAME "FreakiePie"
+    COMPANY_NAME "ConvoSolution"
     COMPANY_WEBSITE "https://github.com/femifleming/faltung"
-    BUNDLE_ID "com.freakiepie.ConvoSolution"
+    BUNDLE_ID "com.convosolution.ConvoSolution"
     PLUGIN_MANUFACTURER_CODE Frkp
     PLUGIN_CODE CvSl
     FORMATS ${ECR_FORMATS}
@@ -61,7 +61,7 @@ juce_add_plugin(ConvoSolution
     AU_MAIN_TYPE kAudioUnitType_Effect
     VST3_CATEGORIES Fx Reverb
     VST2_CATEGORY kPlugCategRoomFx
-    LV2URI "urn:freakiepie:convosolution"
+    LV2URI "urn:convosolution:convosolution"
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Audio input is processed by the reverb in the standalone app."
     COPY_PLUGIN_AFTER_BUILD ${ECR_COPY_AFTER_BUILD})

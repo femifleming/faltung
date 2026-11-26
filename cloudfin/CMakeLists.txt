@@ -22,9 +22,9 @@ endif()
 
 juce_add_plugin(Cloudfin
     VERSION ${CF_VERSION}
-    COMPANY_NAME "FreakiePie"
+    COMPANY_NAME "Cloudfin"
     COMPANY_WEBSITE "https://github.com/femifleming/faltung"
-    BUNDLE_ID "com.freakiepie.cloudfin"
+    BUNDLE_ID "com.cloudfin.cloudfin"
     PLUGIN_MANUFACTURER_CODE Frkp
     PLUGIN_CODE Cldf
     FORMATS ${CF_FORMATS}

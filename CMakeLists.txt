@@ -58,13 +58,13 @@ function(faltung_plugin SHORT INDEX CODE KIND DESC)
     if(DEEP)
         set(T faltung_deep_${SHORT})
         set(PNAME "faltung deep ${SHORT}")
-        set(BID "com.freakiepie.faltungdeep.${SHORT}")
-        set(LV2 "urn:freakiepie:faltungdeep:${SHORT}")
+        set(BID "com.faltung.deep.${SHORT}")
+        set(LV2 "urn:faltung:deep:${SHORT}")
     else()
         set(T faltung_${SHORT})
         set(PNAME "faltung ${SHORT}")
-        set(BID "com.freakiepie.faltung.${SHORT}")
-        set(LV2 "urn:freakiepie:faltung:${SHORT}")
+        set(BID "com.faltung.${SHORT}")
+        set(LV2 "urn:faltung:${SHORT}")
     endif()
     if(KIND STREQUAL "effect")
         set(SYNTH FALSE)
@@ -81,7 +81,7 @@ function(faltung_plugin SHORT INDEX CODE KIND DESC)
     endif()
     juce_add_plugin(${T}
         VERSION ${PROJECT_VERSION}
-        COMPANY_NAME "FreakiePie"
+        COMPANY_NAME "faltung"
         BUNDLE_ID "${BID}"
         PLUGIN_MANUFACTURER_CODE Frkp
         PLUGIN_CODE ${CODE}
@@ -145,19 +145,19 @@ function(faltung_studio DEEP)
     if(DEEP)
         set(T faltung_deep_sndstudio)
         set(PNAME "faltung deep sndstudio")
-        set(BID "com.freakiepie.faltungdeep.sndstudio")
+        set(BID "com.faltung.deep.sndstudio")
         set(CODE Dsnd)
         set(DESC "deep house studio (standalone daw): tracks, scenes, song, sends, 128 outputs")
     else()
         set(T faltung_sndstudio)
         set(PNAME "faltung sndstudio")
-        set(BID "com.freakiepie.faltung.sndstudio")
+        set(BID "com.faltung.sndstudio")
         set(CODE Fsnd)
         set(DESC "microhouse studio (standalone daw): tracks, scenes, song, sends, 128 outputs")
     endif()
     juce_add_plugin(${T}
         VERSION ${PROJECT_VERSION}
-        COMPANY_NAME "FreakiePie"
+        COMPANY_NAME "faltung"
         BUNDLE_ID "${BID}"
         PLUGIN_MANUFACTURER_CODE Frkp
         PLUGIN_CODE ${CODE}
@@ -248,7 +248,7 @@ if(FALTUNG_BUILD_TESTS)
     target_compile_definitions(faltungTest PRIVATE ${FAL_DEFS} JucePlugin_Name="faltung" JucePlugin_Build_Standalone=1
         JucePlugin_IsSynth=1 JucePlugin_WantsMidiInput=1 JucePlugin_ProducesMidiOutput=0 JucePlugin_IsMidiEffect=0
         JucePlugin_ManufacturerCode=0x46726b70 JucePlugin_PluginCode=0x466b7431 JucePlugin_VersionString="1.2.0"
-        JucePlugin_Manufacturer="FreakiePie" JucePlugin_Desc="faltung" JucePlugin_VersionCode=0x10200 FALTUNG_TEST=1)
+        JucePlugin_Manufacturer="faltung" JucePlugin_Desc="faltung" JucePlugin_VersionCode=0x10200 FALTUNG_TEST=1)
     target_link_libraries(faltungTest PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
 
     # loads the built plug-ins like a DAW and checks their output (mac: VST3 + AU)

@@ -1694,7 +1694,7 @@ public:
         juce::PopupMenu m;
         m.addItem (1, juce::String ("partials ") + JucePlugin_VersionString, false);
         m.addItem (2, "additive / subtractive synthesizer with image resynthesis", false);
-        m.addItem (3, "part of the faltung bundle - FreakiePie", false);
+        m.addItem (3, "part of the faltung bundle", false);
         m.addSeparator();
         m.addItem (10, "Window size 60%"); m.addItem (11, "Window size 75%"); m.addItem (12, "Window size 90%"); m.addItem (13, "Window size 100%");
         showMenu (m, nullptr, [this] (int r) { static const float sz[4] = { 0.6f, 0.75f, 0.9f, 1.0f }; if (r >= 10 && r <= 13) applySize (sz[r - 10]); });

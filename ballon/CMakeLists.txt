@@ -33,7 +33,7 @@ set(BAL_DEFS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUC
 function(ballon_plugin T DIR PNAME CODE BID LV2 DESC V3CAT V2CAT INDEX DARK)
     juce_add_plugin(${T}
         VERSION ${BAL_VERSION}
-        COMPANY_NAME "FreakiePie"
+        COMPANY_NAME "faltung"
         COMPANY_WEBSITE "https://github.com/femifleming/faltung"
         BUNDLE_ID "${BID}"
         PLUGIN_MANUFACTURER_CODE Frkp
@@ -68,14 +68,14 @@ function(ballon_plugin T DIR PNAME CODE BID LV2 DESC V3CAT V2CAT INDEX DARK)
     endif()
 endfunction()
 
-ballon_plugin(ballonwinkel winkel "ballonwinkel" Fbwk "com.freakiepie.faltung.ballonwinkel" "urn:freakiepie:faltung:ballonwinkel"
+ballon_plugin(ballonwinkel winkel "ballonwinkel" Fbwk "com.faltung.ballonwinkel" "urn:faltung:ballonwinkel"
               "A multi-effect played as balloons" "Fx" kPlugCategEffect 0 0)
-ballon_plugin(ballonpaleis paleis "ballonpaleis" Fbpl "com.freakiepie.faltung.ballonpaleis" "urn:freakiepie:faltung:ballonpaleis"
+ballon_plugin(ballonpaleis paleis "ballonpaleis" Fbpl "com.faltung.ballonpaleis" "urn:faltung:ballonpaleis"
               "A spatial multi-effect played as balloons in a sphere (an Ambisonics encoder, 1st to 7th order)" "Fx;Spatial" kPlugCategSpacializer 1 0)
 if(FALTUNG_BUILD_DEEP)
-    ballon_plugin(ballonwinkel_deep winkel "ballonwinkel deep" Dbwk "com.freakiepie.faltungdeep.ballonwinkel" "urn:freakiepie:faltungdeep:ballonwinkel"
+    ballon_plugin(ballonwinkel_deep winkel "ballonwinkel deep" Dbwk "com.faltung.deep.ballonwinkel" "urn:faltung:deep:ballonwinkel"
                   "A multi-effect played as balloons (dark)" "Fx" kPlugCategEffect 0 1)
-    ballon_plugin(ballonpaleis_deep paleis "ballonpaleis deep" Dbpl "com.freakiepie.faltungdeep.ballonpaleis" "urn:freakiepie:faltungdeep:ballonpaleis"
+    ballon_plugin(ballonpaleis_deep paleis "ballonpaleis deep" Dbpl "com.faltung.deep.ballonpaleis" "urn:faltung:deep:ballonpaleis"
                   "A spatial multi-effect played as balloons in a sphere (dark)" "Fx;Spatial" kPlugCategSpacializer 1 1)
 endif()
 

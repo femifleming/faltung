@@ -19,7 +19,7 @@ static double db (double x) { return 20.0 * std::log10 (std::max (x, 1e-12)); }
 static constexpr double SR = 48000.0;
 static constexpr int BLOCK = 256;
 
-static void setParam (FreakiePieProcessor& p, const juce::String& id, float real)
+static void setParam (BalloonProcessor& p, const juce::String& id, float real)
 {
     if (auto* prm = p.apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (real));
 }
@@ -28,7 +28,7 @@ struct Run { std::vector<std::vector<float>> out; double seconds = 0, cpu = 0; b
 
 // run the processor on noise (or a function) for 'seconds', 'outCh' output channels
 template <typename Gen>
-static Run render (FreakiePieProcessor& p, int outCh, double seconds, Gen gen, bool keep = true, bool fresh = true)
+static Run render (BalloonProcessor& p, int outCh, double seconds, Gen gen, bool keep = true, bool fresh = true)
 {
     if (fresh)   // (fresh = false carries on from the last render without preparing again)
     {
@@ -161,18 +161,18 @@ int main (int argc, char** argv)
         const float v = (float) (0.3 * std::exp (-tt * 6.0) * std::sin (2.0 * juce::MathConstants<double>::pi * f * tt));
         return std::pair<float, float> { v, v };
     };
-    auto allOff = [] (FreakiePieProcessor& p)
+    auto allOff = [] (BalloonProcessor& p)
     {
         for (auto* id : { ids::sgMix, ids::psMix, ids::grMix, ids::rvMix, ids::masterFb, ids::psFeedback }) setParam (p, id, 0.0f);
         setParam (p, ids::grains, 1.0f); setParam (p, ids::flight, 0.0f);   // (one grain, standing still, unless a test says otherwise)
     };
     // how sharply the scene points somewhere: level towards 'd' over level towards its opposite (dB)
-    auto ratio = [] (FreakiePieProcessor& p, Vec3 d) { return 10.0 * std::log10 ((p.energy.levelAt (d) + 1e-12) / (p.energy.levelAt (d * -1.0f) + 1e-12)); };
+    auto ratio = [] (BalloonProcessor& p, Vec3 d) { return 10.0 * std::log10 ((p.energy.levelAt (d) + 1e-12) / (p.energy.levelAt (d * -1.0f) + 1e-12)); };
 
     std::printf ("can you point at it?\n");
     {
         // your dry sound: one point, ahead
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         auto r = render (p, 16, 2.0, stereoNoise);
         const double w = rms (r.out[0], (size_t) SR);
@@ -195,7 +195,7 @@ int main (int argc, char** argv)
     }
     {
         // four copies at four places, the dry ahead: sound at all five, and nothing below
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         setParam (p, ids::grains, 4.0f); setParam (p, ids::deviate, 0.6f);
         setParam (p, ids::sgMix, 0.7f); setParam (p, ids::psMix, 0.5f); setParam (p, ids::psShift, 7.0f);
@@ -218,7 +218,7 @@ int main (int argc, char** argv)
         fp::DistanceSource::withWalls = false;   // (the direct path alone: the walls' reflections come from elsewhere, on purpose)
         for (auto d : places)
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             allOff (p);
             p.srcX.store (d.x); p.srcY.store (d.y); p.srcZ.store (d.z);
             auto r = render (p, 16, 1.0, stereoNoise);
@@ -237,7 +237,7 @@ int main (int argc, char** argv)
 
         // two copies of one effect, left and right, nothing deviating: without decorrelation they'd be the
         // same signal from two sides (Y would cancel and a decoder would comb-filter); they must not be
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         setParam (p, ids::grains, 2.0f); setParam (p, ids::deviate, 0.0f);
         setParam (p, ids::psMix, 1.0f); setParam (p, ids::psShift, 5.0f);
@@ -245,9 +245,9 @@ int main (int argc, char** argv)
         auto r = render (p, 16, 3.0, stereoNoise);
         const double yw = rms (r.out[1], (size_t) SR) / rms (r.out[0], (size_t) SR);
         check (yw > 0.5, "two copies of the same effect add up as two sounds, not one phasing one", "Y / W " + juce::String (yw, 2) + " (0 would be fully coherent)");
-        FreakiePieProcessor::decorrelateCopies = false;   // the control: what it was before
+        BalloonProcessor::decorrelateCopies = false;   // the control: what it was before
         r = render (p, 16, 3.0, stereoNoise);
-        FreakiePieProcessor::decorrelateCopies = true;
+        BalloonProcessor::decorrelateCopies = true;
         const double yw0 = rms (r.out[1], (size_t) SR) / rms (r.out[0], (size_t) SR);
         check (yw0 < 0.2, "(control: without the decorrelators the two copies were one coherent, phasing sound)", "Y / W " + juce::String (yw0, 2));
     }
@@ -290,7 +290,7 @@ int main (int argc, char** argv)
             fp::DistanceSource::withWalls = false;
             for (auto dd : { ambi::fromAzEl (0.7f, 0.4f), ambi::fromAzEl (-2.3f, -0.6f) })
             {
-                FreakiePieProcessor p;
+                BalloonProcessor p;
                 allOff (p);
                 setParam (p, ids::ambiOrder, (float) (order - 1));
                 p.srcX.store (dd.x); p.srcY.store (dd.y); p.srcZ.store (dd.z);
@@ -312,7 +312,7 @@ int main (int argc, char** argv)
         }
         // the order asked for, but a track with fewer channels: the highest that fits
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             allOff (p);
             setParam (p, ids::ambiOrder, 6.0f);   // 7th
             render (p, 36, 0.2, stereoNoise, false);
@@ -339,7 +339,7 @@ int main (int argc, char** argv)
         // the whole sphere at 7th order: 16 grains, the reverb, the weather; finite, under the ceiling, and what it costs
         for (int order : { 5, 7 })
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setParam (p, ids::ambiOrder, (float) (order - 1));
             setParam (p, ids::grains, 16.0f); setParam (p, ids::flight, 1.0f); setParam (p, ids::flightSpeed, 0.8f);
@@ -350,7 +350,7 @@ int main (int argc, char** argv)
         }
         {
             // the snow on all 64 channels (the heaviest master stage)
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             allOff (p);
             setParam (p, ids::ambiOrder, 6.0f);
             setParam (p, ids::snowIn, 5.0f); setParam (p, ids::snow, 1.0f);
@@ -362,7 +362,7 @@ int main (int argc, char** argv)
     std::printf ("frozen balloons\n");
     {
         // a tone caught in a full sound balloon and frozen: about as loud as the tone that went in
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         auto& v = p.balloonFX.voice[0];
         double inW = 0, frozenW = 0;
@@ -383,7 +383,7 @@ int main (int argc, char** argv)
         check (std::abs (db (frozenW) - db (inW)) < 2.0, "a full frozen balloon is as loud as what went in", juce::String (db (frozenW) - db (inW), 1) + " dB");
         // and a small one (pumped for a moment): muffled, but no quieter
         {
-            FreakiePieProcessor q;
+            BalloonProcessor q;
             allOff (q);
             auto& w = q.balloonFX.voice[0];
             auto tone2 = [&] (int i)
@@ -406,7 +406,7 @@ int main (int argc, char** argv)
         // level: 1 / distance (near is louder)
         auto levelAt = [&] (float r)
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             allOff (p);
             p.srcX.store (r); p.srcY.store (0.0f); p.srcZ.store (0.0f);
             auto out = render (p, 16, 1.0, stereoNoise);
@@ -417,7 +417,7 @@ int main (int argc, char** argv)
         // the bubble: the same sound in the same place, louder in a small bubble than a big one
         auto bubbleLevel = [&] (float knob)
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             allOff (p);
             setParam (p, ids::spread, knob);
             auto out = render (p, 16, 1.0, stereoNoise);
@@ -508,7 +508,7 @@ int main (int argc, char** argv)
 
     std::printf ("the granulator\n");
     {
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         setParam (p, ids::grMix, 1.0f);
         p.setGrainHome (0, { 0.0f, 0.95f, 0.0f });
@@ -600,7 +600,7 @@ int main (int argc, char** argv)
 
     std::printf ("loudness and the track\n");
     {
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         juce::Random rr (5);
         auto gen = [&] (int) { const float a = (rr.nextFloat() * 2.0f - 1.0f) * 0.1f, b = (rr.nextFloat() * 2.0f - 1.0f) * 0.1f; return std::pair<float, float> { a, b }; };
@@ -618,9 +618,9 @@ int main (int argc, char** argv)
         auto noise18 = [&] (int) { return std::pair<float, float> { (gr.nextFloat() * 2.0f - 1.0f) * amp, (gr.nextFloat() * 2.0f - 1.0f) * amp }; };
         const double inDb = db (amp / std::sqrt (3.0));
         double dryDb = 0;
-        auto measure = [&] (const char* what, std::function<void (FreakiePieProcessor&)> setup, double lo, double hi, bool relToDry)
+        auto measure = [&] (const char* what, std::function<void (BalloonProcessor&)> setup, double lo, double hi, bool relToDry)
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             allOff (p);
             setup (p);
             auto r = render (p, 16, 4.0, noise18);
@@ -631,26 +631,26 @@ int main (int argc, char** argv)
             check (r.finite && rel >= lo && rel <= hi, (juce::String ("  levels: ") + what).toRawUTF8());
             return w;
         };
-        dryDb = measure ("dry, one grain, effects off", [] (FreakiePieProcessor&) {}, -2.0, 2.0, false);
-        measure ("spectral smear, mix 50 %", [] (FreakiePieProcessor& p) { setParam (p, ids::sgMix, 0.5f); }, -4.0, 2.0, true);
-        measure ("pitch shifter +7, mix 50 %", [] (FreakiePieProcessor& p) { setParam (p, ids::psMix, 0.5f); }, -4.0, 2.0, true);
-        measure ("granulator, mix 50 %", [] (FreakiePieProcessor& p) { setParam (p, ids::grMix, 0.5f); }, -4.0, 2.0, true);
-        measure ("granulator, mix 100 % (grains alone)", [] (FreakiePieProcessor& p) { setParam (p, ids::grMix, 1.0f); }, -5.0, 2.0, true);
-        measure ("reverb, mix 30 %", [] (FreakiePieProcessor& p) { setParam (p, ids::rvMix, 0.3f); }, -3.0, 2.0, true);
-        measure ("reverb, mix 100 % (wet alone)", [] (FreakiePieProcessor& p) { setParam (p, ids::rvMix, 1.0f); }, -6.0, 2.0, true);
-        measure ("gumball machine, stutter 60 %", [] (FreakiePieProcessor& p) { setParam (p, ids::stOwned, 1.0f); setParam (p, ids::stAmount, 0.6f); }, -3.0, 2.0, true);
+        dryDb = measure ("dry, one grain, effects off", [] (BalloonProcessor&) {}, -2.0, 2.0, false);
+        measure ("spectral smear, mix 50 %", [] (BalloonProcessor& p) { setParam (p, ids::sgMix, 0.5f); }, -4.0, 2.0, true);
+        measure ("pitch shifter +7, mix 50 %", [] (BalloonProcessor& p) { setParam (p, ids::psMix, 0.5f); }, -4.0, 2.0, true);
+        measure ("granulator, mix 50 %", [] (BalloonProcessor& p) { setParam (p, ids::grMix, 0.5f); }, -4.0, 2.0, true);
+        measure ("granulator, mix 100 % (grains alone)", [] (BalloonProcessor& p) { setParam (p, ids::grMix, 1.0f); }, -5.0, 2.0, true);
+        measure ("reverb, mix 30 %", [] (BalloonProcessor& p) { setParam (p, ids::rvMix, 0.3f); }, -3.0, 2.0, true);
+        measure ("reverb, mix 100 % (wet alone)", [] (BalloonProcessor& p) { setParam (p, ids::rvMix, 1.0f); }, -6.0, 2.0, true);
+        measure ("gumball machine, stutter 60 %", [] (BalloonProcessor& p) { setParam (p, ids::stOwned, 1.0f); setParam (p, ids::stAmount, 0.6f); }, -3.0, 2.0, true);
         for (int e = 0; e < fp::StoreFX::kNum; ++e)
         {
             const juce::String nm = juce::String ("store: ") + fp::StoreFX::infos()[(size_t) e].name;
-            measure (nm.toRawUTF8(), [e] (FreakiePieProcessor& p) { setParam (p, ids::store (e, ids::storeOwned), 1.0f); }, -3.0, 4.0, true);
+            measure (nm.toRawUTF8(), [e] (BalloonProcessor& p) { setParam (p, ids::store (e, ids::storeOwned), 1.0f); }, -3.0, 4.0, true);
         }
-        measure ("4 grains orbiting, copies spatial, smear 30 %", [] (FreakiePieProcessor& p) { setParam (p, ids::grains, 4.0f); setParam (p, ids::flight, 1.0f); setParam (p, ids::sgMix, 0.3f); }, -3.0, 3.0, true);
-        measure ("16 grains, smear + pitch 50 %", [] (FreakiePieProcessor& p) { setParam (p, ids::grains, 16.0f); setParam (p, ids::flight, 1.0f); setParam (p, ids::sgMix, 0.5f); setParam (p, ids::psMix, 0.5f); }, -4.0, 3.0, true);
-        measure ("the default preset (Sugarcube Corner)", [] (FreakiePieProcessor& p) { p.setCurrentProgram (0); }, -3.0, 3.0, true);
-        measure ("copies mode, 4 grains", [] (FreakiePieProcessor& p) { setParam (p, ids::grainMode, 2.0f); setParam (p, ids::grains, 4.0f); setParam (p, ids::flight, 1.0f); }, -3.0, 3.0, true);
+        measure ("4 grains orbiting, copies spatial, smear 30 %", [] (BalloonProcessor& p) { setParam (p, ids::grains, 4.0f); setParam (p, ids::flight, 1.0f); setParam (p, ids::sgMix, 0.3f); }, -3.0, 3.0, true);
+        measure ("16 grains, smear + pitch 50 %", [] (BalloonProcessor& p) { setParam (p, ids::grains, 16.0f); setParam (p, ids::flight, 1.0f); setParam (p, ids::sgMix, 0.5f); setParam (p, ids::psMix, 0.5f); }, -4.0, 3.0, true);
+        measure ("the default preset (Sugarcube Corner)", [] (BalloonProcessor& p) { p.setCurrentProgram (0); }, -3.0, 3.0, true);
+        measure ("copies mode, 4 grains", [] (BalloonProcessor& p) { setParam (p, ids::grainMode, 2.0f); setParam (p, ids::grains, 4.0f); setParam (p, ids::flight, 1.0f); }, -3.0, 3.0, true);
         // at a normal level the leveler and limiter should do nothing
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             render (p, 16, 3.0, noise18, false);
             check (p.levelerGainNow() > 0.999f && p.limiterGainNow() > 0.999f, "  levels: at -18 dBFS the leveler and limiter stay out of it",
@@ -663,7 +663,7 @@ int main (int argc, char** argv)
         const char* const* names = fp::Flight::modeNames();   // (Leitner's and Xenakis's flights among them)
         for (int mode = 0; mode < fp::Flight::numModes; ++mode)
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setParam (p, ids::grains, 16.0f);
             setParam (p, ids::deviate, 1.0f);
@@ -703,7 +703,7 @@ int main (int argc, char** argv)
     {
         for (auto* id : { ids::fog, ids::wind, ids::hail, ids::aurora })
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setParam (p, ids::grains, 6.0f); setParam (p, ids::flight, 1.0f);
             setParam (p, id, 1.0f);
@@ -717,7 +717,7 @@ int main (int argc, char** argv)
         }
         {
             // the wind pushes every grain the same way: standing still, they all lean off their places together
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setParam (p, ids::grains, 8.0f); setParam (p, ids::flight, 0.0f);
             render (p, 16, 2.0, plucks, false);
@@ -735,7 +735,7 @@ int main (int argc, char** argv)
         }
         {
             // a twister takes the grains up into its spiral, and lets them go again
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setParam (p, ids::grains, 8.0f); setParam (p, ids::flight, 0.0f);
             render (p, 16, 1.0, plucks, false);
@@ -751,7 +751,7 @@ int main (int argc, char** argv)
         }
         {
             // the rainbow: after a real shower under a clear sky
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setParam (p, ids::grains, 2.0f);
             setParam (p, ids::rain, 1.0f);
@@ -762,7 +762,7 @@ int main (int argc, char** argv)
                    "out " + juce::String (p.rainbowAmount.load(), 2));
             // its arcs stand above the floor
             float lowest = 9.0f;
-            for (int k = 0; k < 7; ++k) for (int j = 0; j <= 8; ++j) lowest = std::min (lowest, FreakiePieProcessor::rainbowPoint (p.rainbowAz.load(), k, (float) j / 8.0f).z);
+            for (int k = 0; k < 7; ++k) for (int j = 0; j <= 8; ++j) lowest = std::min (lowest, BalloonProcessor::rainbowPoint (p.rainbowAz.load(), k, (float) j / 8.0f).z);
             check (lowest > -0.01f, "  its arcs stand on the floor, not under it", "lowest point z " + juce::String (lowest, 2));
         }
     }
@@ -786,7 +786,7 @@ int main (int argc, char** argv)
         };
         auto dot = [] (Vec3 a, Vec3 b) { return (double) (a.x * b.x + a.y * b.y + a.z * b.z); };
 
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         allOff (p);
         setParam (p, ids::balloonSfx, 0.0f);
         setParam (p, ids::rbLevel, 1.0f);
@@ -814,14 +814,14 @@ int main (int argc, char** argv)
         check (fin && pk <= 0.892, "finite, under the ceiling", juce::String (db (pk), 1) + " dBFS");
 
         // a grain flying fast enough breaks it where the grain is
-        FreakiePieProcessor q;
+        BalloonProcessor q;
         allOff (q);
         setParam (q, ids::grains, 4.0f); setParam (q, ids::flight, 1.0f); setParam (q, ids::flightSpeed, 1.0f);
         setParam (q, ids::spread, 1.0f);   // a 50 m bubble: the grains go fast
         setParam (q, ids::rbFast, 1.0f);
         const auto rq = render (q, 16, 6.0, silence, false);
         check (q.rainboomBooms.load() >= 1 && rq.finite, "a grain flying past 30 m/s sets one off", juce::String (q.rainboomBooms.load()) + " in 6 s");
-        FreakiePieProcessor q2;
+        BalloonProcessor q2;
         allOff (q2);
         setParam (q2, ids::grains, 4.0f); setParam (q2, ids::flight, 1.0f); setParam (q2, ids::flightSpeed, 0.2f);
         setParam (q2, ids::rbFast, 1.0f);
@@ -831,7 +831,7 @@ int main (int argc, char** argv)
 
     std::printf ("scatter: one chain, its grains flying to 8 places\n");
     {
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         setParam (p, ids::grainMode, 1.0f);
         setParam (p, ids::grains, 8.0f);
         setParam (p, ids::flight, 1.0f);   // orbit
@@ -848,7 +848,7 @@ int main (int argc, char** argv)
 
     std::printf ("snow and heat on 16 channels\n");
     {
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         setParam (p, ids::grains, 4.0f);
         setParam (p, ids::snow, 1.0f);
         setParam (p, ids::snowIn, 5.0f);
@@ -861,7 +861,7 @@ int main (int argc, char** argv)
 
     std::printf ("copies mode (each grain the whole shop, dry and all)\n");
     {
-        FreakiePieProcessor p;
+        BalloonProcessor p;
         p.setCurrentProgram (0);
         setParam (p, ids::grainMode, 2.0f); setParam (p, ids::grains, 16.0f); setParam (p, ids::flight, 3.0f); setParam (p, ids::deviate, 1.0f);
         auto r = render (p, 16, 6.0, plucks, false);
@@ -870,26 +870,26 @@ int main (int argc, char** argv)
 
     std::printf ("demo renders (for listening) in %s\n", outDir.getFullPathName().toRawUTF8());
     {
-        auto scene = [&] (const char* file, std::function<void (FreakiePieProcessor&)> setup)
+        auto scene = [&] (const char* file, std::function<void (BalloonProcessor&)> setup)
         {
-            FreakiePieProcessor p;
+            BalloonProcessor p;
             p.setCurrentProgram (0);
             setup (p);
             auto r = render (p, 16, 20.0, plucks);
             writeWav (outDir.getChildFile (file), r.out);
             check (r.finite, (juce::String ("wrote ") + file).toRawUTF8());
         };
-        scene ("balloonpalace_spatial_lorenz.wav", [] (FreakiePieProcessor& p)
+        scene ("balloonpalace_spatial_lorenz.wav", [] (BalloonProcessor& p)
         {
             setParam (p, ids::grains, 4.0f); setParam (p, ids::flight, 2.0f); setParam (p, ids::deviate, 0.7f);
             setParam (p, ids::stOwned, 1.0f); setParam (p, ids::stAmount, 0.5f); setParam (p, ids::grMix, 0.5f);
         });
-        scene ("balloonpalace_scatter_flock.wav", [] (FreakiePieProcessor& p)
+        scene ("balloonpalace_scatter_flock.wav", [] (BalloonProcessor& p)
         {
             setParam (p, ids::grainMode, 1.0f); setParam (p, ids::grains, 12.0f); setParam (p, ids::flight, 3.0f);
             setParam (p, ids::grMix, 0.8f); setParam (p, ids::grSize, 180.0f); setParam (p, ids::grPan, 0.15f);
         });
-        scene ("balloonpalace_copies_orbit.wav", [] (FreakiePieProcessor& p)
+        scene ("balloonpalace_copies_orbit.wav", [] (BalloonProcessor& p)
         {
             setParam (p, ids::grainMode, 2.0f); setParam (p, ids::grains, 4.0f); setParam (p, ids::flight, 1.0f); setParam (p, ids::deviate, 0.6f);
         });

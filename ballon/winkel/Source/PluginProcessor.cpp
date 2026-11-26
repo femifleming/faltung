@@ -4,7 +4,7 @@ using namespace juce;
 
 static String pct (float v, int) { return String (juce::roundToInt (v * 100.0f)) + " %"; }
 
-AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout()
+AudioProcessorValueTreeState::ParameterLayout BalloonProcessor::createLayout()
 {
     AudioProcessorValueTreeState::ParameterLayout layout;
     using F = AudioParameterFloat;
@@ -175,7 +175,7 @@ AudioProcessorValueTreeState::ParameterLayout FreakiePieProcessor::createLayout(
     return layout;
 }
 
-FreakiePieProcessor::FreakiePieProcessor()
+BalloonProcessor::BalloonProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  AudioChannelSet::stereo(), true)
                           .withOutput ("Output", AudioChannelSet::stereo(), true)),
@@ -223,20 +223,20 @@ FreakiePieProcessor::FreakiePieProcessor()
     startTimer (1000);   // auto weather ticks once a second
 }
 
-FreakiePieProcessor::~FreakiePieProcessor()
+BalloonProcessor::~BalloonProcessor()
 {
     stopTimer();
 }
 
 //==============================================================================
-int FreakiePieProcessor::getNumPrograms() { return (int) presets::list().size(); }
-const String FreakiePieProcessor::getProgramName (int i)
+int BalloonProcessor::getNumPrograms() { return (int) presets::list().size(); }
+const String BalloonProcessor::getProgramName (int i)
 {
     return isPositiveAndBelow (i, getNumPrograms()) ? String (presets::list()[(size_t) i].name) : String();
 }
 
 // a preset: every parameter back to its default, then the preset's own values and store purchases
-void FreakiePieProcessor::setCurrentProgram (int index)
+void BalloonProcessor::setCurrentProgram (int index)
 {
     if (! isPositiveAndBelow (index, getNumPrograms())) return;
     // a VST2 host (REAPER) restores a session as "set the chunk, then select the saved program": that second step
@@ -261,7 +261,7 @@ void FreakiePieProcessor::setCurrentProgram (int index)
     apvts.state.setProperty ("preset", index, nullptr);
 }
 
-bool FreakiePieProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool BalloonProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto out = layouts.getMainOutputChannelSet();
     const auto in  = layouts.getMainInputChannelSet();
@@ -269,7 +269,7 @@ bool FreakiePieProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     return in == AudioChannelSet::mono() || in == AudioChannelSet::stereo();
 }
 
-fp::EngineParams FreakiePieProcessor::readParams() const
+fp::EngineParams BalloonProcessor::readParams() const
 {
     fp::EngineParams p;
     // the spectral smear has two controls now (mix, freeze); the rest is set for a smooth, even smear:
@@ -305,7 +305,7 @@ fp::EngineParams FreakiePieProcessor::readParams() const
     return p;
 }
 
-void FreakiePieProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void BalloonProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.setParams (readParams());
     engine.prepare (sampleRate);
@@ -350,7 +350,7 @@ void FreakiePieProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
 // Lightning, while it's cloudy and raining: every 6 to 18 s a strike lends a random store effect
 // you haven't bought for 45 to 90 s, and its thunder rolls in a moment later.
-void FreakiePieProcessor::lightning (int n)
+void BalloonProcessor::lightning (int n)
 {
     const double sr = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
     uint32_t mask = struckMask.load();
@@ -383,7 +383,7 @@ void FreakiePieProcessor::lightning (int n)
     struckMask.store (mask);
 }
 
-void FreakiePieProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
+void BalloonProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
 {
     ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
@@ -603,7 +603,7 @@ void FreakiePieProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
 
 // The rainboom: what sets one off (the switch, the editor, a hit, the rain stopping), then the dive,
 // the boom and the rainbow, made from what the effects are playing, mixed in on top.
-void FreakiePieProcessor::rainboomBlock (const float* inL, const float* inR, float* oL, float* oR, int n)
+void BalloonProcessor::rainboomBlock (const float* inL, const float* inR, float* oL, float* oR, int n)
 {
     float dive = -1.0f;   // < 0: nothing new
     const bool button = p_rbBoom->load() > 0.5f;
@@ -631,7 +631,7 @@ void FreakiePieProcessor::rainboomBlock (const float* inL, const float* inR, flo
 
 // The weather that changes the sound itself: the twister (a switch, the editor, or by itself now and
 // then while it's windy and cloudy), the wind and the fog.
-void FreakiePieProcessor::moreWeatherBefore (float* oL, float* oR, int n)
+void BalloonProcessor::moreWeatherBefore (float* oL, float* oR, int n)
 {
     const double sr = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
     float* ch[2] = { oL, oR };
@@ -658,7 +658,7 @@ void FreakiePieProcessor::moreWeatherBefore (float* oL, float* oR, int n)
 
 // The weather that adds to the sound, made from what's playing: hailstones, the rainbow when the rain
 // stops under a clear sky, and the aurora.
-void FreakiePieProcessor::moreWeatherAfter (float* oL, float* oR, int n)
+void BalloonProcessor::moreWeatherAfter (float* oL, float* oR, int n)
 {
     if (rbMono.getNumSamples() < n) rbMono.setSize (1, n, false, true, true);
     float* m = rbMono.getWritePointer (0);
@@ -700,7 +700,7 @@ void FreakiePieProcessor::moreWeatherAfter (float* oL, float* oR, int n)
     for (int j = 0; j < fp::Aurora::kCurtains; ++j) auroraCurtain[(size_t) j].store (aurora.curtain (j));
 }
 
-void FreakiePieProcessor::getStateInformation (MemoryBlock& destData)
+void BalloonProcessor::getStateInformation (MemoryBlock& destData)
 {
     // the chalkboard drawing and the preset (for its picture) travel with the parameters
     StringArray pts;
@@ -719,7 +719,7 @@ void FreakiePieProcessor::getStateInformation (MemoryBlock& destData)
         copyXmlToBinary (*xml, destData);
 }
 
-void FreakiePieProcessor::setStateInformation (const void* data, int sizeInBytes)
+void BalloonProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
@@ -729,7 +729,7 @@ void FreakiePieProcessor::setStateInformation (const void* data, int sizeInBytes
         }
 }
 
-void FreakiePieProcessor::loadStateXml (const XmlElement& xml)
+void BalloonProcessor::loadStateXml (const XmlElement& xml)
 {
     // sessions from before the stutter was sold at the store: if it was in use, it comes already bought
     bool knowsOwned = false;
@@ -764,7 +764,7 @@ void FreakiePieProcessor::loadStateXml (const XmlElement& xml)
     }
 }
 
-void FreakiePieProcessor::resetToNormal()
+void BalloonProcessor::resetToNormal()
 {
     setCurrentProgram (0);
     eq.flatten(); eq.fit();
@@ -774,14 +774,14 @@ void FreakiePieProcessor::resetToNormal()
     popStruckRequest.fetch_or ((1u << fp::StoreFX::kNum) - 1u);   // lightning's loans go back too
 }
 
-bool FreakiePieProcessor::trixieMayTouch (const String& id)
+bool BalloonProcessor::trixieMayTouch (const String& id)
 {
     for (auto* no : { ids::rbBoom, ids::rbHits, ids::rbStorms, ids::rbThrows, ids::fxBypass, ids::twister, ids::snow, ids::snowIn, ids::snowOut, ids::heat, ids::heatIn, ids::heatOut, ids::autoWeather, ids::balloonSfx, ids::popsThru, ids::grainsLevel, ids::catchFrom })
         if (id == no) return false;
     return ! id.endsWith ("Owned");
 }
 
-void FreakiePieProcessor::randomise (RangedAudioParameter& prm, Random& r)
+void BalloonProcessor::randomise (RangedAudioParameter& prm, Random& r)
 {
     float v = r.nextFloat();
     if (dynamic_cast<AudioParameterBool*> (&prm) != nullptr) v = r.nextBool() ? 1.0f : 0.0f;
@@ -790,14 +790,14 @@ void FreakiePieProcessor::randomise (RangedAudioParameter& prm, Random& r)
     prm.endChangeGesture();
 }
 
-void FreakiePieProcessor::trixieShuffle (Random& r)
+void BalloonProcessor::trixieShuffle (Random& r)
 {
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<RangedAudioParameter*> (p))
             if (trixieMayTouch (rp->getParameterID())) randomise (*rp, r);
 }
 
-FreakiePieProcessor::Order FreakiePieProcessor::normaliseOrder (const Order& in)
+BalloonProcessor::Order BalloonProcessor::normaliseOrder (const Order& in)
 {
     Order out; out.fill (-1);
     bool used[fp::Engine::kSlots] {};
@@ -809,25 +809,25 @@ FreakiePieProcessor::Order FreakiePieProcessor::normaliseOrder (const Order& in)
     return out;
 }
 
-void FreakiePieProcessor::setShelfOrder (const Order& o)
+void BalloonProcessor::setShelfOrder (const Order& o)
 {
     const auto norm = normaliseOrder (o);
     for (size_t i = 0; i < norm.size(); ++i) shelf[i].store (norm[i]);
     shelfVersion.fetch_add (1);
 }
 
-FreakiePieProcessor::Order FreakiePieProcessor::getShelfOrder() const
+BalloonProcessor::Order BalloonProcessor::getShelfOrder() const
 {
     Order o;
     for (size_t i = 0; i < o.size(); ++i) o[i] = shelf[i].load();
     return o;
 }
 
-AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new FreakiePieProcessor(); }
+AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new BalloonProcessor(); }
 
 //==============================================================================
 // auto weather, on the message thread: once a second, let the sky move on
-void FreakiePieProcessor::timerCallback()
+void BalloonProcessor::timerCallback()
 {
     const double now = Time::getMillisecondCounterHiRes();
     const double dt = lastTimerMs > 0.0 ? jlimit (0.0, 5.0, (now - lastTimerMs) * 0.001) : 0.0;
@@ -838,7 +838,7 @@ void FreakiePieProcessor::timerCallback()
 }
 
 // The wind blows the fog away: whichever came on last stays, the other goes off.
-void FreakiePieProcessor::keepFogAndWindApart()
+void BalloonProcessor::keepFogAndWindApart()
 {
     const bool fogOn = p_fog->load() > 0.5f, windOn = p_wind->load() > 0.5f;
     if (fogOn && windOn)
@@ -860,7 +860,7 @@ void FreakiePieProcessor::keepFogAndWindApart()
 
 // The snow and the heatwave never fall together: whichever came on last stays, and the other
 // goes off (a session, a preset or host automation could ask for both; the switches don't).
-void FreakiePieProcessor::keepSnowAndHeatApart()
+void BalloonProcessor::keepSnowAndHeatApart()
 {
     const bool snowOn = p_snow->load() > 0.5f, heatOn = p_heat->load() > 0.5f;
     if (snowOn && heatOn)
@@ -880,7 +880,7 @@ void FreakiePieProcessor::keepSnowAndHeatApart()
     heatWasOn = heatOn;
 }
 
-void FreakiePieProcessor::autoWeatherStep (double seconds)
+void BalloonProcessor::autoWeatherStep (double seconds)
 {
     const bool on = p_autoWeather->load() > 0.5f;
     auto sw = [this] (const char* id) { return apvts.getRawParameterValue (id)->load() > 0.5f; };

@@ -16,7 +16,7 @@ cat > $APP/Contents/Info.plist <<EOF
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>putz</string>
   <key>CFBundleDisplayName</key><string>putz</string>
-  <key>CFBundleIdentifier</key><string>com.freakiepie.putz</string>
+  <key>CFBundleIdentifier</key><string>com.faltung.putz</string>
   <key>CFBundleExecutable</key><string>putz</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0.0</string>

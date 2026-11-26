@@ -31,9 +31,9 @@ cmake --build build --target Cloudfin_All CloudfinTest CloudfinHostTest
 
 Cloudfin's code was written with Claude Code (Anthropic), working under the direction of its author, [femifleming](https://github.com/femifleming). This is what the author brought to it:
 
-- **The original effect chain.** Cloudfin began as a fork of the author's FreakiePie: a spectral gate/smear, a feedback pitch shifter locked to raga and microtonal scales (including La Monte Young's *The Well-Tuned Piano*), a live-buffer granular shifter with randomly slewed size, position and octave, a 500 Hz high-passed FDN reverb and a main feedback loop. It is meant to be live-safe, with no clicks and no latency.
+- **The original effect chain.** Cloudfin began as a fork of the author's first live multi-effect (today Pinkie Pie's Balloon Shop): a spectral gate/smear, a feedback pitch shifter locked to raga and microtonal scales (including La Monte Young's *The Well-Tuned Piano*), a live-buffer granular shifter with randomly slewed size, position and octave, a 500 Hz high-passed FDN reverb and a main feedback loop. It is meant to be live-safe, with no clicks and no latency.
 - **The aesthetic and where it comes from.** Frutiger Aero, from a recurring dream; first of a continuous waterslide with light blue light shining through it, now of clouds over water, laid out mirror symmetrically. The knobs are wet and fill with water like bubbles, and float around.
-- **The name and the split.** Cloudfin was named by the author and kept as a separate plug-in from FreakiePie.
+- **The name and the split.** Cloudfin was named by the author and kept as a separate plug-in from the Balloon Shop.
 - **New stages and controls.**
   - A formant filter.
   - A hard-panned stereo 3-tap delay with just-intonation times that follow the pitch shifter's scale.

@@ -576,7 +576,7 @@ File CloudfinProcessor::userPresetFolder() const
    #else
     const auto base = File::getSpecialLocation (File::userApplicationDataDirectory);   // AppData\Roaming on Windows, ~/.config on Linux
    #endif
-    return base.getChildFile ("FreakiePie").getChildFile (getName()).getChildFile ("Presets");
+    return base.getChildFile (getName()).getChildFile ("Presets");
 }
 
 Array<File> CloudfinProcessor::userPresets() const

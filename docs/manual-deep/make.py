@@ -83,7 +83,7 @@ add('''<section><h2 id="install">installing</h2>
 <tr><td class="n">apps</td><td>/Applications/faltung deep/</td></tr></table>
 <p>With Homebrew: <code>brew install --cask femifleming/tap/faltung-deep</code>. On Windows copy the <code>.vst3</code> folders to
 <i>C:\\Program Files\\Common Files\\VST3</i>; on Linux to <i>~/.vst3</i> (LV2: <i>~/.lv2</i>). In Ableton Live, rescan plug-ins; they appear under
-<b>FreakiePie</b>. Every plug-in opens on its first deep house preset.</p>
+<b>faltung</b>. Every plug-in opens on its first deep house preset.</p>
 
 <h2 id="using">the controls and the pictures</h2>
 <table class="params"><tr><th>control</th><th>how</th></tr>

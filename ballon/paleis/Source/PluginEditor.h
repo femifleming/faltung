@@ -66,7 +66,7 @@ public:
     int getPopupMenuBorderSize() override { return 26; }
 };
 
-class FreakiePieEditor;
+class BalloonEditor;
 struct SkyArt;
 class GumballPage;
 
@@ -77,7 +77,7 @@ class GumballPage;
 class Chalkboard : public juce::Component
 {
 public:
-    explicit Chalkboard (FreakiePieEditor& e) : owner (e) { setInterceptsMouseClicks (true, false); }
+    explicit Chalkboard (BalloonEditor& e) : owner (e) { setInterceptsMouseClicks (true, false); }
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -106,8 +106,8 @@ private:
     juce::Rectangle<float> tabArea (int i) const;
     void drawAt (juce::Point<float> p);
     void eqButton (int i);
-    friend struct FreakieTestAccess;
-    FreakiePieEditor& owner;
+    friend struct BalloonTestAccess;
+    BalloonEditor& owner;
     float anim = 0.0f, animTarget = 0.0f;
     int lastIndex = -1;
     float lastHeight = 0.0f;
@@ -125,7 +125,7 @@ private:
 class StoreShelves : public juce::Component
 {
 public:
-    explicit StoreShelves (FreakiePieEditor& e);
+    explicit StoreShelves (BalloonEditor& e);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -137,10 +137,10 @@ public:
     void step (float dt);   // the editor animates it
     static constexpr int cols = 4, rows = 4;
     static constexpr float W = 360.0f, H = 434.0f;
-    juce::Rectangle<float> tileArea (int i) const noexcept;   // i == FreakiePieEditor::kStoreItems is the "pop all" tile
+    juce::Rectangle<float> tileArea (int i) const noexcept;   // i == BalloonEditor::kStoreItems is the "pop all" tile
     int tileAt (juce::Point<float>) const noexcept;
 private:
-    FreakiePieEditor& ed;
+    BalloonEditor& ed;
     int hover = -1;
     bool opening = false;
     float shown = 0.0f, t = 0.0f;
@@ -157,16 +157,16 @@ private:
 class RainboomLayer : public juce::Component
 {
 public:
-    explicit RainboomLayer (FreakiePieEditor& e) : ed (e) { setInterceptsMouseClicks (false, false); }
+    explicit RainboomLayer (BalloonEditor& e) : ed (e) { setInterceptsMouseClicks (false, false); }
     void paint (juce::Graphics&) override;
 private:
-    FreakiePieEditor& ed;
+    BalloonEditor& ed;
 };
 
 class WeatherBar : public juce::Component
 {
 public:
-    explicit WeatherBar (FreakiePieEditor& e);
+    explicit WeatherBar (BalloonEditor& e);
     void paint (juce::Graphics&) override;
     bool hitTest (int x, int y) override;
     void mouseDown (const juce::MouseEvent&) override;   // right-click the snow or the heat for their fade times
@@ -177,7 +177,7 @@ public:
     int buttonAt (juce::Point<float> contentPoint) const noexcept;
 private:
     bool isOn (int which) const noexcept;
-    FreakiePieEditor& ed;
+    BalloonEditor& ed;
 };
 
 //==============================================================================
@@ -188,7 +188,7 @@ private:
 class OrderRow : public juce::Component
 {
 public:
-    explicit OrderRow (FreakiePieEditor& e);
+    explicit OrderRow (BalloonEditor& e);
     void paint (juce::Graphics&) override;
     bool hitTest (int x, int y) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -211,7 +211,7 @@ private:
     int indexAt (float y) const noexcept;
     mutable std::vector<int> layoutFor;
     mutable std::vector<Chip> layoutCache;
-    FreakiePieEditor& ed;
+    BalloonEditor& ed;
     std::map<int, float> shownY;   // where each pill is drawn, easing towards its place
     int dragSlot = -1, dragTo = -1, hoverSlot = -1;
     float grabDy = 0.0f, dragY = 0.0f, downY = 0.0f;
@@ -226,7 +226,7 @@ private:
 class FadePopup : public juce::Component
 {
 public:
-    explicit FadePopup (FreakiePieEditor& e);
+    explicit FadePopup (BalloonEditor& e);
     void open (int which, juce::Rectangle<float> under);   // 2 the snow, 3 the heatwave (the weather bar's numbering)
     void close();
     bool isOpen() const noexcept { return isVisible(); }
@@ -243,7 +243,7 @@ public:
     juce::RangedAudioParameter* params[2] {};
 private:
     void setFromX (int row, float x);
-    FreakiePieEditor& ed;
+    BalloonEditor& ed;
     int which = -1, dragRow = -1;
 };
 
@@ -254,7 +254,7 @@ private:
 class PresetStrip : public juce::Component
 {
 public:
-    explicit PresetStrip (FreakiePieEditor& e);
+    explicit PresetStrip (BalloonEditor& e);
     void paint (juce::Graphics&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
@@ -277,7 +277,7 @@ public:
 private:
     float maxScroll() const noexcept;
     const juce::Image& thumb (int preset);
-    FreakiePieEditor& ed;
+    BalloonEditor& ed;
     std::vector<juce::Image> thumbs;
     bool opening = false, dragged = false;
     float shown = 0.0f, scroll = 0.0f, scrollTarget = 0.0f, downScroll = 0.0f;
@@ -287,7 +287,7 @@ private:
 class Library : public juce::Component
 {
 public:
-    explicit Library (FreakiePieEditor& e);
+    explicit Library (BalloonEditor& e);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -311,12 +311,12 @@ private:
     void drawParchment (juce::Graphics&, juce::Rectangle<float>) const;
     void drawContents (juce::Graphics&) const;              // the left page: the chapters
     void drawChapter (juce::Graphics&, int which) const;    // the right page: one chapter
-    FreakiePieEditor& owner;
+    BalloonEditor& owner;
     float anim = 0.0f, animTarget = 0.0f, t = 0.0f;
     float flipT = 1.0f;          // a page turning: 0..1
     int flipFrom = 0, flipDir = 1;
     int hoverRow = -1;
-    friend struct FreakieTestAccess;
+    friend struct BalloonTestAccess;
 };
 
 //==============================================================================
@@ -325,7 +325,7 @@ private:
 class Floater : public juce::Component
 {
 public:
-    Floater (FreakiePieEditor& e, float stringLength, int anchorIndex);
+    Floater (BalloonEditor& e, float stringLength, int anchorIndex);
 
     virtual float inflation() const noexcept = 0;
     float collisionRadius() const noexcept;
@@ -368,7 +368,7 @@ protected:
     void dragMove (const juce::MouseEvent&);
     void applySquashAndStretch (juce::Graphics&, const BalloonShape&) const;
 
-    FreakiePieEditor& owner;
+    BalloonEditor& owner;
     juce::Point<float> downPos;
     bool moved = false;
 };
@@ -379,7 +379,7 @@ protected:
 class Balloon : public Floater
 {
 public:
-    Balloon (FreakiePieEditor&, juce::RangedAudioParameter&, const juce::String& label, int hue, float stringLength, int anchor);
+    Balloon (BalloonEditor&, juce::RangedAudioParameter&, const juce::String& label, int hue, float stringLength, int anchor);
     ~Balloon() override { stopDrift(); }
 
     void paint (juce::Graphics&) override;
@@ -427,7 +427,7 @@ private:
 class SoundBalloon : public Floater
 {
 public:
-    SoundBalloon (FreakiePieEditor&, int slot, float size, float semis, int hue);
+    SoundBalloon (BalloonEditor&, int slot, float size, float semis, int hue);
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent& e) override { beginMove (e); }
@@ -447,7 +447,7 @@ public:
 class PinTool : public juce::Component
 {
 public:
-    explicit PinTool (FreakiePieEditor& e) : owner (e) { setSize (44, 64); setMouseCursor (juce::MouseCursor::DraggingHandCursor); }
+    explicit PinTool (BalloonEditor& e) : owner (e) { setSize (44, 64); setMouseCursor (juce::MouseCursor::DraggingHandCursor); }
     void paint (juce::Graphics&) override;
     bool hitTest (int x, int y) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -460,7 +460,7 @@ public:
     bool dragging = false;
 
 private:
-    FreakiePieEditor& owner;
+    BalloonEditor& owner;
 };
 
 //==============================================================================
@@ -486,7 +486,7 @@ private:
 
     juce::TextEditor field;
     juce::String title;
-    friend struct FreakieTestAccess;
+    friend struct BalloonTestAccess;
     bool tailDown = true, closing = false;
     float tailX = 0.0f;
 };
@@ -498,7 +498,7 @@ private:
 class GrainMarker : public juce::Component
 {
 public:
-    GrainMarker (FreakiePieEditor& e, int i) : owner (e), index (i) { setSize (S, S); setMouseCursor (juce::MouseCursor::DraggingHandCursor); }
+    GrainMarker (BalloonEditor& e, int i) : owner (e), index (i) { setSize (S, S); setMouseCursor (juce::MouseCursor::DraggingHandCursor); }
     void paint (juce::Graphics&) override;
     bool hitTest (int x, int y) override { return juce::Point<float> ((float) x, (float) y).getDistanceFrom ({ S * 0.5f, S * 0.5f }) < S * 0.36f; }
     void mouseDown (const juce::MouseEvent&) override;
@@ -513,18 +513,18 @@ public:
     int frozen = 0, stuttersSeen = 0;
     bool dragging = false;
 private:
-    FreakiePieEditor& owner;
+    BalloonEditor& owner;
     int index;
     float grabDepth = 0.0f;
     juce::Point<float> grab;
 };
 
 //==============================================================================
-class FreakiePieEditor : public juce::AudioProcessorEditor, private juce::Timer
+class BalloonEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
-    explicit FreakiePieEditor (FreakiePieProcessor&);
-    ~FreakiePieEditor() override;
+    explicit BalloonEditor (BalloonProcessor&);
+    ~BalloonEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -539,13 +539,13 @@ public:
     juce::Point<float> toContent (const juce::MouseEvent& e) { return e.getEventRelativeTo (&content).position; }
 
     SadLookAndFeel lnf;
-    FreakiePieProcessor& proc;
+    BalloonProcessor& proc;
     static constexpr int designW = 1060, designH = 600;
 
 private:
     struct Content : public juce::Component
     {
-        explicit Content (FreakiePieEditor& e) : owner (e) {}
+        explicit Content (BalloonEditor& e) : owner (e) {}
         void paint (juce::Graphics& g) override { owner.paintContent (g); }
         void paintOverChildren (juce::Graphics& g) override { owner.paintOver (g); }
         void mouseDown (const juce::MouseEvent& e) override { owner.contentMouse (e, 0); }
@@ -554,7 +554,7 @@ private:
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override { owner.contentWheel (e, w); }
         void mouseMagnify (const juce::MouseEvent& e, float scale) override { const auto p = owner.toContent (e); if (owner.insideSphere (p)) owner.zoomAt (p, scale); }
         void mouseDoubleClick (const juce::MouseEvent& e) override { if (owner.insideSphere (owner.toContent (e))) owner.resetView(); }
-        FreakiePieEditor& owner;
+        BalloonEditor& owner;
     };
 
     // what the strings are tied to: a bow on the floor, or (for a store effect) a little gift box
@@ -616,10 +616,10 @@ private:
     // the card itself (presets, scale, bypass), on the overlay
     struct CardPanel : public juce::Component
     {
-        explicit CardPanel (FreakiePieEditor& e) : ed (e) {}
+        explicit CardPanel (BalloonEditor& e) : ed (e) {}
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
-        FreakiePieEditor& ed;
+        BalloonEditor& ed;
     };
     std::unique_ptr<CardPanel> cardPanel;
     void drawCard (juce::Graphics&) const;
@@ -998,10 +998,10 @@ private:
 
     double lastTick = 0.0, clock = 0.0;
 
-    friend struct FreakieTestAccess;
+    friend struct BalloonTestAccess;
     friend class Floater;
     friend class PinTool;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FreakiePieEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BalloonEditor)
 };
 
 // the help chapters, for the manual
