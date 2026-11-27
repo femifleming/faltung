@@ -11,8 +11,12 @@ if(NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 endif()
 
-# JUCE: the faltung repo's copy next to this one, or -DUMLEITUNG_JUCE=path
-set(UMLEITUNG_JUCE "${CMAKE_CURRENT_LIST_DIR}/../faltung/JUCE" CACHE PATH "JUCE")
+# JUCE: the faltung repo's (umleitung lives in it: ../JUCE), or -DUMLEITUNG_JUCE=path
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../JUCE/CMakeLists.txt")
+    set(UMLEITUNG_JUCE "${CMAKE_CURRENT_LIST_DIR}/../JUCE" CACHE PATH "JUCE")
+else()
+    set(UMLEITUNG_JUCE "${CMAKE_CURRENT_LIST_DIR}/../faltung/JUCE" CACHE PATH "JUCE")
+endif()
 add_subdirectory(${UMLEITUNG_JUCE} JUCE)
 include(third_party/faltung_ui.cmake)
 
