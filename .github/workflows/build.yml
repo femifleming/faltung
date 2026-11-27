@@ -124,9 +124,33 @@ jobs:
           name: putz-macOS
           path: dist/putz-macOS.zip
 
+  umleitung:
+    name: umleitung · macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Ninja
+        run: brew install ninja || true
+      - name: Build (the app, its driver, the checks)
+        run: |
+          cmake -S umleitung -B umleitung/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUM_WITH_HOST_CHECK=OFF
+          cmake --build umleitung/build --target umleitung umleitung_engine_test umleitung_driver_test
+      - name: Check (the engine offline; the driver in-process, nothing installed)
+        run: |
+          umleitung/build/umleitung_engine_test_artefacts/Release/umleitung_engine_test
+          umleitung/build/driver/umleitung_driver_test | tail -3
+      - name: Package
+        run: mkdir -p dist && ditto -c -k --keepParent umleitung/build/umleitung_artefacts/Release/umleitung.app dist/umleitung-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: umleitung-macOS
+          path: dist/umleitung-macOS.zip
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, putz]
+    needs: [build, putz, umleitung]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

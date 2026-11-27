@@ -263,3 +263,9 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > i want all the time signatures and dynamic time signatures
 
 (Any numerator — whole, fractional (3.5/4), grouped (2+2+3/8) — over any denominator, irrational ones included (4/3); changes at any bar, each a single signature or a cycle that repeats (7/8 5/8 …). Bar lines, beats, positions, the grid, snapping, the metronome and count-in, launches, the song, export bar numbers, midi files and hosted plug-ins all follow the meter.)
+
+## 2026-11-27 — umleitung joins the suite
+
+> when its all tested and done push to github under faltung squite qnd make homebrew cask of it.
+
+(umleitung — the Loopback / Audio Hijack / eqMac-style app — in umleitung/, its own requests in umleitung/REQUESTS.md; built and packaged by CI as umleitung-macOS.zip on every release; cask umleitung.)

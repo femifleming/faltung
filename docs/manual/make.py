@@ -7,7 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 P = {p['code']: p for p in json.load(open(os.path.join(HERE, 'params.json')))}
 FONTS = '../../Resources/fonts'   # (relative: the html sits in docs/manual)
-VERSION = '1.3.0'
+VERSION = '1.4.0'
 
 GROUND = {'kt1': '#c9b53b', 'kt2': '#f4f2ec', 'bd1': '#b88a26', 'sd2': '#9cc788', 'rm3': '#8ec3e6', 'hh4': '#8d9bd6', 'cp6': '#a9bccf',
           'pc7': '#f6c590', 'cl8': '#eef6fa', 'tm9': '#76a582', 'mc3': '#ee8e6e', 'dl4': '#fbfbf8', 'rv5': '#f4f9fb', 'sw6': '#79e04a',
