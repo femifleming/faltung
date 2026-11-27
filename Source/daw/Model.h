@@ -101,6 +101,12 @@ struct Pattern
 };
 using PatternPtr = std::shared_ptr<const Pattern>;
 
+/** a note of a note clip: from the clip's start (beats), its length (beats), the key, how hard */
+struct Note { double beat = 0, len = 0.25; int pitch = 60; float vel = 0.8f; };
+using NotesPtr = std::shared_ptr<const std::vector<Note>>;
+/** a group of tracks: a folder in the arrangement and a vca in the mixer (its fader scales its members' levels) */
+struct Group { int id = 0; juce::String name; juce::uint32 colour = 0; bool folded = false; float vcaDb = 0; bool mute = false, solo = false; };
+
 struct Clip
 {
     int pattern = 0; double startBar = 0, bars = 4;
@@ -108,6 +114,7 @@ struct Clip
     bool muted = false;
     juce::String name;               // shown on the clip (empty: the pattern's number)
     juce::uint32 colour = 0;         // 0: the track's
+    NotesPtr notes;                  // a note clip (free notes to the instrument) when set: the pattern isn't used
     int id = 0;                      // stable while the project is open (selection, undo)
 };
 /** a clip on the timeline, by track and id */
@@ -195,6 +202,8 @@ struct AudioClip
     juce::String name;               // shown on the clip (empty: the file's name)
     juce::uint32 colour = 0;         // 0: the track's
     int takeGroup = 0, take = 0;     // takes recorded over a loop: one group, numbered from 1 (the one not muted plays)
+    std::vector<std::pair<double, float>> gainLine;   // the clip's gain drawn over time: (beats from its start, db); empty: flat
+    double xIn = 0, xOut = 0;        // crossfades where it overlaps its neighbours (bars; made by the session, not saved)
     float pitch = 0.0f;              // semitones (+ cents as fraction)
     int mode = 0;                    // 0 repitch (speed = pitch), 1 stretch (length free, pitch kept), 2 warp (fits the bars at the project tempo)
     double stretch = 1.0;            // mode 1: output seconds / source seconds

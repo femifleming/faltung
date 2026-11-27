@@ -284,6 +284,7 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
     float macros[kMacros];
     for (int i = 0; i < kMacros; ++i) macros[i] = global->finalValue (GP_MACRO1 + i);
     bool anySolo = false, anyArmed = false;
+    for (auto& g : *groups) anySolo |= g.solo;
     for (auto& t : tracks) { anySolo |= t->solo.load (std::memory_order_relaxed); anyArmed |= t->armed.load (std::memory_order_relaxed); }
     for (auto* t : order) t->buf.clear (0, n);
     master->buf.clear (0, n);
@@ -446,7 +447,7 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
     const auto m = (PlayMode) mode.load (std::memory_order_relaxed);
     const double stepBeats = stepBeatsOf (t, headBpm);
     t.loopOffset = 0;
-    t.clipFrom = t.clipTo = -1;
+    t.clipFrom = t.clipTo = -1; t.noteSrc = nullptr;
     if (m == PlayMode::Session)
     {
         const int pend = t.pendingPattern.load (std::memory_order_relaxed);
@@ -507,7 +508,8 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
         // the pattern runs from where the clip starts in it (its offset: a clip split or trimmed from the left)
         const double anchor = c ? c->startBar * 4.0 - c->offset : 0.0;
         if (c) { t.clipFrom = c->startBar * 4.0; t.clipTo = (c->startBar + c->bars) * 4.0; }
-        if (! c) { t.silent = true; t.activePattern = -1; }
+        if (c && c->notes) { t.noteSrc = c->notes; t.noteAnchor = anchor; t.silent = true; t.activePattern = -1; }
+        else if (! c) { t.silent = true; t.activePattern = -1; }
         else if (c->pattern != t.activePattern || std::abs (t.anchor - anchor) > 1.0e-6 || t.silent)
         { t.activePattern = c->pattern; t.anchor = anchor; t.silent = false; t.lastStepN = -1; t.prevFired = false; }
         t.seqAnchor = t.anchor;
@@ -671,6 +673,24 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
         auto& p = t.pending[(size_t) k];
         if (p.left < n) { out.addEvent (juce::MidiMessage::noteOff (1, p.note), std::max (0, p.left)); p = t.pending[(size_t) --t.nPending]; }
         else { p.left -= n; ++k; }
+    }
+    // a note clip: its notes, as they are (cut at the clip's end)
+    if (t.noteSrc && t.clipTo > t.clipFrom)
+    {
+        const double lo = std::max (ppq0, t.clipFrom), hi = std::min (ppq1, t.clipTo);
+        for (auto& nt : *t.noteSrc)
+        {
+            const double on = t.noteAnchor + nt.beat;
+            if (on < lo - 1.0e-9 || on >= hi - 1.0e-9) continue;
+            const int smp = juce::jlimit (0, n - 1, (int) std::floor ((on - ppq0) * spb + 1.0e-6));
+            const int nn = juce::jlimit (0, 127, nt.pitch);
+            out.addEvent (juce::MidiMessage::noteOn (1, nn, juce::jlimit (0.02f, 1.0f, nt.vel)), smp);
+            const double off = std::min (on + nt.len, t.clipTo);
+            const int offS = std::max (smp + 1, (int) std::floor ((off - ppq0) * spb + 1.0e-6));
+            if (offS < n) out.addEvent (juce::MidiMessage::noteOff (1, nn), offS);
+            else if (t.nPending < (int) t.pending.size()) t.pending[(size_t) t.nPending++] = { nn, offS - n };
+        }
+        t.playStep.store (-1); return;
     }
     if (t.silent || t.activePattern < 0) { t.playStep.store (-1); return; }
     const PatternPtr pp = t.patterns[(size_t) t.activePattern];
@@ -856,6 +876,9 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
         const int s0 = std::max (0, (int) std::ceil ((c0 - ppq0) * spb - 1.0e-9)), s1 = std::min (n, (int) std::ceil ((c1 - ppq0) * spb - 1.0e-9));
         const double fadeIn = c.fadeIn * sr, fadeOut = c.fadeOut * sr, clipLen = clipSecs * sr;
         const float g = c.gain;
+        // crossfades with the clips it overlaps (equal power), and the gain line drawn on it (db, linear between points)
+        const double xInS = c.xIn * 4.0 * spb, xOutS = c.xOut * 4.0 * spb;
+        const auto& gl = c.gainLine; size_t gk = 0;
         const int G = kGrain, H = kHop;   // stretch grains (~43 ms at 48 k), half overlap
         for (int i = s0; i < s1; ++i)
         {
@@ -864,6 +887,18 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
             float env = g;
             if (fadeIn > 1 && tOut < fadeIn) env *= (float) (tOut / fadeIn);
             if (fadeOut > 1 && clipLen - tOut < fadeOut) env *= (float) std::max (0.0, (clipLen - tOut) / fadeOut);
+            if (xInS > 1 && tOut < xInS) env *= (float) std::sin (juce::MathConstants<double>::halfPi * tOut / xInS);
+            if (xOutS > 1 && clipLen - tOut < xOutS) env *= (float) std::sin (juce::MathConstants<double>::halfPi * std::max (0.0, (clipLen - tOut) / xOutS));
+            if (! gl.empty())
+            {
+                const double b = tOut / spb;
+                while (gk + 1 < gl.size() && gl[gk + 1].first <= b) ++gk;
+                double db;
+                if (b <= gl.front().first) db = gl.front().second;
+                else if (gk + 1 >= gl.size()) db = gl.back().second;
+                else { const auto& p0 = gl[gk]; const auto& p1 = gl[gk + 1]; const double u = (b - p0.first) / std::max (1.0e-9, p1.first - p0.first); db = p0.second + (p1.second - p0.second) * u; }
+                env *= (float) std::pow (10.0, db / 20.0);
+            }
             auto read = [&] (double srcSec, int ch) -> float
             {
                 double sec = c.reverse ? srcAvail - srcSec : srcSec;
@@ -974,7 +1009,11 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
     float lvl = t.isMaster() ? global->finalValue (GP_MASTER) : t.mixer->finalValue (MP_LEVEL);
     float gain = lvl <= 0.001f ? 0.0f : dbToGain (mixerLevelDb (lvl));
     if (t.mixer->finalValue (MP_MUTE) > 0.5f) gain = 0.0f;
-    if (! t.isMaster() && ! t.isReturn() && anySolo && ! t.solo.load (std::memory_order_relaxed)) gain = 0.0f;
+    // the track's group: its vca fader scales the level, its mute mutes, its solo solos every member
+    const Group* grp = nullptr;
+    if (const int gid = t.group.load (std::memory_order_relaxed)) for (auto& g : *groups) if (g.id == gid) { grp = &g; break; }
+    if (grp) { gain *= grp->vcaDb <= -96.0f ? 0.0f : std::pow (10.0f, grp->vcaDb / 20.0f); if (grp->mute) gain = 0.0f; }
+    if (! t.isMaster() && ! t.isReturn() && anySolo && ! t.solo.load (std::memory_order_relaxed) && ! (grp && grp->solo)) gain = 0.0f;
     t.levelSm.target = gain;
     t.panSm.target = t.mixer->finalValue (MP_PAN) * 2.0f - 1.0f;
     if (t.snapMixer) { t.snapMixer = false; t.levelSm.snap (gain); t.panSm.snap (t.panSm.target); for (size_t r = 0; r < returns.size(); ++r) t.sendSm[r].snap (sendGain (t.mixer->finalValue (MP_SEND1 + (int) r))); }

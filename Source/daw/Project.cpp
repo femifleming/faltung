@@ -56,6 +56,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     e.setAttribute ("free", t.freeClock.load() ? 1 : 0); e.setAttribute ("stepMs", t.stepMs.load());
     if (t.evolve.load() > 0.0f) e.setAttribute ("evolve", t.evolve.load());
     if (t.chokeGroup.load() > 0) e.setAttribute ("choke", t.chokeGroup.load());
+    if (t.group.load() > 0) e.setAttribute ("group", t.group.load());
     if (std::abs (t.phaseRate.load() - 1.0f) > 1.0e-6f) e.setAttribute ("phase", t.phaseRate.load());
     if (t.scale) { auto* x = e.createNewChildElement ("scale"); x->setAttribute ("name", t.scale->name); x->setAttribute ("period", t.scale->period); x->setAttribute ("cents", t.scale->text()); }
     e.setAttribute ("solo", t.solo.load() ? 1 : 0); e.setAttribute ("armed", t.armed.load() ? 1 : 0); e.setAttribute ("chainOn", t.chainOn.load() ? 1 : 0);
@@ -73,7 +74,9 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         x->setAttribute ("i", i); x->setAttribute ("length", p->length);
         for (int s = 0; s < kMaxSteps; ++s) if (p->s[(size_t) s].on || p->s[(size_t) s].micro != 0.0f || std::abs (p->s[(size_t) s].dur - 1.0f) > 1.0e-6f) saveStep (*x, s, p->s[(size_t) s]);
     }
-    for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); if (c.name.isNotEmpty()) x->setAttribute ("name", c.name); if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour)); }
+    for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); if (c.name.isNotEmpty()) x->setAttribute ("name", c.name); if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
+        if (c.notes) for (auto& nt : *c.notes) { auto* y = x->createNewChildElement ("n"); y->setAttribute ("b", nt.beat); y->setAttribute ("l", nt.len); y->setAttribute ("p", nt.pitch); y->setAttribute ("v", nt.vel); }
+        if (c.notes && c.notes->empty()) x->setAttribute ("notes", 1); }
     for (auto& c : *t.aclips)
     {
         auto* x = e.createNewChildElement ("aclip");
@@ -87,6 +90,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         if (c.name.isNotEmpty()) x->setAttribute ("name", c.name);
         if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
         if (c.takeGroup) { x->setAttribute ("takes", c.takeGroup); x->setAttribute ("take", c.take); }
+        if (! c.gainLine.empty()) { juce::StringArray a; for (auto& [b, d] : c.gainLine) a.add (juce::String (b, 6) + ":" + juce::String (d, 3)); x->setAttribute ("gainline", a.joinIntoString (" ")); }
     }
     if (! t.chain->empty()) { juce::StringArray a; for (int p : *t.chain) a.add (juce::String (p)); e.createNewChildElement ("chain")->addTextElement (a.joinIntoString (" ")); }
     for (auto& r : *t.routes) { auto* x = e.createNewChildElement ("route"); x->setAttribute ("dst", r.dst); x->setAttribute ("ch", r.channels); x->setAttribute ("so", r.srcOffset); x->setAttribute ("do", r.dstOffset); x->setAttribute ("gain", r.gain); if (r.feedback) x->setAttribute ("fb", 1); }
@@ -110,7 +114,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     t.pattern.store (e.getIntAttribute ("pattern", 0)); t.speed.store (e.getIntAttribute ("speed", 3)); t.rootNote.store (e.getIntAttribute ("root", 60));
     t.swingOffset.store ((float) e.getDoubleAttribute ("swing", 0.0)); t.shiftMs.store ((float) e.getDoubleAttribute ("shift", 0.0)); t.probMul.store ((float) e.getDoubleAttribute ("prob", 1.0));
     t.freeClock.store (e.getIntAttribute ("free", 0) != 0); t.stepMs.store ((float) e.getDoubleAttribute ("stepMs", 125.0));
-    t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0)));
+    t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0))); t.group.store (e.getIntAttribute ("group", 0));
     t.phaseRate.store (juce::jlimit (0.5f, 2.0f, (float) e.getDoubleAttribute ("phase", 1.0)));
     if (auto* x = e.getChildByName ("scale"))
     {
@@ -160,6 +164,12 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         Clip c; c.pattern = x->getIntAttribute ("pattern"); c.startBar = x->getDoubleAttribute ("start"); c.bars = x->getDoubleAttribute ("bars", 4.0);
         c.offset = x->getDoubleAttribute ("offset"); c.muted = x->getIntAttribute ("muted") != 0; c.id = x->getIntAttribute ("id", 0);
         c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
+        if (x->getChildByName ("n") || x->getIntAttribute ("notes") != 0)
+        {
+            auto v = std::make_shared<std::vector<Note>>();
+            for (auto* y : x->getChildWithTagNameIterator ("n")) v->push_back ({ y->getDoubleAttribute ("b"), y->getDoubleAttribute ("l", 0.25), y->getIntAttribute ("p", 60), (float) y->getDoubleAttribute ("v", 0.8) });
+            c.notes = v;
+        }
         nextClipId = std::max (nextClipId, c.id + 1);
         clips.push_back (c);
     }
@@ -180,6 +190,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         c.pitch = (float) x->getDoubleAttribute ("pitch"); c.mode = x->getIntAttribute ("mode"); c.stretch = x->getDoubleAttribute ("stretch", 1.0); c.muted = x->getIntAttribute ("muted") != 0;
         c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
         c.takeGroup = x->getIntAttribute ("takes"); c.take = x->getIntAttribute ("take");
+        for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("gainline"), " ", "")) if (tk.contains (":")) c.gainLine.push_back ({ tk.upToFirstOccurrenceOf (":", false, false).getDoubleValue(), tk.fromFirstOccurrenceOf (":", false, false).getFloatValue() });
         nextTakeGroup = std::max (nextTakeGroup, c.takeGroup + 1);
         nextClipId = std::max (nextClipId, c.id + 1);
         aclips.push_back (c);
@@ -232,6 +243,7 @@ std::unique_ptr<juce::XmlElement> Session::save() const
     }
     for (auto& s : *song) { auto* x = e->createNewChildElement ("song"); x->setAttribute ("scene", s.scene); x->setAttribute ("bars", s.bars); }
     for (auto& m : *markers) { auto* x = e->createNewChildElement ("marker"); x->setAttribute ("name", m.name); x->setAttribute ("bar", m.bar); }
+    for (auto& g : *groups) { auto* x = e->createNewChildElement ("group"); x->setAttribute ("id", g.id); x->setAttribute ("name", g.name); if (g.colour) x->setAttribute ("colour", juce::String::toHexString ((int) g.colour)); x->setAttribute ("folded", g.folded ? 1 : 0); x->setAttribute ("vca", g.vcaDb); x->setAttribute ("mute", g.mute ? 1 : 0); x->setAttribute ("solo", g.solo ? 1 : 0); }
     if (! meter->plain()) for (auto& m : meter->getChanges()) { auto* x = e->createNewChildElement ("meter"); x->setAttribute ("bar", m.bar); x->setAttribute ("sigs", timeline::sigsText (m.sigs)); }
     for (auto& l : *lanes)
     {
@@ -333,6 +345,7 @@ bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
     });
     editSong ([&] (std::vector<SongEntry>& s) { for (auto* x : e.getChildWithTagNameIterator ("song")) s.push_back ({ x->getIntAttribute ("scene"), x->getIntAttribute ("bars", 8) }); });
     editMarkers ([&] (std::vector<Marker>& m) { for (auto* x : e.getChildWithTagNameIterator ("marker")) m.push_back ({ x->getStringAttribute ("name"), x->getDoubleAttribute ("bar") }); });
+    editGroups ([&] (std::vector<Group>& v) { v.clear(); for (auto* x : e.getChildWithTagNameIterator ("group")) { Group g; g.id = x->getIntAttribute ("id"); g.name = x->getStringAttribute ("name"); g.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32(); g.folded = x->getIntAttribute ("folded") != 0; g.vcaDb = (float) x->getDoubleAttribute ("vca"); g.mute = x->getIntAttribute ("mute") != 0; g.solo = x->getIntAttribute ("solo") != 0; v.push_back (g); } });
     {
         std::vector<timeline::MeterChange> mc;
         for (auto* x : e.getChildWithTagNameIterator ("meter")) { std::vector<timeline::Sig> sg; if (timeline::parseSigs (x->getStringAttribute ("sigs"), sg)) mc.push_back ({ x->getIntAttribute ("bar"), sg }); }

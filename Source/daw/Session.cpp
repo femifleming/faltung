@@ -104,6 +104,7 @@ Session::Session()
     song = std::make_shared<const std::vector<SongEntry>>();
     markers = std::make_shared<const std::vector<Marker>>();
     meter = std::make_shared<const timeline::MeterMap>();
+    groups = std::make_shared<const std::vector<Group>>();
     lanes = std::make_shared<const std::vector<LanePtr>>();
     midiMaps = std::make_shared<const std::vector<MidiMap>>();
     keyMaps = std::make_shared<const std::vector<KeyMap>>();
@@ -762,6 +763,42 @@ void Session::editSong (const std::function<void (std::vector<SongEntry>&)>& fn)
     { const juce::SpinLock::ScopedLockType sl (lock); song = v; }
     dirty = true;
 }
+int Session::addGroup (const juce::String& name)
+{
+    int id = 1; for (auto& g : *groups) id = std::max (id, g.id + 1);
+    editGroups ([&] (std::vector<Group>& v) { Group g; g.id = id; g.name = name; v.push_back (g); });
+    return id;
+}
+void Session::editGroups (const std::function<void (std::vector<Group>&)>& fn)
+{
+    auto v = std::make_shared<std::vector<Group>> (*groups); fn (*v);
+    { const juce::SpinLock::ScopedLockType sl (lock); groups = v; }
+    dirty = true;
+}
+void Session::setTrackGroup (Track& t, int id) { t.group.store (groupOf (id) ? id : 0); dirty = true; }
+NotesPtr Session::notesFromMidi (const juce::File& f, double& lengthBeats)
+{
+    juce::FileInputStream in (f); juce::MidiFile mf;
+    lengthBeats = 0;
+    if (! in.openedOk() || ! mf.readFrom (in)) return nullptr;
+    const double tpq = mf.getTimeFormat() > 0 ? mf.getTimeFormat() : 960.0;
+    auto v = std::make_shared<std::vector<Note>>();
+    for (int k = 0; k < mf.getNumTracks() && v->empty(); ++k)
+    {
+        juce::MidiMessageSequence seq (*mf.getTrack (k)); seq.updateMatchedPairs();
+        for (auto* e : seq)
+            if (e->message.isNoteOn())
+            {
+                const double b = e->message.getTimeStamp() / tpq;
+                const double off = e->noteOffObject ? e->noteOffObject->message.getTimeStamp() / tpq : b + 0.25;
+                v->push_back ({ b, std::max (1.0 / 64.0, off - b), e->message.getNoteNumber(), e->message.getFloatVelocity() });
+                lengthBeats = std::max (lengthBeats, off);
+            }
+    }
+    if (v->empty()) return nullptr;
+    std::sort (v->begin(), v->end(), [] (const Note& a, const Note& b) { return a.beat < b.beat; });
+    return v;
+}
 void Session::setMeter (std::vector<timeline::MeterChange> c)
 {
     auto m = std::make_shared<const timeline::MeterMap> (std::move (c));
@@ -917,6 +954,19 @@ void Session::editAudioClips (Track& t, const std::function<void (std::vector<Au
     std::vector<AudioClip> v = *t.aclips; fn (v);
     for (auto& c : v) if (c.id <= 0) c.id = nextClipId++;
     std::sort (v.begin(), v.end(), [] (const AudioClip& a, const AudioClip& b) { return a.startBar < b.startBar; });
+    // crossfades: where two clips that play overlap (the later one starting inside the earlier, ending after it), the
+    // earlier one fades out and the later one in over the overlap, equal power (layered clips, one inside another, don't)
+    for (auto& c : v) c.xIn = c.xOut = 0;
+    for (size_t i = 0; i < v.size(); ++i)
+        for (size_t k = i + 1; k < v.size(); ++k)
+        {
+            auto& a = v[i]; auto& b = v[k];
+            if (a.muted || b.muted) continue;
+            const double ea = a.startBar + a.bars, eb = b.startBar + b.bars;
+            if (b.startBar >= ea - 1.0e-9 || eb <= ea + 1.0e-9 || b.startBar <= a.startBar + 1.0e-9) continue;
+            const double ov = ea - b.startBar;
+            a.xOut = std::max (a.xOut, ov); b.xIn = std::max (b.xIn, ov);
+        }
     auto np = std::make_shared<const std::vector<AudioClip>> (v);
     std::vector<std::unique_ptr<ClipState>> st;
     for (auto& c : v)

@@ -274,3 +274,7 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > complete sndstudio completely / work on both at once, complete all tasks
 
 (Takes: recording over the loop keeps every pass, choose / comp them; automation points selected, moved, copied, scaled together; clip names and colours.)
+
+> do all of this: Crossfades … Clip gain envelopes … Track groups, folders and VCA faders … Note clips for hosted instruments … then update the manual and push the release
+
+(1.4.2: note clips with a note editor, midi files as clips, a pattern into notes; automatic equal-power crossfades; clip gain lines; groups as folders + vca strips; manual sections for each.)

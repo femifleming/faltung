@@ -4,7 +4,9 @@
 #include "StudioWidgets.h"
 #include "PatternTools.h"
 #include "Timeline.h"
+#include "NoteEditor.h"
 #include <map>
+#include <set>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 namespace fal::daw
@@ -347,6 +349,7 @@ public:
 
     void resized() override
     {
+        if (noteEd) noteEd->setBounds (lanesArea());
         auto sa = songArea();
         addSong.setBounds (sa.getX() + 8, sa.getY() + 6, 100, 20);
         int bx = 8;
@@ -356,9 +359,62 @@ public:
         place (shorter, 50); place (taller, 50); bx += 8; place (followLink, 50);
         addLane.setBounds (8, autoArea().getY() + 4, 60, 18);
     }
+    /** the tracks, one a row: a folded group shows only its first track (its folder row) */
     std::vector<Track*> rows() const
     {
-        std::vector<Track*> v; for (auto& t : ctx.s.tracks) v.push_back (t.get()); return v;
+        std::vector<Track*> v; std::set<int> shown;
+        for (auto& t : ctx.s.tracks)
+        {
+            const int g = t->group.load();
+            if (const auto* gr = g ? ctx.s.groupOf (g) : nullptr) if (gr->folded) { if (shown.count (g)) continue; shown.insert (g); }
+            v.push_back (t.get());
+        }
+        return v;
+    }
+    static float gainY (juce::Rectangle<float> r, float db) { return r.getY() + 2.0f + (12.0f - juce::jlimit (-36.0f, 12.0f, db)) / 48.0f * (r.getHeight() - 4.0f); }
+    static float gainDbAt (juce::Rectangle<float> r, float y) { return juce::jlimit (-36.0f, 12.0f, 12.0f - (y - r.getY() - 2.0f) / std::max (1.0f, r.getHeight() - 4.0f) * 48.0f); }
+    ClipRef gainClip;                       // the audio clip whose gain line is being drawn
+    int gainDrag = -1;                      // its point being dragged
+    std::unique_ptr<NoteEditor> noteEd, retiredEd;     // the note clip being edited (and the one just closed)
+    /** a note clip's editor, over the lanes */
+    void editNotes (ClipRef r)
+    {
+        auto* t = ctx.s.clipTrack (r); if (! t || r.audio) return;
+        if (noteEd) { removeChildComponent (noteEd.get()); retiredEd = std::move (noteEd); }
+        noteEd = std::make_unique<NoteEditor> (ctx.s, t->uid, r.id);
+        // (closed from inside its own mouse / key handler: hidden now, deleted with the next editor or the page)
+        noteEd->onClose = [this] { if (noteEd) { noteEd->setVisible (false); removeChildComponent (noteEd.get()); retiredEd = std::move (noteEd); repaint(); } };
+        addAndMakeVisible (*noteEd); noteEd->setBounds (lanesArea().withTrimmedLeft (0)); noteEd->grabKeyboardFocus();
+    }
+    NoteEditor* noteEditor() { return noteEd.get(); }
+    int groupSize (int g) const { int n = 0; for (auto& t : ctx.s.tracks) if (t->group.load() == g) ++n; return n; }
+    /** the header's menu: groups (folders, vcas) */
+    void trackMenu (Track& t)
+    {
+        auto& s = ctx.s;
+        juce::PopupMenu m;
+        const int g = t.group.load(); const auto* gr = g ? s.groupOf (g) : nullptr;
+        m.addItem (1, "new group with this track");
+        juce::PopupMenu to; for (auto& x : *s.groups) to.addItem (100 + x.id, x.name, x.id != g, x.id == g);
+        m.addSubMenu ("into the group", to, ! s.groups->empty());
+        if (gr)
+        {
+            m.addItem (2, "out of " + gr->name);
+            m.addItem (3, gr->folded ? "unfold " + gr->name : "fold " + gr->name);
+            m.addItem (4, "rename " + gr->name + "...");
+            m.addItem (5, "ungroup " + gr->name + " (every track)");
+        }
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, &t, g] (int r)
+        {
+            auto& s = ctx.s;
+            if (r == 1) { const int id = s.addGroup ("group " + juce::String (s.groups->size() + 1)); s.editGroups ([id, &t, this] (std::vector<Group>& v) { for (auto& x : v) if (x.id == id) x.colour = trackColour (t).getARGB(); }); s.setTrackGroup (t, id); }
+            else if (r == 2) s.setTrackGroup (t, 0);
+            else if (r == 3) s.editGroups ([g] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) x.folded = ! x.folded; });
+            else if (r == 4) { const auto* gr = s.groupOf (g); ask ("rename the group", "a name", gr ? gr->name : juce::String(), [this, g] (juce::String n) { ctx.s.editGroups ([g, n] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) x.name = n.trim(); }); repaint(); }); }
+            else if (r == 5) s.removeGroup (g);
+            else if (r >= 100) s.setTrackGroup (t, r - 100);
+            repaint();
+        });
     }
 
     // ---- paint --------------------------------------------------------------------------------------------
@@ -504,8 +560,19 @@ public:
             g.setColour (theme.ink.withAlpha (selT ? 0.12f : 0.05f)); g.fillRect (0, y, left, laneH - 1);
             g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (left, y + laneH - 1, la.getWidth() - left, 1);
             g.setColour (trackColour (t)); g.fillRect (0, y, 4, laneH - 1);
-            g.setColour (theme.ink); g.setFont (uiFont (11.0f, selT)); g.drawText (t.name, 10, y + 2, left - 14, std::min (16, laneH - 2), juce::Justification::centredLeft, true);
-            if (laneH >= 34) { g.setFont (uiFont (9.0f)); g.setColour (theme.ink.withAlpha (0.7f)); g.drawText (t.isAudio() ? "audio" : (t.instrument ? t.instrument->name : ""), 10, y + 18, left - 14, 14, juce::Justification::centredLeft, true); }
+            const int tg = t.group.load(); const auto* tgr = tg ? s.groupOf (tg) : nullptr;
+            if (tgr)
+            {
+                // the group: a stripe in its colour, a triangle that folds it (the first track of a folded group is its folder)
+                g.setColour (tgr->colour ? juce::Colour (tgr->colour) : theme.ink.withAlpha (0.5f)); g.fillRect (5, y, 3, laneH - 1);
+                juce::Path tri; const float tx = (float) left - 14.0f, ty = (float) y + 6.0f;
+                if (tgr->folded) tri.addTriangle (tx, ty, tx + 7.0f, ty + 4.0f, tx, ty + 8.0f); else tri.addTriangle (tx, ty, tx + 8.0f, ty, tx + 4.0f, ty + 7.0f);
+                g.setColour (theme.ink.withAlpha (0.8f)); g.fillPath (tri);
+            }
+            g.setColour (theme.ink); g.setFont (uiFont (11.0f, selT));
+            if (tgr && tgr->folded) g.drawText (tgr->name + "  (" + juce::String (groupSize (tg)) + " tracks)", 12, y + 2, left - 30, std::min (16, laneH - 2), juce::Justification::centredLeft, true);
+            else g.drawText (t.name, 12, y + 2, left - (tgr ? 30 : 14), std::min (16, laneH - 2), juce::Justification::centredLeft, true);
+            if (laneH >= 34) { g.setFont (uiFont (9.0f)); g.setColour (theme.ink.withAlpha (0.7f)); g.drawText (tgr && tgr->folded ? juce::String ("folded: ") + t.name + " ..." : (tgr ? tgr->name + " / " : juce::String()) + (t.isAudio() ? "audio" : (t.instrument ? t.instrument->name : "")), 12, y + 18, left - 16, 14, juce::Justification::centredLeft, true); }
             g.reduceClipRegion (left, la.getY(), la.getWidth() - left, la.getHeight());
             const double vis0 = bar (left), vis1 = bar (la.getRight());
             for (auto& c : *t.clips)
@@ -518,8 +585,23 @@ public:
                 g.setColour (cc.withAlpha (c.muted ? 0.18f : live ? 1.0f : 0.6f));
                 if (theme.mirror) g.fillRect (r); else g.fillPath (ui::skewRect (r, 0.15f));
                 if (isSelected ({ t.uid, c.id, false })) { g.setColour (juce::Colours::white); g.drawRect (r, 2.0f); }
+                if (c.notes && ! c.notes->empty() && r.getHeight() > 12)
+                {
+                    // its notes, small: the clip's pitch range top to bottom
+                    int lo = 127, hi = 0; for (auto& nt : *c.notes) { lo = std::min (lo, nt.pitch); hi = std::max (hi, nt.pitch); }
+                    const float top = r.getY() + 13.0f, h = std::max (4.0f, r.getHeight() - 16.0f), span = (float) std::max (1, hi - lo + 1);
+                    g.setColour (ui::inkFor (cc).withAlpha (c.muted ? 0.3f : 0.85f));
+                    for (auto& nt : *c.notes)
+                    {
+                        const double b0 = c.startBar + (nt.beat - c.offset) / 4.0, b1 = b0 + nt.len / 4.0;
+                        if (b1 <= c.startBar || b0 >= c.startBar + c.bars) continue;
+                        const float nx0 = (float) xd (std::max (b0, c.startBar)), nx1 = (float) xd (std::min (b1, c.startBar + c.bars));
+                        g.fillRect (nx0, top + h - (float) (nt.pitch - lo + 1) / span * h, std::max (1.0f, nx1 - nx0 - 1.0f), std::max (1.5f, h / span - 0.5f));
+                    }
+                }
                 g.setColour (ui::inkFor (cc).withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (10.0f));
-                juce::String label = c.name.isNotEmpty() ? c.name + "  p" + juce::String (c.pattern + 1) : "p" + juce::String (c.pattern + 1); if (c.offset > 1.0e-9) label << " +" << timeline::formatLength (c.offset).fromFirstOccurrenceOf (".", false, false); if (c.muted) label << " (muted)";
+                juce::String label = c.notes ? (c.name.isNotEmpty() ? c.name : juce::String ("notes")) + " (" + juce::String (c.notes->size()) + ")"
+                                             : c.name.isNotEmpty() ? c.name + "  p" + juce::String (c.pattern + 1) : "p" + juce::String (c.pattern + 1); if (c.offset > 1.0e-9) label << " +" << timeline::formatLength (c.offset).fromFirstOccurrenceOf (".", false, false); if (c.muted) label << " (muted)";
                 g.drawText (label, r.reduced (4.0f, 0.0f).withHeight (std::min (r.getHeight(), 16.0f)), juce::Justification::centredLeft, true);
             }
             for (auto& c : *t.aclips)
@@ -547,6 +629,34 @@ public:
                 if (fi > 1) g.drawLine (full.getX(), full.getBottom(), full.getX() + fi, full.getY(), 1.0f);
                 if (fo > 1) g.drawLine (full.getRight() - fo, full.getY(), full.getRight(), full.getBottom(), 1.0f);
                 if (laneH >= 30) { g.fillRect (full.getX() + fi - 2.0f, full.getY(), 4.0f, 4.0f); g.fillRect (full.getRight() - fo - 2.0f, full.getY(), 4.0f, 4.0f); }
+                // crossfades with the clips it overlaps: the curves over the overlap
+                if (! c.muted && (c.xIn > 0 || c.xOut > 0))
+                {
+                    g.setColour (juce::Colour (0xffee8e6e).withAlpha (0.9f));
+                    auto curve = [&] (float xa, float xb, bool rising)
+                    {
+                        juce::Path pth; for (int k = 0; k <= 16; ++k) { const float u = k / 16.0f; const float v = std::sin (juce::MathConstants<float>::halfPi * (rising ? u : 1.0f - u)); const float px = xa + (xb - xa) * u, py = full.getBottom() - v * full.getHeight(); if (k == 0) pth.startNewSubPath (px, py); else pth.lineTo (px, py); }
+                        g.strokePath (pth, juce::PathStrokeType (1.2f));
+                    };
+                    if (c.xIn > 0) curve (full.getX(), (float) xd (c.startBar + c.xIn), true);
+                    if (c.xOut > 0) curve ((float) xd (c.startBar + c.bars - c.xOut), full.getRight(), false);
+                }
+                // the gain line (db: +12 at the top, -36 at the bottom), its points while it is being drawn
+                const bool gEdit = gainClip == ClipRef { t.uid, c.id, true };
+                if (! c.gainLine.empty() || gEdit)
+                {
+                    juce::Graphics::ScopedSaveState gs (g); g.reduceClipRegion (r.toNearestInt());
+                    g.setColour (juce::Colour (0xfff6c590)); juce::Path pth;
+                    if (c.gainLine.empty()) { const float gy = gainY (full, 0.0f); pth.startNewSubPath (full.getX(), gy); pth.lineTo (full.getRight(), gy); }
+                    else
+                    {
+                        pth.startNewSubPath (full.getX(), gainY (full, c.gainLine.front().second));
+                        for (auto& [gb, db] : c.gainLine) pth.lineTo ((float) xd (c.startBar + gb / 4.0), gainY (full, db));
+                        pth.lineTo (full.getRight(), gainY (full, c.gainLine.back().second));
+                    }
+                    g.strokePath (pth, juce::PathStrokeType (gEdit ? 1.6f : 1.0f));
+                    if (gEdit) for (auto& [gb, db] : c.gainLine) { const float px = (float) xd (c.startBar + gb / 4.0), py = gainY (full, db); g.fillEllipse (px - 3.0f, py - 3.0f, 6.0f, 6.0f); }
+                }
                 g.setColour (theme.ink.withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (9.0f));
                 juce::String label = c.name.isNotEmpty() ? c.name : juce::File (c.path).getFileNameWithoutExtension();
                 if (takeN > 1) label << "  take " << takeK << " of " << takeN;
@@ -851,7 +961,7 @@ public:
     }
 
     // ---- mouse --------------------------------------------------------------------------------------
-    enum class DragMode { None, Ruler, Loop, Marker, Song, LanePoint, Freehand, Move, TrimStart, TrimEnd, FadeIn, FadeOut, Band, Scroll, PointBand, PointsMove };
+    enum class DragMode { None, Ruler, Loop, Marker, Song, LanePoint, Freehand, Move, TrimStart, TrimEnd, FadeIn, FadeOut, Band, Scroll, PointBand, PointsMove, GainPoint };
     // the automation points selected (in one lane), and what a drag of them started from
     Target selLane; std::vector<int> selPts; std::vector<AutoPoint> ptOrig; std::vector<bool> ptFlag; int ptBandRow = 0;
     std::vector<AutoPoint> pointBoard;   // copied points (beats from the first)
@@ -1044,8 +1154,42 @@ public:
         if (e.x < left)
         {
             auto rs = rows(); const int row = rowAt (e.y);
-            if (row >= 0 && row < (int) rs.size()) ctx.select (rs[(size_t) row]);
+            if (row >= 0 && row < (int) rs.size())
+            {
+                auto* t = rs[(size_t) row];
+                ctx.select (t);
+                if (e.mods.isPopupMenu()) { trackMenu (*t); return; }
+                // the group's triangle: fold / unfold
+                if (const int g = t->group.load(); g && e.x >= left - 18 && e.y < rowY (row) + 16)
+                    s.editGroups ([g] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) x.folded = ! x.folded; });
+            }
             repaint(); return;
+        }
+        // the gain line being drawn: click adds a point, drag moves it, double-click takes it away
+        if (gainClip.track != 0)
+        {
+            auto* gt = s.clipTrack (gainClip); const AudioClip* gc = nullptr;
+            if (gt) for (auto& c : *gt->aclips) if (c.id == gainClip.id) gc = &c;
+            const auto rs = rows(); int grow = -1; for (int i = 0; i < (int) rs.size(); ++i) if (rs[(size_t) i] == gt) grow = i;
+            if (gc && grow >= 0)
+            {
+                const auto full = juce::Rectangle<float> ((float) xd (gc->startBar), (float) rowY (grow) + 3.0f, (float) (gc->bars * pxPerBar) - 1.0f, (float) laneH - 6.0f);
+                if (full.contains (e.position))
+                {
+                    auto line = gc->gainLine; int near = -1;
+                    for (int k = 0; k < (int) line.size(); ++k) if (std::abs ((float) xd (gc->startBar + line[(size_t) k].first / 4.0) - e.position.x) < 6.0f && std::abs (gainY (full, line[(size_t) k].second) - e.position.y) < 6.0f) near = k;
+                    if (near >= 0 && (e.getNumberOfClicks() > 1 || e.mods.isPopupMenu())) { line.erase (line.begin() + near); s.setClipGainLine (gainClip, line); repaint(); return; }
+                    if (near < 0)
+                    {
+                        const double gb = std::max (0.0, (snapBar (bar (e.position.x)) - gc->startBar) * 4.0);
+                        line.push_back ({ gb, gainDbAt (full, e.position.y) }); std::sort (line.begin(), line.end());
+                        s.setClipGainLine (gainClip, line);
+                        for (int k = 0; k < (int) line.size(); ++k) if (std::abs (line[(size_t) k].first - gb) < 1.0e-9) near = k;
+                    }
+                    gainDrag = near; dragMode = DragMode::GainPoint; repaint(); return;
+                }
+            }
+            gainClip = {};   // a click anywhere else: done drawing
         }
         auto h = hitClip (e.getPosition());
         if (h.t) ctx.select (h.t);
@@ -1057,7 +1201,31 @@ public:
                 const double len = (meter().barStart (meter().barAt (b * 4.0) + 4) - meter().barStart (meter().barAt (b * 4.0))) / 4.0;   // four bars of the meter
                 s.editClips (*h.t, [b, p, len] (std::vector<Clip>& v) { v.push_back ({ p, b, len }); }); repaint(); return;
             }
-            if (e.mods.isPopupMenu()) return;
+            if (e.mods.isPopupMenu())
+            {
+                if (h.t && ! h.t->isAudio())
+                {
+                    const double b = snapBar (bar (e.position.x)); auto* t = h.t;
+                    const double len = (meter().barStart (meter().barAt (b * 4.0) + 4) - meter().barStart (meter().barAt (b * 4.0))) / 4.0;
+                    juce::PopupMenu m;
+                    m.addItem (1, "new pattern clip here (pattern " + juce::String (t->pattern.load() + 1) + ")");
+                    m.addItem (2, "new note clip here (free notes)");
+                    m.addItem (3, "a midi file here...");
+                    m.showMenuAsync (juce::PopupMenu::Options(), [this, t, b, len] (int r)
+                    {
+                        auto& s = ctx.s;
+                        if (r == 1) { const int p = t->pattern.load(); s.editClips (*t, [b, p, len] (std::vector<Clip>& v) { v.push_back ({ p, b, len }); }); }
+                        else if (r == 2) { const int id = s.addNoteClip (*t, b, len, {}); sel = { { t->uid, id, false } }; editNotes (sel.front()); }
+                        else if (r == 3)
+                        {
+                            chooser = std::make_unique<juce::FileChooser> ("a midi file", juce::File(), "*.mid;*.midi");
+                            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this, t, b] (const juce::FileChooser& fc) { if (fc.getResult().existsAsFile()) midiClip (*t, fc.getResult(), b); });
+                        }
+                        repaint();
+                    });
+                }
+                return;
+            }
             dragMode = DragMode::Band; bandA = bandB = e.getPosition(); bandAdd = e.mods.isShiftDown() || e.mods.isCommandDown(); bandBase = bandAdd ? sel : std::vector<ClipRef>();
             repaint(); return;
         }
@@ -1070,6 +1238,7 @@ public:
         else if (! isSelected (h.ref)) sel = { h.ref };
         if (e.mods.isPopupMenu()) { clipMenu (h); repaint(); return; }
         if (h.ref.audio && e.getNumberOfClicks() > 1) { clipEditor (h.ref); return; }
+        if (! h.ref.audio && e.getNumberOfClicks() > 1) { if (auto* t = s.clipTrack (h.ref)) for (auto& c : *t->clips) if (c.id == h.ref.id && c.notes) { editNotes (h.ref); return; } }
         anchor = h.ref; s.clipSpan (h.ref, anchorStart, anchorLen);
         dragTrackRow = rowAt (e.y);
         if (h.part == Hit::FadeIn || h.part == Hit::FadeOut) { dragMode = h.part == Hit::FadeIn ? DragMode::FadeIn : DragMode::FadeOut; return; }
@@ -1186,6 +1355,23 @@ public:
                 repaint(); return;
             }
             case DragMode::Band: { bandB = e.getPosition(); applyBand(); repaint(); return; }
+            case DragMode::GainPoint:
+            {
+                auto* gt = s.clipTrack (gainClip); if (! gt || gainDrag < 0) return;
+                const AudioClip* gc = nullptr; for (auto& c : *gt->aclips) if (c.id == gainClip.id) gc = &c;
+                if (! gc || gainDrag >= (int) gc->gainLine.size()) return;
+                const auto rs = rows(); int grow = 0; for (int i = 0; i < (int) rs.size(); ++i) if (rs[(size_t) i] == gt) grow = i;
+                const auto full = juce::Rectangle<float> ((float) xd (gc->startBar), (float) rowY (grow) + 3.0f, (float) (gc->bars * pxPerBar) - 1.0f, (float) laneH - 6.0f);
+                auto line = gc->gainLine;
+                const double gb = juce::jlimit (0.0, gc->bars * 4.0, (snapBar (bar (e.position.x)) - gc->startBar) * 4.0);
+                line[(size_t) gainDrag] = { gb, gainDbAt (full, e.position.y) };
+                const auto moved = line[(size_t) gainDrag];
+                std::sort (line.begin(), line.end());
+                for (int k = 0; k < (int) line.size(); ++k) if (line[(size_t) k] == moved) gainDrag = k;
+                s.setClipGainLine (gainClip, line);
+                ctx.status ("gain " + juce::String (moved.second, 1) + " db at " + pos (gc->startBar + moved.first / 4.0));
+                repaint(); return;
+            }
             case DragMode::PointBand:
             {
                 bandB = e.getPosition();
@@ -1256,18 +1442,19 @@ public:
         }
     }
     /** the clips being dragged go up or down a number of rows (each keeps its id) */
+    int rowOf (const Track* t) const { auto rs = rows(); for (int i = 0; i < (int) rs.size(); ++i) if (rs[(size_t) i] == t) return i; return -1000; }
     void relocate (int rowDelta)
     {
-        auto& s = ctx.s;
+        auto& s = ctx.s; const auto rs = rows();
         // every clip must have a track of its kind there, or none moves
         for (auto& o : origins)
         {
-            auto* t = s.clipTrack (o.ref); const int row = t ? s.indexOf (t) + rowDelta : -1;
-            if (row < 0 || row >= (int) s.tracks.size() || s.tracks[(size_t) row]->isAudio() != o.ref.audio) return;
+            auto* t = s.clipTrack (o.ref); const int row = t ? rowOf (t) + rowDelta : -1;
+            if (row < 0 || row >= (int) rs.size() || rs[(size_t) row]->isAudio() != o.ref.audio) return;
         }
         for (auto& o : origins)
         {
-            auto* from = s.clipTrack (o.ref); auto* to = s.tracks[(size_t) (s.indexOf (from) + rowDelta)].get();
+            auto* from = s.clipTrack (o.ref); auto* to = rs[(size_t) (rowOf (from) + rowDelta)];
             if (o.ref.audio)
             {
                 AudioClip moved; bool got = false;
@@ -1341,6 +1528,11 @@ public:
         juce::PopupMenu m;
         const bool muted = ctx.s.clipMuted (h.ref);
         if (h.ref.audio) m.addItem (1, "edit clip (gain, fades, pitch, stretch)...");
+        bool hasLine = false, isNotes = false;
+        if (auto* ct = ctx.s.clipTrack (h.ref)) { if (h.ref.audio) { for (auto& c : *ct->aclips) if (c.id == h.ref.id) hasLine = ! c.gainLine.empty(); } else for (auto& c : *ct->clips) if (c.id == h.ref.id) isNotes = c.notes != nullptr; }
+        if (h.ref.audio) { m.addItem (11, "draw its gain line (click: a point, drag, double-click: remove)"); if (hasLine) m.addItem (12, "clear its gain line"); }
+        if (isNotes) m.addItem (13, "edit the notes...  (double-click)");
+        else if (! h.ref.audio) m.addItem (14, "a note clip from its pattern (free notes)");
         m.addItem (6, "position and length...");
         m.addItem (2, "split at the playhead  (cmd+t)");
         m.addItem (7, "duplicate  (cmd+d)");
@@ -1377,6 +1569,10 @@ public:
             else if (r == 7) duplicateSel();
             else if (r == 8) muteSel();
             else if (r == 9) loopSelection();
+            else if (r == 11) { gainClip = h.ref; ctx.status ("drawing the gain line: click inside the clip for a point, drag it, double-click to remove; click outside when done"); }
+            else if (r == 12) s.setClipGainLine (h.ref, {});
+            else if (r == 13) editNotes (h.ref);
+            else if (r == 14) notesFromPattern (h.ref);
             else if (r == 10)
             {
                 juce::String now; if (h.ref.audio) { for (auto& c : *t->aclips) if (c.id == id) now = c.name; } else for (auto& c : *t->clips) if (c.id == id) now = c.name;
@@ -1393,6 +1589,33 @@ public:
             else if (r >= 100) s.editClips (*t, [id, r] (std::vector<Clip>& v) { for (auto& c : v) if (c.id == id) c.pattern = r - 100; });
             repaint();
         });
+    }
+    /** a pattern clip into a note clip: what the pattern's steps play over the clip, as notes (the step's pitch, length,
+        velocity, chords; not its chances or conditions: a note clip plays what it shows) */
+    void notesFromPattern (ClipRef r)
+    {
+        auto& s = ctx.s; auto* t = s.clipTrack (r); if (! t) return;
+        const Clip* c = nullptr; for (auto& x : *t->clips) if (x.id == r.id) c = &x;
+        if (! c) return;
+        auto pat = t->patternAt (c->pattern); if (! pat) return;
+        const double stepB = s.stepBeatsOf (*t, s.tempo());
+        const int len = juce::jlimit (1, kMaxSteps, pat->length);
+        std::vector<Note> v; double at = 0; const double end = c->offset + c->bars * 4.0;
+        const int root = t->rootNote.load();
+        for (int k = 0; at < end - 1.0e-9 && k < 100000; ++k)
+        {
+            const Step& st = pat->s[(size_t) (k % len)];
+            const double d = juce::jlimit (0.05f, 16.0f, st.dur) * stepB;
+            if (st.on && at >= c->offset - 1.0e-9)
+            {
+                const int note = st.slice >= 0 ? 36 + st.slice : root + st.pitch;
+                const int* stack = nullptr; const int extra = st.slice >= 0 ? 0 : chordNotes (st.chord, stack);
+                for (int q = -1; q < extra; ++q) v.push_back ({ at, std::max (0.02, (double) st.len) * stepB, juce::jlimit (0, 127, q < 0 ? note : note + stack[q]), st.vel });
+            }
+            at += d;
+        }
+        s.editClips (*t, [&] (std::vector<Clip>& cs) { for (auto& x : cs) if (x.id == r.id) { x.notes = std::make_shared<const std::vector<Note>> (v); if (x.name.isEmpty()) x.name = "p" + juce::String (x.pattern + 1) + " notes"; } });
+        ctx.status (juce::String (v.size()) + " notes from pattern " + juce::String (c->pattern + 1));
     }
     void clipEditor (ClipRef ref)
     {
@@ -1433,10 +1656,21 @@ public:
         juce::CallOutBox::launchAsynchronously (std::unique_ptr<juce::Component> (ed), juce::Rectangle<int> (getScreenX() + x (found->startBar), getScreenY() + lanesArea().getY(), 10, 10), nullptr);
     }
     // ---- drops --------------------------------------------------------------------------------------
-    bool isInterestedInFileDrag (const juce::StringArray& files) override { for (auto& f : files) if (juce::File (f).hasFileExtension ("wav;aif;aiff;flac;mp3;ogg")) return true; return false; }
+    bool isInterestedInFileDrag (const juce::StringArray& files) override { for (auto& f : files) if (juce::File (f).hasFileExtension ("wav;aif;aiff;flac;mp3;ogg;mid;midi")) return true; return false; }
     void filesDropped (const juce::StringArray& files, int px, int py) override { for (auto& f : files) dropFile (juce::File (f), px, py); }
     bool isInterestedInDragSource (const SourceDetails& d) override { return d.description.toString().startsWith ("file:"); }
     void itemDropped (const SourceDetails& d) override { dropFile (juce::File (d.description.toString().substring (5)), d.localPosition.x, d.localPosition.y); }
+    std::unique_ptr<juce::FileChooser> chooser;
+    /** a midi file as a note clip (its first track with notes), as long as its notes in whole bars */
+    int midiClip (Track& t, const juce::File& f, double atBar)
+    {
+        double len = 0; auto notes = Session::notesFromMidi (f, len);
+        if (! notes) { ctx.status ("no notes in " + f.getFileName()); return 0; }
+        const auto& m = meter(); const long long b0 = m.barAt (atBar * 4.0); long long b1 = b0 + 1; while (m.barStart (b1) - atBar * 4.0 < len - 1.0e-9) ++b1;
+        const int id = ctx.s.addNoteClip (t, atBar, (m.barStart (b1) - atBar * 4.0) / 4.0, *notes, f.getFileNameWithoutExtension());
+        sel = { { t.uid, id, false } }; ctx.status (juce::String (notes->size()) + " notes from " + f.getFileName() + " on " + t.name); repaint();
+        return id;
+    }
     void dropFile (const juce::File& f, int px, int py)
     {
         auto& s = ctx.s;
@@ -1444,6 +1678,12 @@ public:
         auto rs = rows();
         const int row = rowAt (py);
         Track* t = (la.contains (px, py) && row >= 0 && row < (int) rs.size()) ? rs[(size_t) row] : nullptr;
+        if (f.hasFileExtension ("mid;midi"))
+        {
+            if (! t || t->isAudio()) t = ctx.selected() && ! ctx.selected()->isAudio() ? ctx.selected() : nullptr;
+            if (t) midiClip (*t, f, px >= left ? magnetBar (bar (px), false, {}) : s.currentBar()); else ctx.status ("a midi file goes on an instrument track");
+            return;
+        }
         if (t && ! t->isAudio() && t->instrument)
         {
             // onto an instrument track: a sampler device takes the file
@@ -2278,6 +2518,73 @@ public:
     int routesY = 0;
 };
 
+/** a group's vca: a fader that scales every member's level (their own faders keep their places), its mute and solo */
+class VcaStrip : public juce::Component
+{
+public:
+    VcaStrip (Ctx& c, int groupId) : ctx (c), id (groupId), theme (studioTheme()) {}
+    const Group* group() const { return ctx.s.groupOf (id); }
+    juce::Rectangle<float> faderArea() const { return getLocalBounds().toFloat().reduced (10.0f, 0.0f).withTrimmedTop (64.0f).withTrimmedBottom (54.0f); }
+    static float dbToY01 (float db) { return db <= -60.0f ? 0.0f : std::pow ((db + 60.0f) / 72.0f, 1.6f); }      // -60 … +12 db
+    static float y01ToDb (float v) { return v <= 0.0005f ? -96.0f : std::pow (juce::jlimit (0.0f, 1.0f, v), 1.0f / 1.6f) * 72.0f - 60.0f; }
+    void edit (const std::function<void (Group&)>& fn) { ctx.s.editGroups ([this, &fn] (std::vector<Group>& v) { for (auto& g : v) if (g.id == id) fn (g); }); repaint(); }
+    void paint (juce::Graphics& g) override
+    {
+        auto* gr = group(); if (! gr) return;
+        auto b = getLocalBounds();
+        g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (b.reduced (2, 0));
+        g.setColour (gr->colour ? juce::Colour (gr->colour) : theme.ink.withAlpha (0.5f)); g.fillRect (2, 0, b.getWidth() - 4, 4);
+        g.setColour (theme.ink); g.setFont (uiFont (11.0f, true)); g.drawText (gr->name, 8, 8, b.getWidth() - 16, 16, juce::Justification::centredLeft, true);
+        g.setFont (uiFont (9.0f)); g.setColour (theme.ink.withAlpha (0.7f));
+        juce::StringArray members; for (auto& t : ctx.s.tracks) if (t->group.load() == id) members.add (t->name);
+        g.drawFittedText ("vca: " + (members.isEmpty() ? juce::String ("no tracks") : members.joinIntoString (", ")), 8, 26, b.getWidth() - 16, 34, juce::Justification::topLeft, 3);
+        const auto fa = faderArea();
+        g.setColour (theme.ink.withAlpha (0.15f)); g.fillRect (fa.getCentreX() - 1.5f, fa.getY(), 3.0f, fa.getHeight());
+        const float zeroY = fa.getBottom() - dbToY01 (0.0f) * fa.getHeight();
+        g.setColour (theme.ink.withAlpha (0.4f)); g.fillRect (fa.getX() + 6.0f, zeroY, fa.getWidth() - 12.0f, 1.0f);
+        const float y = fa.getBottom() - dbToY01 (gr->vcaDb) * fa.getHeight();
+        g.setColour (theme.fill); g.fillRect (fa.getX() + 2.0f, y - 5.0f, fa.getWidth() - 4.0f, 10.0f);
+        g.setColour (theme.ink); g.setFont (uiFont (10.0f));
+        g.drawText (gr->vcaDb <= -95.0f ? juce::String ("-inf db") : (gr->vcaDb > 0 ? "+" : "") + juce::String (gr->vcaDb, 1) + " db", 4, b.getHeight() - 52, b.getWidth() - 8, 16, juce::Justification::centred);
+        auto btn = [&] (juce::Rectangle<int> r, const juce::String& t, bool on) { g.setColour (on ? theme.fill : theme.ink.withAlpha (0.1f)); g.fillRect (r); g.setColour (on ? ui::inkFor (theme.fill) : theme.ink); g.drawText (t, r, juce::Justification::centred); };
+        btn (muteBox(), "mute", gr->mute); btn (soloBox(), "solo", gr->solo);
+    }
+    juce::Rectangle<int> muteBox() const { return { 6, getHeight() - 30, getWidth() / 2 - 8, 20 }; }
+    juce::Rectangle<int> soloBox() const { return { getWidth() / 2 + 2, getHeight() - 30, getWidth() / 2 - 8, 20 }; }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        auto* gr = group(); if (! gr) return;
+        if (muteBox().contains (e.getPosition())) { edit ([] (Group& g) { g.mute = ! g.mute; }); return; }
+        if (soloBox().contains (e.getPosition())) { edit ([] (Group& g) { g.solo = ! g.solo; }); return; }
+        if (e.y < 26 && e.getNumberOfClicks() > 1)
+        {
+            auto* w = new juce::AlertWindow ("rename the group", "a name", juce::MessageBoxIconType::NoIcon);
+            w->addTextEditor ("t", gr->name); w->addButton ("ok", 1); w->addButton ("cancel", 0);
+            juce::Component::SafePointer<VcaStrip> sp (this);
+            w->enterModalState (true, juce::ModalCallbackFunction::create ([sp, w] (int r) { if (sp && r == 1) { const auto n = w->getTextEditorContents ("t").trim(); sp->edit ([n] (Group& g) { g.name = n; }); } }), true);
+            return;
+        }
+        if (faderArea().expanded (4.0f).contains (e.position))
+        {
+            if (e.getNumberOfClicks() > 1) { edit ([] (Group& g) { g.vcaDb = 0.0f; }); return; }
+            startDb = gr->vcaDb; dragging = true;
+        }
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (! dragging) return;
+        const auto fa = faderArea();
+        const float fine = e.mods.isShiftDown() ? 0.15f : 1.0f;
+        const float v = dbToY01 (startDb) - (float) e.getDistanceFromDragStartY() / fa.getHeight() * fine;
+        const float db = juce::jlimit (-96.0f, 12.0f, y01ToDb (v));
+        edit ([db] (Group& g) { g.vcaDb = db; });
+    }
+    void mouseUp (const juce::MouseEvent&) override { dragging = false; }
+    Ctx& ctx; const int id;
+private:
+    ui::Theme theme; float startDb = 0; bool dragging = false;
+};
+
 class MixPage : public Page
 {
 public:
@@ -2307,8 +2614,12 @@ public:
         for (auto& t : ctx.s.tracks) add (*t);
         for (auto& t : ctx.s.returns) add (*t);
         add (*ctx.s.master);
+        vcas.clear();
+        for (auto& g : *ctx.s.groups) row.addAndMakeVisible (vcas.add (new VcaStrip (ctx, g.id)));
+        shownGroups = ctx.s.groups.get(); shownGroupCount = ctx.s.groups->size();
         resized();
     }
+    VcaStrip* vcaFor (int groupId) { for (auto* v : vcas) if (v->id == groupId) return v; return nullptr; }
     std::function<void()> onAutoMaster;
     /** the strip of a track (scripts and tests) */
     Strip* stripFor (const Track& t) { for (auto* s : strips) if (&s->track == &t) return s; return nullptr; }
@@ -2337,8 +2648,9 @@ public:
         mode.setBounds (8, 6, 90, 20); assign.setBounds (104, 6, 150, 20); bypass.setBounds (260, 6, 160, 20);
         viewport.setBounds (0, 32, getWidth(), getHeight() - 58);
         const int n = std::max (1, strips.size());
-        const int sw = juce::jlimit (118, 150, (getWidth() - 2) / n); int x = 0;
+        const int sw = juce::jlimit (vcas.isEmpty() ? 118 : 100, 150, (getWidth() - 2 - vcas.size() * 102) / n); int x = 0;
         for (auto* s : strips) { s->setBounds (x, 0, sw, viewport.getHeight() - 12); x += sw; }
+        for (auto* v : vcas) { v->setBounds (x + 6, 0, 96, viewport.getHeight() - 12); x += 102; }
         row.setSize (std::max (x, 10), viewport.getHeight() - 12);
     }
     void paint (juce::Graphics& g) override
@@ -2374,8 +2686,17 @@ public:
             g.fillEllipse ((float) dragAt.x - 4.0f, (float) dragAt.y - 4.0f, 8.0f, 8.0f);
         }
     }
-    void tick() override { for (auto* s : strips) s->tick(); repaint (0, 0, getWidth(), 30); }
+    void tick() override
+    {
+        // a group made, removed or joined elsewhere (the arrangement's track menu): the vca strips again
+        if (ctx.s.groups->size() != shownGroupCount) rebuildKeepingScrollFull();
+        for (auto* s : strips) s->tick();
+        for (auto* v : vcas) v->repaint();
+        repaint (0, 0, getWidth(), 30);
+    }
+    void rebuildKeepingScrollFull() { const auto p = viewport.getViewPosition(); rebuild(); viewport.setViewPosition (p); }
 private:
+    juce::OwnedArray<VcaStrip> vcas; const void* shownGroups = nullptr; size_t shownGroupCount = 0;
     ui::TextLink mode, assign, bypass;
     juce::Component row; juce::Viewport viewport; juce::OwnedArray<Strip> strips;
     std::unique_ptr<RoutePopup> popup; Strip* dragFrom = nullptr; juce::Point<int> dragAt; bool closing = false;

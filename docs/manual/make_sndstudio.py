@@ -48,10 +48,10 @@ add(f'''<section class="cover">{chevrons('#8ec3e6')}
     ('#ee8e6e', 'mix', 'strips, outputs, routes'), ('#f6c590', 'mod', 'modulators, macros, midi'), ('#cfe6f0', 'browse', 'devices, plug-ins, files')])) + '</div></section>')
 
 add('''<section class="page"><h2>contents</h2><ol class="toc">
-<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li>
+<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li><li><a href="#noteclips">note clips: free notes</a></li><li><a href="#clipgain">crossfades and gain lines</a></li><li><a href="#groups">groups: folders and vcas</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
 <li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out</a></li>
-<li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll</a></li><li><a href="#artists">to work like …</a></li></ol>
+<li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll (steps)</a></li><li><a href="#artists">to work like …</a></li></ol>
 <h2 id="intro">what it is</h2>
 <p class="lead">sndstudio is a studio for microhouse, rominimal, dub techno and the music around them, built out of the faltung suite:
 its drum engines, bass synth, effects and mastering bus are the devices, and around them a step sequencer that goes further than kt1,
@@ -164,6 +164,51 @@ Hosted plug-ins are told the signature and where the bar started. The steps of a
 <p>The window can be any size. <b>cmd+=</b> and <b>cmd+-</b> (the view menu) make everything bigger or smaller, from 50 % to 200 % (cmd+0: actual size); the size is
 remembered. Smaller leaves more room for the timeline and the mixer; bigger is easier to read. When the window is too small for the size chosen, sndstudio draws
 everything as large as still fits, and says so; make the window bigger to get the rest. In a narrow window the header puts the master, punch and capture on its second row.</p></section>''')
+
+add('''<section class="page"><h2 id="noteclips">note clips: free notes</h2>
+''' + shot('sndstudio-notes') + '''
+<p>Patterns are steps. A <b>note clip</b> is the other way: notes placed anywhere, any length, as they are, for an instrument track. It plays whatever is on the
+track: the suite's instruments, the studio devices, or a hosted vst3 / au instrument (it gets the notes as midi). A note clip plays exactly what it shows: no
+chances, conditions or swing (those belong to the steps).</p>
+<table class="params"><tr><th>to</th><th>do</th></tr>
+<tr><td class="n">make one</td><td>right-click an empty place on an instrument track's lane: <i>new note clip here</i> (four bars of the meter), <i>a midi file here...</i>, or drop a <code>.mid</code> file on the track</td></tr>
+<tr><td class="n">from a pattern</td><td>right-click a pattern clip: <i>a note clip from its pattern</i>: what its steps play over the clip, as notes, to change one by one</td></tr>
+<tr><td class="n">edit</td><td>double-click it (or its menu: <i>edit the notes</i>): the note editor opens over the lanes</td></tr>
+<tr><td class="n">a note</td><td>click an empty place: a note, the grid's length, on the grid (the arrangement's grid and snap)</td></tr>
+<tr><td class="n">move · length</td><td>drag a note (in time on the grid, and in pitch); drag its right end for its length. The selected notes move and stretch together</td></tr>
+<tr><td class="n">velocity</td><td>alt-drag up / down; the fuller the note, the harder</td></tr>
+<tr><td class="n">select</td><td>cmd-click a note, cmd-drag a box, cmd+a all</td></tr>
+<tr><td class="n">remove</td><td>double-click or right-click a note; delete removes the selected</td></tr>
+<tr><td class="n">transpose · quantise</td><td>&#8593; &#8595; a semitone, shift: an octave; <b>q</b> the selected notes (or all) onto the grid</td></tr>
+<tr><td class="n">close</td><td>esc, or <i>close</i></td></tr></table>
+<p>In the arrangement a note clip shows its notes small, with its name and how many. Split, trim, duplicate, copy and move it like any clip: a part of it plays its
+own part of the notes (a note is cut at the clip's end). Note clips are saved with the project and written into the midi export.</p></section>''')
+
+add('''<section class="page"><h2 id="clipgain">crossfades and gain lines</h2>
+''' + shot('sndstudio-xfade') + '''
+<p><b>Crossfades</b> are made by themselves: where an audio clip starts inside another on the same track and ends after it, the earlier one fades out and the
+later one in over the whole overlap, equal power (each at -3 db in the middle, so the loudness holds across different material). Drag the clips to make the overlap
+longer or shorter; the curves show over it. A clip lying wholly inside another (layered) and muted clips (takes not chosen) don't crossfade. The clips' own fades
+(the top corners) still work on top.</p>
+''' + shot('sndstudio-gain') + '''
+<p>A <b>gain line</b> is a clip's level drawn over its length, the clip's own automation (it moves with the clip, is copied and split with it). Right-click an
+audio clip: <i>draw its gain line</i>. Then click inside the clip for a point (on the grid; +12 db at the top, -36 db at the bottom, 0 db a quarter down), drag a
+point to move it, double-click it to take it away; the status line shows its db. Click outside the clip when done. Between points the level goes straight in db;
+before the first and after the last it holds. <i>clear its gain line</i> takes it away. It comes after the clip's gain and fades, before the track's chain.</p></section>''')
+
+add('''<section class="page"><h2 id="groups">groups: folders and vcas</h2>
+''' + shot('sndstudio-groups') + '''
+<p>A <b>group</b> is a set of tracks: a folder in the arrangement and a vca fader in the mixer. Right-click a track's name in the arrangement:</p>
+<table class="params"><tr><th>item</th><th>does</th></tr>
+<tr><td class="n">new group with this track</td><td>a group in the track's colour, the track in it</td></tr>
+<tr><td class="n">into the group</td><td>the track joins a group (a track is in one group at most)</td></tr>
+<tr><td class="n">out of …</td><td>the track leaves its group</td></tr>
+<tr><td class="n">fold · unfold</td><td>or click the triangle by the name: a folded group is one row, its first track's, named after the group (the others' clips play as before)</td></tr>
+<tr><td class="n">rename · ungroup</td><td>a name; ungroup takes every track out and removes the group</td></tr></table>
+''' + shot('sndstudio-vca') + '''
+<p>Every group has a <b>vca strip</b> at the right of the mixer: its fader (-inf to +12 db; shift: fine, double-click: 0 db) scales every member's level without
+moving their own faders, so a whole drum group comes down 3 db and its balance stays. Its <b>mute</b> mutes the members; its <b>solo</b> solos them all (with any
+tracks soloed on their own). Double-click its name to rename it. Groups, folds and vca settings are saved with the project.</p></section>''')
 
 add('''<section class="page"><h2 id="seq">seq</h2>
 ''' + shot('sndstudio-2') + '''

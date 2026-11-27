@@ -348,4 +348,24 @@ double Session::beatAt (double seconds) const
     }
     return b;
 }
+int Session::addNoteClip (Track& t, double startBar, double bars, std::vector<Note> notes, const juce::String& name)
+{
+    std::sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.beat < b.beat; });
+    const int id = nextClipId++;
+    Clip c; c.pattern = t.pattern.load(); c.startBar = std::max (0.0, startBar); c.bars = std::max (kMinPatternBars, bars); c.id = id; c.name = name;
+    c.notes = std::make_shared<const std::vector<Note>> (std::move (notes));
+    editClips (t, [&] (std::vector<Clip>& v) { v.push_back (c); });
+    return id;
+}
+void Session::setClipGainLine (ClipRef r, std::vector<std::pair<double, float>> line)
+{
+    auto* t = clipTrack (r); if (! t || ! r.audio) return;
+    std::sort (line.begin(), line.end());
+    editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == r.id) c.gainLine = line; });
+}
+void Session::removeGroup (int id)
+{
+    for (auto& t : tracks) if (t->group.load() == id) t->group.store (0);
+    editGroups ([id] (std::vector<Group>& v) { v.erase (std::remove_if (v.begin(), v.end(), [id] (const Group& g) { return g.id == id; }), v.end()); });
+}
 } // namespace fal::daw

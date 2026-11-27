@@ -87,6 +87,8 @@ struct Track
     double anchor = 0, seqAnchor = 0; long long loopOffset = 0; int activePattern = -1; bool silent = true;
     long long lastStepN = -1; bool prevFired = false; bool snapMixer = false;
     double clipFrom = -1, clipTo = -1;   // arrangement: the clip playing (beats); the steps fire only inside it
+    NotesPtr noteSrc; double noteAnchor = 0;   // a note clip playing (its notes, where its beat 0 is)
+    std::atomic<int> group { 0 };        // the group (folder + vca) it belongs to; 0 none
     juce::MidiBuffer seqMidi;                         // this span's notes (sequenced before any track is rendered)
     int firstHit = -1; float chokeGain = 1.0f, chokeTarget = 1.0f;
     std::array<juce::uint8, kMaxSteps> flip {}; std::array<float, kMaxSteps> drift {}; long long evoPass = -1; Rng evoRng;   // the evolving copy
@@ -167,6 +169,19 @@ public:
     std::shared_ptr<const std::vector<SongEntry>> song;
     std::shared_ptr<const std::vector<Marker>> markers;
     std::shared_ptr<const timeline::MeterMap> meter;   // the time signatures (4/4 until changed)
+    std::shared_ptr<const std::vector<Group>> groups;   // folders / vcas
+    int addGroup (const juce::String& name);
+    void editGroups (const std::function<void (std::vector<Group>&)>&);
+    const Group* groupOf (int id) const { for (auto& g : *groups) if (g.id == id) return &g; return nullptr; }
+    void setTrackGroup (Track&, int groupId);
+    /** a note clip from a midi file (its first track with notes), or empty */
+    static NotesPtr notesFromMidi (const juce::File&, double& lengthBeats);
+    /** a step of the track's patterns, in beats (its rate at this tempo) */
+    double stepBeatsOf (const Track&, double bpm) const;
+    /** a note clip on an instrument track (its id) */
+    int addNoteClip (Track&, double startBar, double bars, std::vector<Note> notes, const juce::String& name = {});
+    void setClipGainLine (ClipRef, std::vector<std::pair<double, float>> line);
+    void removeGroup (int id);
     double countInFrom = 0;                            // the count-in clicks as the bars it leads into
     std::shared_ptr<const std::vector<LanePtr>> lanes;
     std::shared_ptr<const std::vector<MidiMap>> midiMaps;
@@ -480,7 +495,6 @@ private:
     void prepareTrack (Track&);
     void sizeBuffers (Track&);
     bool wouldCycle (const Track& src, int dstUid) const;
-    double stepBeatsOf (const Track&, double bpm) const;
     juce::String uniqueTrackName (const juce::String& base) const;
     static juce::uint32 trackColour (int i);
     void finishRecordings();

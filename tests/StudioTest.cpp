@@ -2203,6 +2203,152 @@ int main (int argc, char** argv)
         check (s.lane (lt)->pts.size() == 4 && arr->selPts.empty(), "delete: the selected points are gone, nothing else");
     }
 
+    std::cout << "== note clips: free notes for the instrument (drawn, from a midi file, from a pattern)\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f); s.mode.store ((int) PlayMode::Arrange);
+        auto& t = *s.tracks[0]; shortHit (t);
+        // notes off the step grid: beat 0, 1.37, 2.81 (no sixteenth lands there)
+        const int id = s.addNoteClip (t, 0.0, 1.0, { { 0.0, 0.1, 36, 1.0f }, { 1.37, 0.1, 36, 1.0f }, { 2.81, 0.1, 36, 1.0f } }, "free");
+        check (id > 0, "a note clip");
+        auto r = render (p, 1.0); auto on = onsets (r.out, 0);
+        juce::String got; for (int o : on) got << o << " ";
+        std::cout << "  hits at " << got << "(expected 0 " << (int) (1.37 * spb (120)) << " " << (int) (2.81 * spb (120)) << ")\n";
+        check (on.size() == 3 && std::abs (on[1] - (int) (1.37 * spb (120))) <= 2 && std::abs (on[2] - (int) (2.81 * spb (120))) <= 2, "the instrument plays the notes where they are, off the grid");
+        // a split note clip: the second half plays from its own place in the notes
+        s.splitClips (s.allClips(), 0.5);
+        auto r2 = render (p, 1.0); auto on2 = onsets (r2.out, 0);
+        check (on2.size() == 3 && std::abs (on2[2] - (int) (2.81 * spb (120))) <= 2, "split: both halves play their notes");
+        // midi: exported and read back; a midi file as a clip
+        const auto mf = tmp.getChildFile ("notes.mid"); juce::String err;
+        check (s.exportMidi (mf, 0.0, 1.0, err), "midi export: " + err);
+        double len = 0; auto back = Session::notesFromMidi (mf, len);
+        bool same = back != nullptr;
+        if (back) { int n36 = 0; for (auto& nt : *back) if (nt.pitch == 36 && (std::abs (nt.beat - 1.37) < 0.01 || std::abs (nt.beat - 2.81) < 0.01 || nt.beat < 0.01)) ++n36; same = n36 >= 3; }
+        check (same, "the notes come back from the midi file");
+        // pattern clip -> note clip
+        s.editClips (t, [] (std::vector<Clip>& v) { v.clear(); });
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = pt.s[6].on = pt.s[11].on = true; for (auto& st : pt.s) st.vel = 1; });
+        s.editClips (t, [] (std::vector<Clip>& v) { v.push_back ({ 0, 0.0, 1.0 }); });
+        // save / reopen keeps the notes
+        s.addNoteClip (t, 2.0, 1.0, { { 0.5, 0.25, 40, 0.6f } });
+        s.projectFile = tmp.getChildFile ("notes.fstudio");
+        check (p.saveProject (s.projectFile, err), "save: " + err);
+        StudioProcessor p2; check (p2.loadProject (s.projectFile, err), "reopen: " + err);
+        bool kept = false; for (auto& c : *p2.session.tracks[0]->clips) if (c.notes && c.notes->size() == 1 && (*c.notes)[0].pitch == 40 && std::abs ((*c.notes)[0].vel - 0.6f) < 1.0e-4f) kept = true;
+        check (kept, "note clips are saved");
+        // the editor: a note clip drawn with the mouse, moved, removed
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        ed->setSize (1440, 900); se->selectTrack (&t); se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        const int nid = s.addNoteClip (t, 4.0, 1.0, {});
+        arr->editNotes ({ t.uid, nid, false });
+        auto* ne = arr->noteEditor();
+        check (ne != nullptr, "the note editor opens");
+        if (ne)
+        {
+            s.snap.store (true); s.gridIndex.store (3);
+            const auto now = juce::Time::getCurrentTime(); auto src = juce::Desktop::getInstance().getMainMouseSource();
+            auto ev = [&] (juce::Point<float> q, juce::ModifierKeys m, juce::Point<float> down, bool dragged, int clicks = 1) { return juce::MouseEvent (src, q, m, 0, 0, 0, 0, 0, ne, ne, now, down, now, clicks, dragged); };
+            const auto a = juce::Point<float> (ne->xOf (1.02), ne->yOf (60) + 5.0f);
+            ne->mouseDown (ev (a, juce::ModifierKeys::leftButtonModifier, a, false)); ne->mouseUp (ev (a, {}, a, false));
+            auto v = ne->notes();
+            check (v.size() == 1 && v[0].pitch == 60 && std::abs (v[0].beat - 1.0) < 1.0e-9, "click: a note on the grid (" + (v.empty() ? juce::String ("none") : juce::String (v[0].beat) + " " + juce::String (v[0].pitch)) + ")");
+            // drag it two beats later and up a fifth
+            const auto d0 = juce::Point<float> (ne->xOf (1.05), ne->yOf (60) + 5.0f), d1 = juce::Point<float> (ne->xOf (3.05), ne->yOf (67) + 5.0f);
+            ne->mouseDown (ev (d0, juce::ModifierKeys::leftButtonModifier, d0, false));
+            for (int k = 1; k <= 6; ++k) ne->mouseDrag (ev (d0 + (d1 - d0) * (k / 6.0f), juce::ModifierKeys::leftButtonModifier, d0, true));
+            ne->mouseUp (ev (d1, {}, d0, true));
+            v = ne->notes();
+            check (v.size() == 1 && v[0].pitch == 67 && std::abs (v[0].beat - 3.0) < 1.0e-9, "drag: moved on the grid and in pitch (" + (v.empty() ? juce::String ("none") : juce::String (v[0].beat) + " " + juce::String (v[0].pitch)) + ")");
+            ne->keyPressed (juce::KeyPress (juce::KeyPress::upKey, juce::ModifierKeys::shiftModifier, 0));
+            check (ne->notes().size() == 1 && ne->notes()[0].pitch == 79, "shift+up: an octave");
+            ne->keyPressed (juce::KeyPress (juce::KeyPress::deleteKey));
+            check (ne->notes().empty(), "delete: gone");
+        }
+        // a pattern clip turned into a note clip plays the same hits
+        s.editClips (t, [] (std::vector<Clip>& v) { v.clear(); });
+        s.editClips (t, [] (std::vector<Clip>& v) { v.push_back ({ 0, 0.0, 1.0 }); });
+        auto rp = render (p, 1.0); auto onp = onsets (rp.out, 0);
+        arr->notesFromPattern ({ t.uid, (*t.clips)[0].id, false });
+        check ((*t.clips)[0].notes && (*t.clips)[0].notes->size() == 3, "the pattern's three steps as notes");
+        auto rn = render (p, 1.0); auto onn = onsets (rn.out, 0);
+        bool sameHits = onp.size() == onn.size() && onp.size() == 3; for (size_t k = 0; sameHits && k < onp.size(); ++k) sameHits = std::abs (onp[k] - onn[k]) <= 2;
+        check (sameHits, "a note clip from a pattern plays the same hits");
+    }
+    std::cout << "== audio clips: crossfades where they overlap, gain lines\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange);
+        const int bar = (int) (4.0 * spb (120));
+        juce::AudioBuffer<float> a (2, bar * 2), b (2, bar * 2);
+        for (int i = 0; i < bar * 2; ++i) for (int c = 0; c < 2; ++c) { a.setSample (c, i, 0.5f); b.setSample (c, i, 0.25f); }
+        const auto fa = tmp.getChildFile ("xa.wav"), fb = tmp.getChildFile ("xb.wav"); writeWav (fa, a); writeWav (fb, b);
+        auto* at = s.addTrack ("x", -1, TrackKind::Audio);
+        juce::String err;
+        auto* ca = s.addAudioClip (*at, fa, 0.0, &err); const int ida = ca ? ca->id : 0;
+        auto* cb = s.addAudioClip (*at, fb, 0.75, &err); const int idb = cb ? cb->id : 0;
+        s.setClipLength ({ at->uid, ida, true }, 1.0); s.setClipLength ({ at->uid, idb, true }, 1.0);
+        double xo = 0, xi = 0; for (auto& c : *at->aclips) { if (c.id == ida) xo = c.xOut; if (c.id == idb) xi = c.xIn; }
+        check (std::abs (xo - 0.25) < 1.0e-9 && std::abs (xi - 0.25) < 1.0e-9, "a quarter bar of overlap: a quarter bar of crossfade on both");
+        auto r = render (p, 2.0);
+        // master level aside, measure relative to the first clip alone
+        const float g0 = r.out.getSample (0, bar / 4), gEnd = r.out.getSample (0, (int) (1.5 * bar));
+        const float s0 = r.out.getSample (0, (int) (0.75 * bar) + 2), s1 = r.out.getSample (0, bar - 2), mid = r.out.getSample (0, (int) (0.875 * bar));
+        std::cout << "  a alone " << g0 << ", into the fade " << s0 << ", middle " << mid << ", end of the fade " << s1 << ", b alone " << gEnd << "\n";
+        const float ratio = g0 > 0 ? 0.25f / 0.5f : 0;
+        check (g0 > 0.01f && std::abs (s0 / g0 - 1.0f) < 0.01f && std::abs (s1 / g0 - ratio) < 0.01f && std::abs (gEnd / g0 - ratio) < 0.01f, "the crossfade starts at a's level and ends at b's (no jump)");
+        check (std::abs (mid / g0 - (0.7071f * (0.5f + 0.25f) / 0.5f)) < 0.02f, "equal power in the middle (each at -3 db)");
+        // a gain line on a: 0 db at its start, -6.02 db at its end
+        s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { v.pop_back(); });
+        s.setClipGainLine ({ at->uid, ida, true }, { { 0.0, 0.0f }, { 4.0, -6.0206f } });
+        auto rg = render (p, 1.0);
+        const float q0 = rg.out.getSample (0, 10), q1 = rg.out.getSample (0, bar / 2), q2 = rg.out.getSample (0, bar - 10);
+        std::cout << "  gain line: " << q0 << " " << q1 << " " << q2 << "\n";
+        check (std::abs (q1 / q0 - 0.7071f) < 0.01f && std::abs (q2 / q0 - 0.5f) < 0.01f, "the gain line: -3 db half way, -6 db at the end");
+        s.projectFile = tmp.getChildFile ("gain.fstudio");
+        check (p.saveProject (s.projectFile, err), "save: " + err);
+        StudioProcessor p2; check (p2.loadProject (s.projectFile, err), "reopen: " + err);
+        bool kept = false; for (auto& tr : p2.session.tracks) for (auto& c : *tr->aclips) if (c.gainLine.size() == 2 && std::abs (c.gainLine[1].second + 6.0206f) < 1.0e-3f) kept = true;
+        check (kept, "the gain line is saved");
+    }
+    std::cout << "== groups: folders and vca faders\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        auto& t = *s.tracks[0]; shortHit (t);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[0].vel = 1; });
+        s.launch (t, 0);
+        const float ref = render (p, 0.25).out.getMagnitude (0, 0, 2000);
+        auto* t2 = s.tracks.size() > 1 ? s.tracks[1].get() : s.addTrack ("second", -1, TrackKind::Audio);
+        const int g = s.addGroup ("drums"); s.setTrackGroup (t, g); s.setTrackGroup (*t2, g);
+        s.editGroups ([g] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) x.vcaDb = -6.0206f; });
+        const float vca = render (p, 0.25).out.getMagnitude (0, 0, 2000);
+        std::cout << "  alone " << ref << ", vca -6 db " << vca << "\n";
+        check (std::abs (vca / ref - 0.5f) < 0.01f, "the vca fader scales its tracks");
+        s.editGroups ([g] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) { x.vcaDb = 0; x.mute = true; } });
+        check (render (p, 0.25).out.getMagnitude (0, 0, 2000) < 1.0e-5f, "the group's mute");
+        s.editGroups ([g] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) { x.mute = false; x.solo = true; } });
+        check (std::abs (render (p, 0.25).out.getMagnitude (0, 0, 2000) / ref - 1.0f) < 0.01f, "the group's solo keeps its tracks");
+        s.setTrackGroup (t, 0);
+        check (render (p, 0.25).out.getMagnitude (0, 0, 2000) < 1.0e-5f, "out of the soloed group: silent");
+        s.setTrackGroup (t, g);
+        s.editGroups ([g] (std::vector<Group>& v) { for (auto& x : v) if (x.id == g) { x.solo = false; x.folded = true; } });
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        ed->setSize (1440, 900); se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        check ((int) arr->rows().size() == (int) s.tracks.size() - 1, "folded: the group is one row");
+        MixPage* mix = nullptr; for (int pg = 0; pg < 8 && ! mix; ++pg) mix = dynamic_cast<MixPage*> (se->pageComponent (pg)); if (mix) mix->rebuild();
+        check (mix && mix->vcaFor (g) != nullptr, "the mixer has the group's vca strip");
+        juce::String err; s.projectFile = tmp.getChildFile ("groups.fstudio");
+        check (p.saveProject (s.projectFile, err), "save: " + err);
+        StudioProcessor p2; check (p2.loadProject (s.projectFile, err), "reopen: " + err);
+        check (p2.session.groups->size() == 1 && (*p2.session.groups)[0].folded && p2.session.tracks[0]->group.load() == (*p2.session.groups)[0].id && p2.session.tracks.size() >= 2 && p2.session.tracks[1]->group.load() == (*p2.session.groups)[0].id, "groups are saved");
+    }
+
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
@@ -2362,6 +2508,35 @@ int main (int argc, char** argv)
                 arr->scrollY = 0; s.gridIndex.store (4); arr->showBars (14.0, 24.0); s.locate (17.2);
                 run (20); snap (*ed, "sndstudio-meter");
                 s.setMeter ({}); s.gridIndex.store (0);
+                // crossfades and a gain line on the vocal; a note clip with its editor open
+                {
+                    s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { if (v.size() > 2) { v[1].bars = 1.3; v[1].fadeOut = 0; v[2].fadeIn = 0; } });
+                    if (at->aclips->size() > 0) { const ClipRef r0 { at->uid, (*at->aclips)[0].id, true }; const double L = (*at->aclips)[0].bars * 4.0; s.setClipGainLine (r0, { { 0.0, 0.0f }, { L * 0.25, -18.0f }, { L * 0.6, 4.0f }, { L * 0.9, -6.0f } }); arr->gainClip = r0; }
+                    arr->setTrackHeight (120); s.gridIndex.store (5); arr->showBars (7.97, 8.0 + (*at->aclips)[0].bars * 1.15); s.locate (8.0 + (*at->aclips)[0].bars * 0.4);
+                    arr->scrollY = std::max (0, s.indexOf (at) * arr->laneH - 2 * arr->laneH);
+                    run (20); snap (*ed, "sndstudio-gain");
+                    arr->gainClip = {}; arr->showBars (16.6, 18.4); s.locate (17.6); run (20); snap (*ed, "sndstudio-xfade");
+                    arr->gainClip = {}; arr->setTrackHeight (40);
+                    auto* kt = s.tracks.size() > 2 ? s.tracks[2].get() : s.tracks[0].get();
+                    std::vector<Note> nts; const int sc[] = { 0, 3, 7, 10, 12, 7, 3, 5 };
+                    for (int k = 0; k < 24; ++k) nts.push_back ({ k * 0.625, 0.4 + 0.1 * (k % 3), 48 + sc[k % 8] + (k % 5 == 0 ? 12 : 0), 0.4f + 0.6f * (float) ((k * 7) % 10) / 10.0f });
+                    const int nid = s.addNoteClip (*kt, 24.0, 4.0, nts, "chord drift");
+                    arr->scrollY = 0; arr->showBars (20.0, 32.0); run (10);
+                    arr->editNotes ({ kt->uid, nid, false });
+                    if (auto* ne = arr->noteEditor()) { ne->topKey = 76; ne->sel = { 3, 4, 5 }; }
+                    run (12); snap (*ed, "sndstudio-notes");
+                    if (auto* ne = arr->noteEditor()) ne->onClose();
+                    run (4);
+                    // a folded group and its vca strip
+                    const int gd = s.addGroup ("drums"); s.editGroups ([gd] (std::vector<Group>& v) { for (auto& x : v) if (x.id == gd) { x.colour = 0xffee8e6e; x.vcaDb = -3.5f; } });
+                    const int gm = s.addGroup ("music"); s.editGroups ([gm] (std::vector<Group>& v) { for (auto& x : v) if (x.id == gm) { x.colour = 0xff8ec3e6; x.folded = true; } });
+                    for (size_t k = 0; k < s.tracks.size(); ++k) s.setTrackGroup (*s.tracks[k], k < 4 ? gd : k < 7 ? gm : 0);
+                    arr->showBars (0.0, 40.0); run (10); snap (*ed, "sndstudio-groups");
+                    se->showPage (3); run (12); snap (*ed, "sndstudio-vca");
+                    se->showPage (1);
+                    for (auto& tr : s.tracks) s.setTrackGroup (*tr, 0); s.removeGroup (gd); s.removeGroup (gm);
+                    s.gridIndex.store (0);
+                }
                 // the whole window bigger and smaller
                 const auto w0 = ed->getWidth(), h0 = ed->getHeight();
                 ed->setSize (1800, 1125); se->setUiScale (1.25f); arr->zoomToFit(); run (12); snap (*ed, "sndstudio-ui-125");
