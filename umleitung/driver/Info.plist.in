@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>umleitung</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.faltung.umleitung.driver</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>umleitung</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@UM_DRIVER_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@UM_DRIVER_VERSION@</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>umleitung virtual devices</string>
+	<key>CFPlugInFactories</key>
+	<dict>
+		<key>48F7CAAC-023D-4221-826E-8A827732DD16</key>
+		<string>umleitung_Create</string>
+	</dict>
+	<key>CFPlugInTypes</key>
+	<dict>
+		<key>443ABAB8-E7B3-491A-B985-BEB9187030DB</key>
+		<array>
+			<string>48F7CAAC-023D-4221-826E-8A827732DD16</string>
+		</array>
+	</dict>
+</dict>
+</plist>
