@@ -60,7 +60,7 @@ public:
         capture.setTooltip ("capture: a new audio track records everything you play (the master) from now until you click again; cut the take up afterwards");
         // the tempo, the swing and the master level take modulators, lanes, controllers and keys like any other control
         for (auto* sl : { &bpm, &swing, &master }) sl->onMenu = [this] (DevSlider& x) { ParamMenu::show (s, *s.master, *s.global, x.index, &x, [this] (int) { select (s.master.get()); setPage (1); }); };
-        file.onClick = [this] { auto m = fileMenu(); m.addSeparator(); for (juce::PopupMenu::MenuItemIterator it (editMenu()); it.next();) m.addItem (it.getItem()); m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&file), [this] (int r) { if (r > 0) fileAction (r); }); };
+        file.onClick = [this] { auto m = fileMenu(); m.addSeparator(); m.addSubMenu ("edit", editMenu()); m.addSubMenu ("view", viewMenu()); m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&file), [this] (int r) { if (r > 0) fileAction (r); }); };
         punch.onClick = [this] { s.punch.store (! s.punch.load()); };
         punch.setTooltip ("punch: with the loop on, recording only happens inside the loop");
         autoWrite.setTooltip ("write: while playing, moving a control records automation");
@@ -133,8 +133,58 @@ public:
         juce::PopupMenu m;
         m.addItem (40, "undo  (" + cmd + "+z)" + (proc.history.canUndo() ? "   " + juce::String (proc.history.undoSteps()) + " steps" : juce::String()), proc.history.canUndo());
         m.addItem (41, "redo  (" + cmd + "+shift+z)", proc.history.canRedo());
+        m.addSeparator();
+        auto* ap = arrange();
+        const bool any = ap && ! ap->sel.empty();
+        m.addItem (51, "cut clips  (" + cmd + "+x)", any); m.addItem (50, "copy clips  (" + cmd + "+c)", any);
+        m.addItem (52, "paste at the playhead  (" + cmd + "+v)", ap && ! ap->board.empty());
+        m.addItem (53, "duplicate  (" + cmd + "+d)", any); m.addItem (56, "delete clips  (delete)", any);
+        m.addItem (55, "split at the playhead  (" + cmd + "+t)"); m.addItem (57, "mute / unmute clips  (" + cmd + "+shift+m)", any);
+        m.addItem (54, "select all clips  (" + cmd + "+a)");
+        m.addSeparator();
+        m.addItem (60, "loop the selected clips  (" + cmd + "+l)", any);
+        m.addItem (58, "insert time at the playhead...  (" + cmd + "+shift+i)");
+        m.addItem (59, "delete the looped time  (" + cmd + "+shift+backspace)", s.loopOn.load());
+        m.addItem (61, "go to position...  (" + cmd + "+g)");
         return m;
     }
+    juce::PopupMenu viewMenu()
+    {
+        const juce::String cmd = juce::SystemStats::getOperatingSystemType() & juce::SystemStats::MacOSX ? "cmd" : "ctrl";
+        juce::PopupMenu m;
+        m.addItem (70, "bigger  (" + cmd + "+=)"); m.addItem (71, "smaller  (" + cmd + "+-)"); m.addItem (72, "actual size  (" + cmd + "+0)");
+        m.addSeparator();
+        auto* ap = arrange();
+        m.addItem (73, "zoom in on the timeline  (=)"); m.addItem (74, "zoom out  (-)");
+        m.addItem (76, "zoom to the selection / the loop  (z)"); m.addItem (75, "the whole project  (shift+z)");
+        m.addItem (77, "taller rows  (alt + scroll)"); m.addItem (78, "shorter rows");
+        m.addSeparator();
+        m.addItem (79, "follow the playhead", true, s.follow.load());
+        m.addItem (80, "snap  (n)", true, s.snap.load());
+        juce::PopupMenu gm; const auto& g = timeline::grids();
+        for (int i = 0; i < (int) g.size(); ++i) gm.addItem (300 + i, i == 0 && ap ? timeline::gridName (0, ap->pxPerBeat()) : juce::String (g[(size_t) i].name), true, s.gridIndex.load() == i);
+        m.addSubMenu ("grid", gm);
+        return m;
+    }
+    ArrangePage* arrange() { return dynamic_cast<ArrangePage*> (pages[1]); }
+    /** go to a position typed as bars.beats.sixteenths.ticks or as time */
+    void goToDialog()
+    {
+        auto* w = new juce::AlertWindow ("go to", "bars.beats.sixteenths.ticks (17.2.3.120), or time (1:05.250, 90s)", juce::MessageBoxIconType::NoIcon);
+        w->addTextEditor ("v", timeline::formatPosition (s.currentBar() * 4.0));
+        w->addButton ("go", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int r)
+        {
+            if (r != 1) return;
+            const auto txt = w->getTextEditorContents ("v");
+            const double b = timeline::parse (txt, false, [this] (double secs) { return s.beatAt (secs); });
+            if (b < 0) { say ("go to: could not read \"" + txt + "\""); return; }
+            s.locate (b / 4.0);
+            if (auto* ap = arrange()) if (b / 4.0 < ap->scrollBar || b / 4.0 > ap->scrollBar + ap->visibleBars()) ap->scrollBar = std::max (0.0, b / 4.0 - ap->visibleBars() * 0.25);
+            say ("at " + timeline::formatPosition (b) + "  " + timeline::formatTime (s.secondsAt (b)));
+        }), true);
+    }
+    std::function<void (int)> uiZoom;   // +1 bigger, -1 smaller, 0 actual size
     void say (const juce::String& m) { status = m; repaint (0, getHeight() - 20, getWidth(), 20); }
     void fileAction (int id)
     {
@@ -147,6 +197,31 @@ public:
         };
         const int saveFlags = juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting;
         const int openFlags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
+        if (id >= 50 && id < 100)
+        {
+            auto* ap = arrange();
+            if (! ap) return;
+            if (id <= 61 && page != 1 && id != 61) setPage (1);
+            switch (id)
+            {
+                case 50: ap->copySel(); break;              case 51: ap->cutSel(); break;
+                case 52: ap->pasteAtPlayhead(); break;      case 53: ap->duplicateSel(); break;
+                case 54: ap->selectAll(); break;            case 55: ap->splitSel(); break;
+                case 56: ap->deleteSel(); break;            case 57: ap->muteSel(); break;
+                case 58: ap->insertBars(); break;           case 59: ap->deleteLoopTime(); break;
+                case 60: ap->loopSelection(); break;        case 61: goToDialog(); break;
+                case 70: case 71: case 72: if (uiZoom) uiZoom (id == 70 ? 1 : id == 71 ? -1 : 0); break;
+                case 73: setPage (1); ap->zoomKey (true); break;  case 74: setPage (1); ap->zoomKey (false); break;
+                case 75: setPage (1); ap->zoomToFit(); break;     case 76: setPage (1); ap->zoomToSelection(); break;
+                case 77: ap->setTrackHeight (ap->laneH + 12); break; case 78: ap->setTrackHeight (ap->laneH - 12); break;
+                case 79: s.follow.store (! s.follow.load()); s.dirty = true; break;
+                case 80: ap->toggleSnap(); break;
+                default: break;
+            }
+            ap->repaint();
+            return;
+        }
+        if (id >= 300 && id < 400) { s.gridIndex.store (id - 300); s.snap.store (true); s.dirty = true; if (auto* ap = arrange()) ap->repaint(); return; }
         if (id == 40 || id == 41)
         {
             const int keep = selUid;
@@ -346,12 +421,13 @@ public:
         mode.setBounds (x, 12, 70, 20); x += 74;
         outMode.setBounds (x, 12, 76, 20); x += 80;
         autoWrite.setBounds (x, 12, 50, 20); x += 54;
-        master.setBounds (x, 12, 160, 20); x += 166;
-        punch.setBounds (x, 12, 50, 20); x += 52; capture.setBounds (x, 12, 60, 20); x += 66;
+        const bool narrow = w < 1430;   // (a big ui scale or a small window: the rest goes on the second row)
+        if (! narrow) { master.setBounds (x, 12, 160, 20); x += 166; punch.setBounds (x, 12, 50, 20); x += 52; capture.setBounds (x, 12, 60, 20); x += 66; }
         panic.setBounds (std::max (x, w - 240), 12, 50, 20); audio.setBounds (w - 188, 12, 50, 20); file.setBounds (w - 136, 12, 50, 20); save.setBounds (w - 82, 12, 50, 20);
         int tx = 12;
         for (auto* t : tabs) { t->setBounds (tx, 46, 70, 20); tx += 72; }
         click.setBounds (tx + 16, 46, 44, 20); countIn.setBounds (tx + 64, 46, 92, 20);
+        if (narrow) { int x2 = tx + 172; master.setBounds (x2, 46, 160, 20); x2 += 166; punch.setBounds (x2, 46, 50, 20); x2 += 52; capture.setBounds (x2, 46, 60, 20); }
         for (auto* p : pages) p->setBounds (0, 70, w, getHeight() - 70 - 20);
         cpuMeter.setBounds (w - 222, getHeight() - 19, 214, 18);
     }
@@ -365,10 +441,8 @@ public:
         g.drawText (s.projectName + (s.dirty.load() ? " *" : ""), 12, 26, 136, 14, juce::Justification::centredLeft, true);
         // position
         const double bar = s.currentBar();
-        const int b = (int) std::floor (bar), beat = (int) std::floor ((bar - b) * 4.0);
         g.setFont (uiFont (11.0f, true)); g.setColour (s.playPpq.load() >= 0 ? juce::Colours::white : theme.ink);
-        const double secs = bar * 4.0 * 60.0 / std::max (20.0, (double) s.bpmShown.load());
-        g.drawText (juce::String (b + 1) + "." + juce::String (beat + 1) + "   " + juce::String ((int) secs / 60) + ":" + juce::String ((int) secs % 60).paddedLeft ('0', 2) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm", getWidth() - 330, 34, 260, 14, juce::Justification::centredLeft);
+        g.drawText (timeline::formatPosition (bar * 4.0) + "   " + timeline::formatTime (s.secondsAt (bar * 4.0)) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm", positionRect(), juce::Justification::centredLeft);
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.7f));
         juce::String info = juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
         info << ui::U ("  ·  latency ") << juce::String (s.totalLatency() * 1000.0 / s.sampleRate(), 1) << " ms" ;
@@ -406,8 +480,25 @@ public:
             if (low == 'o') { fileAction (1); return true; }
             if (low == 'n') { fileAction (100); return true; }
             if (low == 'e') { fileAction (7); return true; }
+            if (page == 1 && low == 'c') { fileAction (50); return true; }
+            if (page == 1 && low == 'x') { fileAction (sh ? 59 : 51); return true; }
+            if (page == 1 && low == 'v') { fileAction (52); return true; }
+            if (page == 1 && low == 'd') { fileAction (53); return true; }
+            if (page == 1 && low == 'a') { fileAction (54); return true; }
+            if (page == 1 && low == 't') { fileAction (55); return true; }
+            if (page == 1 && low == 'm' && sh) { fileAction (57); return true; }
+            if (page == 1 && low == 'i' && sh) { fileAction (58); return true; }
+            if (page == 1 && (kc == juce::KeyPress::backspaceKey || kc == juce::KeyPress::deleteKey) && sh) { fileAction (59); return true; }
+            if (page == 1 && low == 'l') { fileAction (60); return true; }
+            if (low == 'g') { fileAction (61); return true; }
+            const auto ch = k.getTextCharacter();
+            if (kc == '=' || ch == '=' || ch == '+') { fileAction (70); return true; }
+            if (kc == '-' || ch == '-' || ch == '_') { fileAction (71); return true; }
+            if (kc == '0' || ch == '0') { fileAction (72); return true; }
+            if (page == 1 && (kc == juce::KeyPress::leftKey || kc == juce::KeyPress::rightKey)) if (auto* ap = arrange()) return ap->key (k);
             return false;
         }
+        if (page == 1) if (auto* ap = arrange()) if (ap->key (k)) return true;
         if (k.getKeyCode() == juce::KeyPress::spaceKey) { s.togglePlay(); return true; }
         if (k.getKeyCode() == juce::KeyPress::tabKey) { setPage ((page + 1) % pages.size()); return true; }
         if ((c == ',' || c == '.') && page == 1) if (auto* ap = dynamic_cast<ArrangePage*> (pages[1])) { ap->nudge (c == ',' ? -5.0 : 5.0); return true; }
@@ -431,6 +522,8 @@ public:
         if (k.getKeyCode() == juce::KeyPress::returnKey && t) { s.stopTrack (*t); return true; }
         return false;
     }
+    juce::Rectangle<int> positionRect() const { return { getWidth() - 360, 31, 300, 16 }; }
+    void mouseDown (const juce::MouseEvent& e) override { if (positionRect().contains (e.getPosition())) goToDialog(); }
     void pageForTest (int pg) { setPage (pg); }
 
     StudioProcessor& proc; Session& s; ui::Theme theme; Ctx ctx;
@@ -451,15 +544,43 @@ StudioEditor::StudioEditor (StudioProcessor& p) : AudioProcessorEditor (p), proc
     nominalW = studioInfo().w; nominalH = studioInfo().h;
     root->setBounds (0, 0, nominalW, nominalH);
     addAndMakeVisible (*root);
+    root->uiZoom = [this] (int d)
+    {
+        static const float steps[] = { 0.5f, 0.6f, 0.67f, 0.75f, 0.8f, 0.9f, 1.0f, 1.1f, 1.25f, 1.33f, 1.5f, 1.75f, 2.0f };
+        float next = 1.0f;
+        if (d > 0) { next = steps[12]; for (float st : steps) if (st > uiScale + 0.001f) { next = st; break; } }
+        else if (d < 0) { next = steps[0]; for (float st : steps) if (st < uiScale - 0.001f) next = st; }
+        setUiScale (next);
+        root->say ("size " + juce::String (juce::roundToInt (uiScale * 100)) + "%" + (effectiveScale() < uiScale - 0.001f ? "  (" + juce::String (juce::roundToInt (effectiveScale() * 100)) + "% fits this window: make it bigger for more)" : juce::String()));
+    };
+    uiScale = juce::jlimit (0.5f, 2.0f, p.uiScale);
     setResizable (true, true);
-    setResizeLimits (nominalW / 2, nominalH / 2, nominalW * 2, nominalH * 2);
-    if (auto* c = getConstrainer()) c->setFixedAspectRatio ((double) nominalW / nominalH);
-    setSize (nominalW, nominalH);
+    setResizeLimits (nominalW / 3, nominalH / 3, 10000, 8000);
+    setSize (juce::roundToInt (nominalW * uiScale), juce::roundToInt (nominalH * uiScale));
     startTimerHz (30);
 }
 StudioEditor::~StudioEditor() { stopTimer(); root.reset(); }
 void StudioEditor::paint (juce::Graphics& g) { g.fillAll (juce::Colour (studioInfo().ground)); }
-void StudioEditor::resized() { root->setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) nominalW)); }
+float StudioEditor::effectiveScale() const
+{
+    // the scale asked for, unless the window is too small to give the pages their least room at it
+    return std::max (0.2f, std::min ({ uiScale, (float) getWidth() / (float) kMinW, (float) getHeight() / (float) kMinH }));
+}
+void StudioEditor::resized()
+{
+    const float sc = effectiveScale();
+    root->setTransform ({});
+    root->setBounds (0, 0, (int) std::ceil (getWidth() / sc - 0.01f), (int) std::ceil (getHeight() / sc - 0.01f));
+    root->setTransform (juce::AffineTransform::scale (sc));
+}
+void StudioEditor::setUiScale (float sc)
+{
+    uiScale = juce::jlimit (0.5f, 2.0f, sc);
+    proc.uiScale = uiScale;
+    if (proc.onUiScale) proc.onUiScale (uiScale);
+    resized();
+}
+juce::PopupMenu StudioEditor::viewMenu() { return root->viewMenu(); }
 void StudioEditor::timerCallback() { root->tick(); }
 void StudioEditor::showPage (int p) { root->pageForTest (p); }
 int StudioEditor::numPages() const { return root->numPages(); }

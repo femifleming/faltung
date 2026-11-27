@@ -706,6 +706,7 @@ void Session::editClips (Track& t, const std::function<void (std::vector<Clip>&)
 {
     auto v = std::make_shared<std::vector<Clip>> (*t.clips);
     fn (*v);
+    for (auto& c : *v) if (c.id <= 0) c.id = nextClipId++;
     std::sort (v->begin(), v->end(), [] (const Clip& a, const Clip& b) { return a.startBar < b.startBar; });
     { const juce::SpinLock::ScopedLockType sl (lock); t.clips = v; }
     dirty = true;
@@ -1171,6 +1172,7 @@ void Session::recomputeIds()
         u = std::max (u, t.uid + 1);
         t.forEachDevice ([&] (Device& d) { u = std::max (u, d.uid + 1); });
         for (auto& c : *t.aclips) cl = std::max (cl, c.id + 1);
+        for (auto& c : *t.clips) cl = std::max (cl, c.id + 1);
         for (auto& m : *t.mods) mo = std::max (mo, m.id + 1);
     };
     for (auto& t : tracks) scan (*t);

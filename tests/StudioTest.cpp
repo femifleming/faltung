@@ -1921,6 +1921,224 @@ int main (int argc, char** argv)
         }
     }
 
+    // ---- 23b. the timeline: grid and positions, clip editing, time, zoom, the ui scale ----------------------------
+    std::cout << "== timeline: grid, positions, editing\n";
+    {
+        namespace tl = fal::daw::timeline;
+        // positions and times, written and read
+        check (tl::formatPosition (0.0) == "1.1.1.0", "bar 1 is 1.1.1.0");
+        check (tl::formatPosition (65.625) == "17.2.3.120", "65.625 beats is 17.2.3.120 (" + tl::formatPosition (65.625) + ")");
+        check (tl::formatLength (8.0 + 1.0 + 0.25) == "2.1.1.0", "a length counts from 0");
+        check (tl::formatTime (65.25) == "1:05.250" && tl::formatTime (3725.0) == "1:02:05.000", "times: " + tl::formatTime (65.25) + ", " + tl::formatTime (3725.0));
+        auto at120 = [] (double secs) { return secs * 2.0; };
+        check (std::abs (tl::parse ("17.2.3.120", false, at120) - 65.625) < 1.0e-12, "17.2.3.120 read back");
+        check (std::abs (tl::parse ("17", false, at120) - 64.0) < 1.0e-12 && std::abs (tl::parse ("17 2", false, at120) - 65.0) < 1.0e-12, "a bar, a bar and a beat");
+        check (std::abs (tl::parse ("2", true, at120) - 8.0) < 1.0e-12 && std::abs (tl::parse ("0.0.1", true, at120) - 0.25) < 1.0e-12, "lengths: two bars, a sixteenth");
+        check (std::abs (tl::parse ("1:00", false, at120) - 120.0) < 1.0e-9 && std::abs (tl::parse ("250ms", false, at120) - 0.5) < 1.0e-9 && std::abs (tl::parse ("90s", false, at120) - 180.0) < 1.0e-9, "times typed: 1:00, 250ms, 90s");
+        check (tl::parse ("x", false, at120) < 0 && tl::parse ("0.1.1", false, at120) < 0 && tl::parse ("", false, at120) < 0, "nonsense is refused");
+        // the grid
+        check (std::abs (tl::adaptiveBeats (100.0) - 0.25) < 1.0e-12 && std::abs (tl::adaptiveBeats (1.0) - 16.0) < 1.0e-12, "the adaptive grid follows the zoom (1/16 at 100 px a beat, 4 bars at 1)");
+        check (std::abs (tl::adaptiveBeats (10000.0) - 1.0 / 128.0) < 1.0e-12, "fully zoomed in, a 1/512 note");
+        check (std::abs (tl::snap (1.13, 0.25) - 1.25) < 1.0e-12 && std::abs (tl::snap (0.3, 1.0 / 3.0) - 1.0 / 3.0) < 1.0e-12 && std::abs (tl::snap (0.3, 1.0 / 7.0) - 2.0 / 7.0) < 1.0e-12, "snaps to straight, triplet and septuplet lines");
+        bool hit = false;
+        check (std::abs (tl::magnet (3.9, 1.0, { 4.03 }, 40.0, 7.0, &hit) - 4.03) < 1.0e-12 && hit, "the magnet catches an edge 5 px away");
+        check (std::abs (tl::magnet (3.9, 1.0, { 4.03 }, 100.0, 7.0, &hit) - 4.0) < 1.0e-12 && ! hit, "but not one 13 px away: the grid then");
+
+        // clips: split, trim, mute, through the engine
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& t = *s.tracks[0]; shortHit (t);
+        s.setTempo (120.0f);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; pt.s[8].on = true; });   // beats 1 and 3
+        s.mode.store ((int) PlayMode::Arrange);
+        const double sb = spb (120);
+        auto hitsAt = [&] (double bars) { std::vector<double> v; for (int o : onsets (render (p, bars).out, 0)) v.push_back (o / sb); return v; };
+        auto same = [] (const std::vector<double>& a, std::vector<double> b) { if (a.size() != b.size()) return false; for (size_t i = 0; i < a.size(); ++i) if (std::abs (a[i] - b[i]) > 0.01) return false; return true; };
+        auto str = [] (const std::vector<double>& v) { juce::String o; for (double x : v) o << juce::String (x, 2) << " "; return o.trim(); };
+        s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 0.0, 2.0 } }; });
+        const int id0 = (*t.clips)[0].id;
+        check (id0 > 0, "a pattern clip has an id");
+        auto whole = hitsAt (2.0);
+        auto halves = s.splitClips ({ { t.uid, id0, false } }, 0.5);
+        check (halves.size() == 1 && t.clips->size() == 2 && std::abs ((*t.clips)[1].offset - 2.0) < 1.0e-12, "split: the right half starts two beats into the pattern");
+        auto split = hitsAt (2.0);
+        std::cout << "  hits (beats): whole clip " << str (whole) << "; split at beat 3: " << str (split) << "\n";
+        check (same (whole, { 0, 2, 4, 6 }) && same (split, whole), "a split clip plays exactly as before");
+        s.setClipsMuted (halves, true);
+        check (same (hitsAt (2.0), { 0 }), "the muted half is silent");
+        s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 1.0, 1.0 } }; });
+        const ClipRef one { t.uid, (*t.clips)[0].id, false };
+        s.trimClipStart (one, 1.25);
+        check (same (hitsAt (2.0), { 6 }), "trimmed from the left: the hits stay where they were (" + str (hitsAt (2.0)) + ")");
+        s.trimClipStart (one, 0.5);
+        auto wrapped = hitsAt (2.0);
+        check (same (wrapped, { 2, 4, 6 }), "extended to the left: the loop wraps, as if it had been playing (" + str (wrapped) + ")");
+        double st, len; s.clipSpan (one, st, len);
+        check (std::abs (st - 0.5) < 1.0e-12 && std::abs (len - 1.5) < 1.0e-12, "start 0.5, length 1.5");
+
+        // audio: trimmed from the left, the sound stays put
+        juce::AudioBuffer<float> file (2, 48000); file.clear(); file.setSample (0, 4800, 0.9f); file.setSample (1, 4800, 0.9f);
+        auto wf = tmp.getChildFile ("trim.wav"); writeWav (wf, file);
+        auto* at = s.addTrack ("audio", -1, TrackKind::Audio);
+        juce::String err;
+        auto* ac = s.addAudioClip (*at, wf, 2.0, &err);
+        const ClipRef aref { at->uid, ac ? ac->id : 0, true };
+        s.editClips (t, [] (std::vector<Clip>& c) { c.clear(); });
+        auto impulse = [&] { auto on = onsets (render (p, 4.0).out, 0, 0.5f, 100); return on.empty() ? -1 : on[0]; };
+        const int before = impulse();
+        s.trimClipStart (aref, 2.0 + 0.05 / 2.0);   // 50 ms (a bar is 2 s)
+        const int after = impulse();
+        std::cout << "  impulse at " << before << ", after trimming 50 ms from the left " << after << "\n";
+        check (before > 0 && before == after && std::abs ((*at->aclips)[0].offset - 0.05) < 1.0e-9, "an audio clip trimmed from the left: the sound does not move, to the sample");
+        s.trimClipStart (aref, 1.0);
+        check (std::abs ((*at->aclips)[0].offset) < 1.0e-12 && std::abs ((*at->aclips)[0].startBar - 2.0) < 1.0e-9, "and stops at the start of the file");
+
+        // copy, paste, duplicate, move, delete
+        s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 0.0, 1.0 }, { 1, 2.0, 1.0 } }; });
+        std::vector<ClipRef> two; for (auto& c : *t.clips) two.push_back ({ t.uid, c.id, false });
+        auto dup = s.duplicateClips (two);
+        check (dup.size() == 2 && t.clips->size() == 4 && std::abs ((*t.clips)[2].startBar - 3.0) < 1.0e-12 && std::abs ((*t.clips)[3].startBar - 5.0) < 1.0e-12, "duplicate: the pair again right after itself");
+        auto board = s.copyClips (two);
+        auto pasted = s.pasteClips (board, 10.0, &t);
+        check (pasted.size() == 2 && s.clipSpan (pasted[1], st, len) && std::abs (st - 12.0) < 1.0e-12, "paste keeps the distance between the clips");
+        auto onAudio = s.pasteClips (board, 20.0, at);   // a pattern clip does not land on an audio track: back to its own
+        check (onAudio.size() == 2 && onAudio[0].track == t.uid, "a clip only lands on a track of its kind");
+        s.moveClips (two, -5.0);
+        check (s.clipSpan (two[0], st, len) && std::abs (st) < 1.0e-12 && s.clipSpan (two[1], st, len) && std::abs (st - 2.0) < 1.0e-12, "moving a block before the start stops it at the start");
+        s.deleteClips (dup); s.deleteClips (pasted); s.deleteClips (onAudio);
+        check (t.clips->size() == 2, "deleted");
+
+        // time: inserted and removed, across clips, automation, markers and the loop
+        s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 0.0, 4.0 }, { 0, 8.0, 4.0 } }; });
+        s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { v.clear(); });
+        s.editMarkers ([] (std::vector<Marker>& m) { m = { { "drop", 8.0 } }; });
+        const Target lt = s.targetFor (t, *t.mixer, MP_LEVEL);
+        s.editLane (lt, [] (AutoLane& l) { l.pts = { { 0.0, 0.0f, 0.0f }, { 48.0, 1.0f, 0.0f } }; });
+        s.loopOn.store (true); s.loopStart.store (8.0); s.loopEnd.store (12.0);
+        s.insertTime (2.0, 2.0);
+        auto starts = [&] { std::vector<double> v; for (auto& c : *t.clips) v.push_back (c.startBar); return v; };
+        auto ln = s.lane (lt);
+        std::cout << "  after inserting 2 bars at bar 3: clips at " << str (starts()) << "; marker at " << (*s.markers)[0].bar << "\n";
+        check (same (starts(), { 0, 4, 10 }) && std::abs ((*t.clips)[1].offset - 8.0) < 1.0e-12, "insert time: the clip across it is cut, the rest moves 2 bars");
+        check (std::abs ((*s.markers)[0].bar - 10.0) < 1.0e-12 && std::abs (s.loopStart.load() - 10.0) < 1.0e-12 && std::abs (s.loopEnd.load() - 14.0) < 1.0e-12, "markers and the loop move too");
+        check (ln && std::abs (ln->valueAt (56.0) - 1.0f) < 1.0e-5f && std::abs (ln->valueAt (12.0) - 1.0f / 6.0f) < 1.0e-5f, "automation: moved, and holding its value through the new bars");
+        s.deleteTime (2.0, 4.0);
+        ln = s.lane (lt);
+        check (same (starts(), { 0, 2, 8 }) && std::abs ((*s.markers)[0].bar - 8.0) < 1.0e-12 && ln && std::abs (ln->valueAt (48.0) - 1.0f) < 1.0e-4f && std::abs (ln->valueAt (4.0) - 1.0f / 12.0f) < 1.0e-4f,
+               "delete time puts it all back (" + str (starts()) + ")");
+        s.loopOn.store (false);
+        s.removeLane (lt);
+
+        // the tempo map
+        check (std::abs (s.secondsAt (8.0) - 4.0) < 1.0e-9 && std::abs (s.beatAt (4.0) - 8.0) < 1.0e-9, "120 bpm: 8 beats are 4 s");
+        const Target tt { 0, 0, GP_TEMPO };
+        s.editLane (tt, [] (AutoLane& l) { l.pts = { { 0.0, tempoToNorm (60.0f), 0.0f }, { 400.0, tempoToNorm (60.0f), 0.0f } }; });
+        check (std::abs (s.secondsAt (8.0) - 8.0) < 1.0e-6 && std::abs (s.beatAt (8.0) - 8.0) < 1.0e-6, "with a tempo lane at 60 bpm, the map follows it");
+        s.removeLane (tt);
+
+        // save and reopen: offsets, mutes, ids, the grid, follow
+        s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 0.0, 2.0 } }; });
+        auto hv = s.splitClips ({ { t.uid, (*t.clips)[0].id, false } }, 1.0);
+        s.setClipsMuted (hv, true);
+        s.gridIndex.store (12); s.follow.store (false);
+        const auto pf = tmp.getChildFile ("timeline.fstudio");
+        check (p.saveProject (pf, err), "save: " + err);
+        StudioProcessor p2; check (p2.loadProject (pf, err), "reopen: " + err);
+        auto& t2 = *p2.session.tracks[0];
+        check (t2.clips->size() == 2 && (*t2.clips)[1].muted && std::abs ((*t2.clips)[1].offset - 4.0) < 1.0e-12 && (*t2.clips)[1].id == hv[0].id, "clip offset, mute and id come back");
+        check (p2.session.gridIndex.load() == 12 && ! p2.session.follow.load(), "the grid and follow come back");
+    }
+    std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        auto& t = *s.tracks[0];
+        s.setTempo (120.0f);
+        s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 0.0, 1.0 }, { 0, 4.0, 1.0 } }; });
+        p.history.poll (false); p.history.poll (false);   // (the history starts here)
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+        auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        // the ui scale: the window keeps its size, the pages get more or less room
+        ed->setSize (1440, 900);
+        se->setUiScale (1.25f);
+        std::cout << "  ui 125% in a 1440 x 900 window: drawn at " << se->effectiveScale() << ", the pages get " << se->pageComponent (0)->getParentComponent()->getWidth() << " x " << se->pageComponent (0)->getParentComponent()->getHeight() << "\n";
+        check (std::abs (se->effectiveScale() - 1.2f) < 1.0e-4f && se->pageComponent (0)->getParentComponent()->getWidth() == 1200, "bigger: limited by the window, so everything still fits");
+        ed->setSize (2400, 1500);
+        check (std::abs (se->effectiveScale() - 1.25f) < 1.0e-4f && se->pageComponent (0)->getParentComponent()->getWidth() == 1920, "in a bigger window it gets the whole 125%");
+        se->setUiScale (0.5f);
+        check (se->pageComponent (0)->getParentComponent()->getWidth() == 4800 && se->pageComponent (0)->getParentComponent()->getHeight() == 3000, "smaller: more room for the timeline");
+        se->key (juce::KeyPress ('0', juce::ModifierKeys::commandModifier, '0'));
+        check (std::abs (se->getUiScale() - 1.0f) < 1.0e-6f, "cmd+0: actual size");
+        se->key (juce::KeyPress ('=', juce::ModifierKeys::commandModifier, '='));
+        check (se->getUiScale() > 1.05f, "cmd+=: bigger");
+        se->setUiScale (1.0f); ed->setSize (1440, 900);
+
+        se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        // zoom keeps the bar under the mouse where it is, from a thousand bars across down to a few samples a pixel
+        arr->pxPerBar = 24.0; arr->scrollBar = 0;
+        const double under = arr->bar (600);
+        arr->zoomAt (8.0, 600);
+        check (std::abs (arr->bar (600) - under) < 1.0e-9 && std::abs (arr->pxPerBar - 192.0) < 1.0e-9, "zoom about the mouse");
+        arr->zoomAt (1.0e9, 600);
+        const double samplesPerPx = 1.0 / arr->pxPerBar * 4.0 * spb (120);
+        std::cout << "  fully zoomed in: " << samplesPerPx << " samples a pixel, grid " << fal::daw::timeline::gridName (s.gridIndex.load(), arr->pxPerBeat()) << "\n";
+        check (samplesPerPx < 5.0, "fully zoomed in, a pixel is a few samples");
+        arr->zoomToFit();
+        check (arr->bar (arr->lanesArea().getRight() - 1) >= s.projectBars() - 1.0e-6, "fit: the whole project in view");
+        arr->showBars (0.0, 8.0);
+        s.gridIndex.store (3); s.snap.store (true);   // 1/4
+        // drag the first clip: it lands on the grid (or on the playhead / other clip's edge nearby)
+        const auto now = juce::Time::getCurrentTime(); auto src = juce::Desktop::getInstance().getMainMouseSource();
+        auto ev = [&] (juce::Point<float> q, juce::ModifierKeys m, juce::Point<float> down, bool dragged) { return juce::MouseEvent (src, q, m, 0, 0, 0, 0, 0, arr, arr, now, down, now, 1, dragged); };
+        const float rowMid = (float) (arr->lanesArea().getY() + arr->laneH / 2);
+        const juce::Point<float> a ((float) arr->xd (0.5), rowMid), b ((float) arr->xd (0.5 + 1.07), rowMid);
+        s.locate (7.5);
+        arr->mouseDown (ev (a, juce::ModifierKeys::leftButtonModifier, a, false));
+        for (int k = 1; k <= 10; ++k) arr->mouseDrag (ev (a + (b - a) * (k / 10.0f), juce::ModifierKeys::leftButtonModifier, a, true));
+        arr->mouseUp (ev (b, juce::ModifierKeys(), a, true));
+        std::cout << "  dragged 1.07 bars with a 1/4 grid: the clip now starts at " << (*t.clips)[0].startBar << "\n";
+        check (std::abs ((*t.clips)[0].startBar - 1.0) < 1.0e-9 && arr->sel.size() == 1, "a dragged clip lands on the grid, and is selected");
+        const juce::Point<float> c2 ((float) arr->xd (1.5), rowMid), d2 ((float) arr->xd (1.5 + 0.1234), rowMid);
+        arr->mouseDown (ev (c2, juce::ModifierKeys::leftButtonModifier, c2, false));
+        for (int k = 1; k <= 10; ++k) arr->mouseDrag (ev (c2 + (d2 - c2) * (k / 10.0f), juce::ModifierKeys::commandModifier | juce::ModifierKeys::leftButtonModifier, c2, true));
+        arr->mouseUp (ev (d2, juce::ModifierKeys(), c2, true));
+        check (std::abs ((*t.clips)[0].startBar - (1.0 + (d2.x - c2.x) / arr->pxPerBar)) < 1.0e-6, "with cmd held it goes exactly where it is put");
+        // a band across both clips selects them; cmd+d duplicates; delete removes
+        arr->sel.clear();
+        const juce::Point<float> ba ((float) arr->xd (0.2), (float) arr->lanesArea().getY() + 2.0f), bb ((float) arr->xd (6.0), rowMid + 4.0f);
+        arr->mouseDown (ev (ba, juce::ModifierKeys::leftButtonModifier, ba, false));
+        for (int k = 1; k <= 6; ++k) arr->mouseDrag (ev (ba + (bb - ba) * (k / 6.0f), juce::ModifierKeys::leftButtonModifier, ba, true));
+        arr->mouseUp (ev (bb, juce::ModifierKeys(), ba, true));
+        check (arr->sel.size() == 2, "a band selects the clips it touches (" + juce::String (arr->sel.size()) + ")");
+        se->key (juce::KeyPress ('d', juce::ModifierKeys::commandModifier, 'd'));
+        check (t.clips->size() == 4 && arr->sel.size() == 2, "cmd+d: duplicated, the copies selected");
+        se->key (juce::KeyPress (juce::KeyPress::backspaceKey));
+        check (t.clips->size() == 2 && arr->sel.empty(), "delete: the copies are gone");
+        // the arrow keys move the playhead along the grid, then the selection
+        s.locate (0.0);
+        se->key (juce::KeyPress (juce::KeyPress::rightKey));
+        check (std::abs (s.currentBar() - 0.25) < 1.0e-9, "-> with nothing selected: the playhead to the next grid line");
+        se->key (juce::KeyPress ('a', juce::ModifierKeys::commandModifier, 'a'));
+        if (t.clips->empty()) s.editClips (t, [] (std::vector<Clip>& c) { c = { { 0, 1.0, 1.0 } }; });
+        const double s0 = (*t.clips)[0].startBar;
+        se->key (juce::KeyPress (juce::KeyPress::rightKey));
+        check (std::abs ((*t.clips)[0].startBar - s0 - 0.25) < 1.0e-9, "-> with clips selected: they move by the grid");
+        se->key (juce::KeyPress (juce::KeyPress::leftKey, juce::ModifierKeys::commandModifier, 0));
+        check (std::abs ((*t.clips)[0].startBar - s0 - 0.25 + 1.0 / 3840.0) < 1.0e-9, "cmd+<- moves them by one tick");
+        // the ruler: a click puts the playhead there, a drag sets the loop
+        const float ry = (float) (arr->top + 8);
+        const juce::Point<float> r1 ((float) arr->xd (3.0), ry), r2 ((float) arr->xd (5.0), ry);
+        arr->mouseDown (ev (r1, juce::ModifierKeys::leftButtonModifier, r1, false)); arr->mouseUp (ev (r1, juce::ModifierKeys(), r1, false));
+        check (std::abs (s.currentBar() - 3.0) < 1.0e-9, "a click on the ruler: the playhead");
+        arr->mouseDown (ev (r1, juce::ModifierKeys::leftButtonModifier, r1, false));
+        for (int k = 1; k <= 5; ++k) arr->mouseDrag (ev (r1 + (r2 - r1) * (k / 5.0f), juce::ModifierKeys::leftButtonModifier, r1, true));
+        arr->mouseUp (ev (r2, juce::ModifierKeys(), r1, true));
+        check (s.loopOn.load() && std::abs (s.loopStart.load() - 3.0) < 1.0e-9 && std::abs (s.loopEnd.load() - 5.0) < 1.0e-9, "a drag on the ruler: the loop");
+        // the edit menu's undo history takes it all in
+        p.history.poll (false);
+        check (p.history.canUndo(), "the edits are undoable");
+    }
+
     // ---- 24. screenshots ----------------------------------------------------------------------------------
     if (shotDir != juce::File())
     {
@@ -1945,12 +2163,14 @@ int main (int argc, char** argv)
         {
             if (pg == 4 && se) { s.selectedTrack.store (2); se->tickForTest(); }
             if (se) { se->showPage (pg); for (int k = 0; k < 4; ++k) { blk.clear(); juce::MidiBuffer m; p.processBlock (blk, m); se->tickForTest(); } }
+            s.resetCpuMeter(); if (se) se->tickForTest();   // (the pictures show the studio, not how busy this machine is)
             juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
             const auto f = shotDir.getChildFile ("sndstudio-" + juce::String (pg) + ".png"); f.deleteFile();
             juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
         }
         auto snap = [&] (juce::Component& c, const juce::String& name)
         {
+            s.resetCpuMeter(); if (se) se->tickForTest();
             juce::Image img = c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f);
             const auto f = shotDir.getChildFile (name + ".png"); f.deleteFile();
             juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
@@ -1968,6 +2188,25 @@ int main (int argc, char** argv)
             s.editLane (s.targetFor (*at, *at->mixer, MP_SEND1), [] (AutoLane& l) { l.pts = { { 0.0, 0.0f, 0.0f }, { 60.0, 0.0f, 0.0f }, { 64.0, 0.9f, 0.0f }, { 68.0, 0.0f, 0.0f } }; });
             s.mode.store ((int) PlayMode::Arrange);
             se->selectTrack (at); se->showPage (1); run (60); snap (*ed, "sndstudio-arrange");
+            if (auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1)))
+            {
+                // close in: two clips selected, a fade, a split, the fine grid and the time ruler
+                s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { if (v.size() > 1) { v[0].fadeIn = 0.25; v[1].fadeOut = 0.4; } });
+                arr->sel.clear(); for (auto& c : *at->aclips) if (c.startBar >= 15.9) arr->sel.push_back ({ at->uid, c.id, true });
+                s.editMarkers ([] (std::vector<Marker>& m) { m.push_back ({ "vocal in", 16.0 }); });
+                s.gridIndex.store (12); arr->showBars (15.6, 18.4); arr->setTrackHeight (72); s.locate (16.75);
+                arr->scrollY = std::max (0, s.indexOf (at) * arr->laneH - 3 * arr->laneH);
+                run (20); snap (*ed, "sndstudio-arrange-zoom");
+                arr->setTrackHeight (40); s.gridIndex.store (0); arr->sel.clear();
+                // the whole window bigger and smaller
+                const auto w0 = ed->getWidth(), h0 = ed->getHeight();
+                ed->setSize (1800, 1125); se->setUiScale (1.25f); arr->zoomToFit(); run (12); snap (*ed, "sndstudio-ui-125");
+                ed->setSize (1440, 900); se->setUiScale (0.75f); arr->zoomToFit(); run (12); snap (*ed, "sndstudio-ui-75");
+                ed->setSize (1440, 900); se->setUiScale (1.2f); run (12); snap (*ed, "sndstudio-ui-narrow");
+                for (int pg : { 0, 2, 3, 4, 5 }) { se->showPage (pg); run (12); snap (*ed, "sndstudio-ui-narrow-" + juce::String (pg)); }
+                se->showPage (1);
+                se->setUiScale (1.0f); ed->setSize (w0, h0); run (6);
+            }
             s.mode.store ((int) PlayMode::Session);
             auto& bass = *s.tracks[7];
             const int cut = bass.instrument->paramIndexForId ("cutoff"), res = bass.instrument->paramIndexForId ("res");

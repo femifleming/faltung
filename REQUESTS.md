@@ -253,3 +253,9 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > remove the old project name from everything on this computer and on github, it was an old name for something, i dont want it to show up next to plugins or anywhere on here or github, everything has its own name now, remove that title from things.
 
 (Each plug-in now lists under its own maker name in hosts; bundle IDs, LV2 URIs, preset/last-patch folders, docs and code follow. The hidden 4-letter manufacturer code is unchanged, so saved sessions still open.)
+
+## 2026-11-27 — sndstudio: a real, ready-to-use daw
+
+> keep working on snd studio to make it into a real ready to use fully featured daw, i want to be able to zoom in and out on the ui and the timeline as well, and get more accurate with the timeline and grid. keep adding professional daw features to sndstudio
+
+(The whole window bigger / smaller, 50–200 %, any window size; the timeline zooms from ~1000 bars to ~2 samples a pixel about the mouse, pinch, fit, zoom to selection, row heights, follow; an adaptive or fixed grid incl. triplets, dotted, quintuplets, septuplets, the magnet, cmd to place freely; bar.beat.sixteenth.tick + time on the ruler and in the header, go to position; selection (click, shift, box), cut / copy / paste / duplicate / split / mute / delete, trim from the left, fade handles, moving clips between tracks, typed position and length, arrow keys by grid / tick / ms, insert and delete time, markers moved, named, jumped to; the engine starts and stops clips on their sample anywhere on the timeline.)

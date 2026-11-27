@@ -21,6 +21,12 @@ public:
     /** the file menu and what its entries do (the app's menu bar shows the same menu) */
     juce::PopupMenu fileMenu();
     juce::PopupMenu editMenu();
+    juce::PopupMenu viewMenu();
+    /** the size of everything in the window: 0.5 … 2 (a smaller window shrinks it further, so everything fits) */
+    void setUiScale (float);
+    float getUiScale() const { return uiScale; }
+    /** the scale actually drawn at, and the room the pages get at it */
+    float effectiveScale() const;
     void fileAction (int id);
     Track* renderProject (bool preMaster);
     bool autoMaster();
@@ -35,5 +41,7 @@ private:
     std::unique_ptr<StudioView> root;
     juce::TooltipWindow tips { this, 700 };
     int nominalW = 1440, nominalH = 900;
+    static constexpr int kMinW = 1200, kMinH = 720;   // the least room the pages are laid out for
+    float uiScale = 1.0f;
 };
 } // namespace fal::daw

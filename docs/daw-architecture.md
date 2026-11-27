@@ -20,7 +20,7 @@ VST3 / AU instance. Every real parameter gets a *base* mirror parameter (0..1) t
 writes `base (+ macro) + modulation (+ lock / slide)` into the real parameter once per block, only when it
 changed. The device's own window edits flow back into the base (and into automation recording).
 
-## engine order, per block (split at bar lines so launches, scenes and clips start exactly on the beat)
+## engine order, per block (split at bar lines, and in the arrangement wherever a clip starts or ends, so launches, scenes and clips start and stop on their sample)
 1. automation lanes → base values (skipped for parameters the user is holding)
 2. globals (macros, tempo, swing, master)
 3. per track: resolve the pattern (session / song / arrangement / chain) → modulation sources → sequencer events
@@ -41,3 +41,20 @@ track's input (with offsets); the master has its own width (2–64) and that man
 ## files
 `.fstudio` is xml (`Project.cpp`): tracks, devices (type, state blob, base values, macro maps), patterns (sparse),
 clips, chains, modulation, scenes, song, markers, lanes, midi maps. Autosave every two minutes while dirty.
+
+## the timeline (Timeline.h, Arrange.cpp)
+`Timeline.h` is the arithmetic, pure and tested on its own: the grid divisions (adaptive, straight, triplet, dotted,
+quintuplet, septuplet), snapping and the magnet (clip edges, markers, the loop and the playhead within 7 px win over
+the grid), positions written and read as bar.beat.sixteenth.tick (960 ticks a beat, counted from 1) or as time.
+`Arrange.cpp` holds the arrangement's edits on the Session, by `ClipRef` (track uid, clip id, audio or pattern):
+move, split, trim from the left (audio: the offset into the file follows; patterns: `Clip::offset`, the beats into
+the pattern, wrapped round its loop), set the length, duplicate, copy / paste (a `ClipBoard`), mute, delete, insert
+and delete time (clips cut at the edges; lanes, markers and the loop follow), and the tempo map
+(`secondsAt` / `beatAt`, following a tempo lane). Pattern clips have ids like audio clips (saved, so the selection
+survives undo). In the engine a pattern clip's anchor is `start - offset`; a track's steps fire only inside its clip
+(`Track::clipFrom / clipTo`), and a span cut at a clip's start catches the step exactly there.
+
+## the window
+The editor lays the pages out at the window's size divided by the ui scale (0.5–2, kept in the app's settings), never
+below 1200 × 720: a window too small for the scale draws at the largest scale that fits. The header moves master,
+punch and capture to its second row below 1430 wide.

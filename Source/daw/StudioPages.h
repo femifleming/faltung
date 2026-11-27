@@ -3,6 +3,8 @@
 // mix (strips, outputs, routes), mod (modulators, macros, midi), browse (devices, plug-ins, files, templates).
 #include "StudioWidgets.h"
 #include "PatternTools.h"
+#include "Timeline.h"
+#include <map>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 namespace fal::daw
@@ -228,127 +230,312 @@ private:
 class ArrangePage : public Page, public juce::FileDragAndDropTarget, public juce::DragAndDropTarget
 {
 public:
-    explicit ArrangePage (Ctx& c) : Page (c), addLane ("+ lane", theme), addSong ("+ song entry", theme), snapLink ("snap", theme), zoomIn ("+", theme), zoomOut ("-", theme)
+    explicit ArrangePage (Ctx& c) : Page (c), addLane ("+ lane", theme), addSong ("+ song entry", theme), snapLink ("snap", theme), gridLink ("grid", theme),
+                                    zoomIn ("+", theme), zoomOut ("-", theme), fitLink ("fit", theme), selLink ("sel", theme), taller ("rows +", theme), shorter ("rows -", theme), followLink ("follow", theme)
     {
-        for (auto* l : { &addLane, &addSong, &snapLink, &zoomIn, &zoomOut }) addAndMakeVisible (l);
+        for (auto* l : { &addLane, &addSong, &snapLink, &gridLink, &zoomIn, &zoomOut, &fitLink, &selLink, &taller, &shorter, &followLink }) addAndMakeVisible (l);
         addLane.onClick = [this] { laneMenu(); };
         addSong.onClick = [this] { ctx.s.editSong ([] (std::vector<SongEntry>& v) { v.push_back ({ (int) v.size() % kScenes, 8 }); }); repaint(); };
-        snapLink.onClick = [this] { ctx.s.snap.store (! ctx.s.snap.load()); snapLink.setLit (ctx.s.snap.load()); };
-        snapLink.setLit (ctx.s.snap.load());
-        zoomIn.onClick = [this] { pxPerBar = std::min (200.0, pxPerBar * 1.4); repaint(); };
-        zoomOut.onClick = [this] { pxPerBar = std::max (4.0, pxPerBar / 1.4); repaint(); };
+        snapLink.onClick = [this] { toggleSnap(); };
+        gridLink.onClick = [this] { gridMenu (&gridLink); };
+        zoomIn.onClick = [this] { zoomKey (true); };
+        zoomOut.onClick = [this] { zoomKey (false); };
+        fitLink.onClick = [this] { zoomToFit(); };
+        selLink.onClick = [this] { zoomToSelection(); };
+        taller.onClick = [this] { setTrackHeight (laneH + 12); };
+        shorter.onClick = [this] { setTrackHeight (laneH - 12); };
+        followLink.onClick = [this] { ctx.s.follow.store (! ctx.s.follow.load()); ctx.s.dirty = true; };
+        snapLink.setTooltip ("snap (n): edits land on the grid, and on clip edges, markers, the loop and the playhead when they are close. Hold cmd (ctrl) while dragging to place freely, to the sample");
+        gridLink.setTooltip ("the grid: adaptive (finer as you zoom in) or a fixed division, straight, triplet, dotted, quintuplet or septuplet");
+        zoomIn.setTooltip ("zoom in (=, or cmd / ctrl + scroll, or pinch, where the mouse is)"); zoomOut.setTooltip ("zoom out (-)");
+        fitLink.setTooltip ("the whole project in view (shift+z)"); selLink.setTooltip ("zoom to the selected clips, or the loop (z)");
+        taller.setTooltip ("taller rows (alt + scroll)"); shorter.setTooltip ("shorter rows");
+        followLink.setTooltip ("follow: the view turns the page with the playhead while playing");
     }
+    // ---- the view: px per bar, scroll, row height -------------------------------------------------------
     double pxPerBar = 24.0; double scrollBar = 0; int scrollY = 0;
-    const int left = 140, ruler = 26, laneH = 40, songW = 190, autoH = 216;
+    int laneH = 40;
+    static constexpr double kMinPxPerBar = 0.25, kMaxPxPerBar = 40000.0;   // ~1000 bars across ... a few samples a pixel
+    const int left = 140, top = 22, ruler = 52, songW = 190, autoH = 216, sbH = 10;
     int laneScroll = 0;                       // the first automation lane shown
-    Track* touched = nullptr; int touchedClip = 0;   // the audio clip last clicked (its id): , and . nudge it
-    /** move the clip last touched by a few milliseconds, off the grid (what the , and . keys do) */
-    bool nudge (double ms)
-    {
-        if (! touched || ctx.s.indexOf (touched) < 0) return false;
-        const double bars = ms * 0.001 / (60.0 / ctx.s.tempo() * 4.0); const int id = touchedClip; bool done = false;
-        ctx.s.editAudioClips (*touched, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == id) { c.startBar = std::max (0.0, c.startBar + bars); done = true; } });
-        repaint(); return done;
-    }
-    int x (double bar) const { return left + (int) ((bar - scrollBar) * pxPerBar); }
-    double bar (int px) const { return (px - left) / pxPerBar + scrollBar; }
-    double snapBar (double b) const { if (! ctx.s.snap.load()) return std::max (0.0, b); const double q = pxPerBar > 60 ? 0.25 : 1.0; return std::max (0.0, std::round (b / q) * q); }
-    juce::Rectangle<int> lanesArea() const { return { 0, ruler, getWidth() - songW, getHeight() - ruler - autoH }; }
+    std::vector<ClipRef> sel;                 // the selected clips
+    double hoverBar = -1;                     // under the mouse (the readout)
+
+    double xd (double bar) const { return left + (bar - scrollBar) * pxPerBar; }
+    int x (double bar) const { return (int) std::lround (juce::jlimit (-1.0e6, 1.0e6, xd (bar))); }
+    double bar (double px) const { return (px - left) / pxPerBar + scrollBar; }
+    double pxPerBeat() const { return pxPerBar / 4.0; }
+    double gridBars() const { return timeline::gridBeats (ctx.s.gridIndex.load(), pxPerBeat()) / 4.0; }
+    double visibleBars() const { return std::max (1.0e-6, (lanesArea().getWidth() - left) / pxPerBar); }
+    juce::Rectangle<int> lanesArea() const { return { 0, ruler, getWidth() - songW, std::max (0, getHeight() - ruler - autoH - sbH) }; }
+    juce::Rectangle<int> scrollArea() const { return { left, getHeight() - autoH - sbH, getWidth() - songW - left, sbH }; }
     juce::Rectangle<int> autoArea() const { return { 0, getHeight() - autoH, getWidth() - songW, autoH }; }
     juce::Rectangle<int> songArea() const { return { getWidth() - songW, 0, songW, getHeight() }; }
+    int rowY (int row) const { return lanesArea().getY() + row * laneH - scrollY; }
+    int rowAt (int py) const { return (int) std::floor ((py - lanesArea().getY() + scrollY) / (double) laneH); }
+
+    /** the plain grid (no magnet), what keyboard moves use */
+    double snapBar (double b) const { return ctx.s.snap.load() ? timeline::snap (b * 4.0, gridBars() * 4.0) / 4.0 : std::max (0.0, b); }
+    /** the grid plus the magnet: clip edges (other than the ones moving), markers, the loop, the playhead */
+    double magnetBar (double b, bool free, const std::vector<ClipRef>& moving, bool* hit = nullptr) const
+    {
+        if (hit) *hit = false;
+        if (free || ! ctx.s.snap.load()) return std::max (0.0, b);
+        std::vector<double> t;
+        for (auto& r : ctx.s.allClips())
+        {
+            if (std::find (moving.begin(), moving.end(), r) != moving.end()) continue;
+            double s0, len; if (ctx.s.clipSpan (r, s0, len)) { t.push_back (s0 * 4.0); t.push_back ((s0 + len) * 4.0); }
+        }
+        for (auto& m : *ctx.s.markers) t.push_back (m.bar * 4.0);
+        if (ctx.s.loopOn.load()) { t.push_back (ctx.s.loopStart.load() * 4.0); t.push_back (ctx.s.loopEnd.load() * 4.0); }
+        t.push_back (ctx.s.currentBar() * 4.0);
+        return timeline::magnet (b * 4.0, gridBars() * 4.0, t, pxPerBeat(), 7.0, hit) / 4.0;
+    }
+
+    void zoomAt (double factor, double px)
+    {
+        const double anchor = bar (px);
+        pxPerBar = juce::jlimit (kMinPxPerBar, kMaxPxPerBar, pxPerBar * factor);
+        scrollBar = std::max (0.0, anchor - (px - left) / pxPerBar);
+        repaint();
+    }
+    /** = and -: around the playhead when it is in view, else the middle */
+    void zoomKey (bool in)
+    {
+        const double px = xd (ctx.s.currentBar());
+        zoomAt (in ? 1.5 : 1.0 / 1.5, px >= left && px <= lanesArea().getRight() ? px : left + (lanesArea().getWidth() - left) * 0.5);
+    }
+    void showBars (double a, double b)
+    {
+        if (b <= a) b = a + 1;
+        const double w = std::max (20.0, (double) lanesArea().getWidth() - left - 16);
+        pxPerBar = juce::jlimit (kMinPxPerBar, kMaxPxPerBar, w / (b - a));
+        scrollBar = std::max (0.0, a);
+        repaint();
+    }
+    void zoomToFit() { showBars (0.0, std::max (4.0, ctx.s.projectBars())); }
+    void zoomToSelection()
+    {
+        double a = 1.0e12, b = -1;
+        for (auto& r : sel) { double s0, len; if (ctx.s.clipSpan (r, s0, len)) { a = std::min (a, s0); b = std::max (b, s0 + len); } }
+        if (b < 0 && ctx.s.loopOn.load()) { a = ctx.s.loopStart.load(); b = ctx.s.loopEnd.load(); }
+        if (b < 0) { zoomToFit(); return; }
+        const double pad = (b - a) * 0.04;
+        showBars (std::max (0.0, a - pad), b + pad);
+    }
+    void setTrackHeight (int h) { laneH = juce::jlimit (22, 220, h); scrollY = juce::jlimit (0, maxScrollY(), scrollY); repaint(); }
+    int maxScrollY() const { return std::max (0, (int) ctx.s.tracks.size() * laneH - lanesArea().getHeight() + 8); }
+    void toggleSnap() { ctx.s.snap.store (! ctx.s.snap.load()); ctx.s.dirty = true; repaint(); }
+    void gridMenu (juce::Component* near)
+    {
+        juce::PopupMenu m;
+        const auto& g = timeline::grids();
+        for (int i = 0; i < (int) g.size(); ++i)
+        {
+            if (i == 9 || i == 14 || i == 17) m.addSeparator();
+            m.addItem (200 + i, i == 0 ? timeline::gridName (0, pxPerBeat()) : juce::String (g[(size_t) i].name), true, ctx.s.gridIndex.load() == i);
+        }
+        m.addSeparator(); m.addItem (199, "snap", true, ctx.s.snap.load());
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (near), [this] (int r) { if (r == 199) toggleSnap(); else if (r >= 200) { ctx.s.gridIndex.store (r - 200); ctx.s.snap.store (true); ctx.s.dirty = true; repaint(); } });
+    }
+
     void resized() override
     {
         auto sa = songArea();
         addSong.setBounds (sa.getX() + 8, sa.getY() + 6, 100, 20);
-        snapLink.setBounds (8, 4, 44, 18); zoomOut.setBounds (56, 4, 18, 18); zoomIn.setBounds (76, 4, 18, 18);
+        int bx = 8;
+        auto place = [&] (juce::Component& c, int w) { c.setBounds (bx, 2, w, 18); bx += w + 4; };
+        place (snapLink, 40); place (gridLink, 156); bx += 8;
+        place (zoomOut, 18); place (zoomIn, 18); place (fitLink, 28); place (selLink, 28); bx += 8;
+        place (shorter, 50); place (taller, 50); bx += 8; place (followLink, 50);
         addLane.setBounds (8, autoArea().getY() + 4, 60, 18);
     }
     std::vector<Track*> rows() const
     {
         std::vector<Track*> v; for (auto& t : ctx.s.tracks) v.push_back (t.get()); return v;
     }
+
+    // ---- paint --------------------------------------------------------------------------------------------
+    /** every line of a ladder (in bars) between two bars */
+    template <typename Fn> void eachLine (double b0, double b1, double step, Fn fn) const
+    {
+        if (step <= 0) return;
+        const long long k0 = (long long) std::floor (b0 / step), k1 = (long long) std::ceil (b1 / step);
+        if (k1 - k0 > 4000) return;
+        for (long long k = std::max (0LL, k0); k <= k1; ++k) fn ((double) k * step, k);
+    }
+    void paintRuler (juce::Graphics& g)
+    {
+        auto& s = ctx.s;
+        const auto la = lanesArea();
+        const double b0 = bar (left), b1 = bar (la.getRight());
+        g.setColour (theme.ink.withAlpha (0.04f)); g.fillRect (left, top, la.getWidth() - left, ruler - top);
+        // ticks: bars, beats, the grid
+        const double gb = gridBars();
+        if (gb * pxPerBar >= 4) eachLine (b0, b1, gb, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.3f)); g.fillRect (x (b), ruler - 3, 1, 3); });
+        if (pxPerBeat() >= 5) eachLine (b0, b1, 0.25, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.45f)); g.fillRect (x (b), ruler - 6, 1, 6); });
+        double barStep = 1; while (barStep * pxPerBar < 5 && barStep < 4096) barStep *= 2;
+        eachLine (b0, b1, barStep, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.7f)); g.fillRect (x (b), ruler - 10, 1, 10); });
+        // labels: the finest level with room, in bars (bar multiples), beats, sixteenths, then ticks
+        double lv = 1; while (lv * pxPerBar < 44 && lv < 4096) lv *= 2;
+        if (pxPerBar >= 4 * 46) { lv = 0.25; if (pxPerBar / 16.0 >= 70) lv = 1.0 / 16.0; if (pxPerBar / 64.0 >= 84) lv = 1.0 / 64.0; if (pxPerBar / 256.0 >= 84) lv = 1.0 / 256.0; }
+        g.setFont (uiFont (9.5f));
+        eachLine (b0, b1, lv, [&] (double b, long long)
+        {
+            const int px = x (b); if (px < left - 1) return;
+            auto txt = timeline::formatPosition (b * 4.0);
+            if (lv >= 1) txt = txt.upToFirstOccurrenceOf (".", false, false);
+            else if (lv >= 0.25) txt = txt.upToLastOccurrenceOf (".", false, false).upToLastOccurrenceOf (".", false, false);
+            else if (lv >= 1.0 / 16.0) txt = txt.upToLastOccurrenceOf (".", false, false);
+            g.setColour (theme.ink); g.drawText (txt, px + 3, top + 1, 90, 12, juce::Justification::centredLeft);
+        });
+        // time, at round numbers of seconds
+        const double t0 = s.secondsAt (b0 * 4.0), t1 = s.secondsAt (b1 * 4.0);
+        const double pxPerSec = (t1 > t0 ? (b1 - b0) / (t1 - t0) : 0.5) * pxPerBar;
+        static const double steps[] = { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600 };
+        double ts = 600; for (double st : steps) if (st * pxPerSec >= 64) { ts = st; break; }
+        g.setFont (uiFont (8.5f)); g.setColour (theme.ink.withAlpha (0.55f));
+        std::vector<juce::Rectangle<int>> taken;   // the markers' names: a time label never hides under one
+        for (auto& m : *s.markers) { const int px = x (m.bar); taken.push_back ({ px - 2, top + 14, std::min (110, 8 + (int) (m.name.length() * 6)) + 4, 11 }); }
+        for (double t = std::floor (t0 / ts) * ts; t <= t1 + ts; t += ts)
+        {
+            if (t < 0) continue;
+            const int px = x (s.beatAt (t) / 4.0); if (px < left) continue;
+            g.fillRect (px, top + 26, 1, 4);
+            const auto label = timeline::formatTime (t, ts < 1.0);
+            const juce::Rectangle<int> r (px + 3, top + 14, (int) label.length() * 6 + 2, 11);
+            if (std::any_of (taken.begin(), taken.end(), [&] (const juce::Rectangle<int>& k) { return k.intersects (r); })) continue;
+            g.drawText (label, r.withWidth (90), juce::Justification::centredLeft);
+        }
+        // the loop and the markers
+        if (s.loopOn.load()) { g.setColour (theme.fill.withAlpha (0.7f)); g.fillRect (x (s.loopStart.load()), ruler - 4, std::max (2, x (s.loopEnd.load()) - x (s.loopStart.load())), 3); }
+        for (auto& m : *s.markers)
+        {
+            const int px = x (m.bar); if (px < left || px > la.getRight()) continue;
+            g.setColour (juce::Colour (0xffee8e6e)); g.fillRect (px, top, 1, ruler - top);
+            g.setFont (uiFont (9.0f)); const int w = std::min (110, 8 + (int) (m.name.length() * 6));
+            g.setColour (theme.ground.withAlpha (0.85f)); g.fillRect (px + 1, top + 14, w, 11);
+            g.setColour (juce::Colour (0xffee8e6e)); g.drawText (m.name, px + 3, top + 14, w - 2, 11, juce::Justification::centredLeft, true);
+        }
+    }
     void paint (juce::Graphics& g) override
     {
         auto& s = ctx.s;
         const auto la = lanesArea();
-        g.setFont (uiFont (10.0f));
-        // ruler
         paintSong (g);
         juce::Graphics::ScopedSaveState clipAll (g);
         g.reduceClipRegion (0, 0, la.getWidth(), getHeight());
-        const double b0 = scrollBar, b1 = bar (la.getRight());
-        const int step = pxPerBar >= 40 ? 1 : pxPerBar >= 12 ? 4 : 16;
-        for (int b = (int) std::floor (b0 / step) * step; b <= (int) b1 + step; b += step)
+        // the toolbar's readout: the grid, and where the mouse is
+        snapLink.setLit (s.snap.load()); followLink.setLit (s.follow.load());
+        gridLink.setText ("grid " + timeline::gridName (s.gridIndex.load(), pxPerBeat()));
+        g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.8f));
+        if (hoverBar >= 0) g.drawText (timeline::formatPosition (hoverBar * 4.0) + "   " + timeline::formatTime (s.secondsAt (hoverBar * 4.0)), la.getRight() - 240, 3, 232, 16, juce::Justification::centredRight);
         {
-            const int px = x (b);
-            if (px < left) continue;
-            g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (px, ruler - 6, 1, la.getHeight() + 6);
-            g.setColour (theme.ink); g.drawText (juce::String (b + 1), px + 3, 4, 40, 16, juce::Justification::centredLeft);
+            juce::Graphics::ScopedSaveState rs (g); g.reduceClipRegion (left, top, la.getWidth() - left, ruler - top);
+            paintRuler (g);
         }
-        // loop and markers on the ruler
-        if (s.loopOn.load()) { g.setColour (theme.fill.withAlpha (0.7f)); g.fillRect (x (s.loopStart.load()), ruler - 4, std::max (2, x (s.loopEnd.load()) - x (s.loopStart.load())), 3); }
-        for (auto& m : *s.markers) { const int px = x (m.bar); if (px < left) continue; g.setColour (juce::Colour (0xffee8e6e)); g.fillRect (px, 0, 1, ruler); g.setFont (uiFont (9.0f)); g.drawText (m.name, px + 3, ruler - 12, 90, 11, juce::Justification::centredLeft, true); }
+        // grid lines behind the lanes
+        {
+            juce::Graphics::ScopedSaveState gs (g); g.reduceClipRegion (left, la.getY(), la.getWidth() - left, la.getHeight());
+            const double b0 = bar (left), b1 = bar (la.getRight()), gb = gridBars();
+            if (gb * pxPerBar >= 5 && gb < 0.25 - 1.0e-9) eachLine (b0, b1, gb, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.05f)); g.fillRect (x (b), la.getY(), 1, la.getHeight()); });
+            if (pxPerBeat() >= 6) eachLine (b0, b1, 0.25, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.09f)); g.fillRect (x (b), la.getY(), 1, la.getHeight()); });
+            double barStep = 1; while (barStep * pxPerBar < 5 && barStep < 4096) barStep *= 2;
+            eachLine (b0, b1, barStep, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.2f)); g.fillRect (x (b), la.getY(), 1, la.getHeight()); });
+            if (s.loopOn.load()) { g.setColour (theme.fill.withAlpha (0.06f)); g.fillRect (x (s.loopStart.load()), la.getY(), std::max (1, x (s.loopEnd.load()) - x (s.loopStart.load())), la.getHeight()); }
+        }
         // lanes
         auto rs = rows();
-        g.setFont (uiFont (11.0f));
         for (int i = 0; i < (int) rs.size(); ++i)
         {
             auto& t = *rs[(size_t) i];
-            const int y = la.getY() + i * laneH - scrollY;
+            const int y = rowY (i);
             if (y + laneH < la.getY() || y > la.getBottom()) continue;
-            const bool sel = ctx.selected() == &t;
-            g.setColour (theme.ink.withAlpha (sel ? 0.12f : 0.05f)); g.fillRect (0, y, la.getWidth(), laneH - 1);
+            juce::Graphics::ScopedSaveState rowClip (g);
+            g.reduceClipRegion (0, la.getY(), la.getWidth(), la.getHeight());
+            const bool selT = ctx.selected() == &t;
+            g.setColour (theme.ink.withAlpha (selT ? 0.12f : 0.05f)); g.fillRect (0, y, left, laneH - 1);
+            g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (left, y + laneH - 1, la.getWidth() - left, 1);
             g.setColour (trackColour (t)); g.fillRect (0, y, 4, laneH - 1);
-            g.setColour (theme.ink); g.setFont (uiFont (11.0f, sel)); g.drawText (t.name, 10, y + 2, left - 14, 16, juce::Justification::centredLeft, true);
-            g.setFont (uiFont (9.0f)); g.setColour (theme.ink.withAlpha (0.7f));
-            g.drawText (t.isAudio() ? "audio" : (t.instrument ? t.instrument->name : ""), 10, y + 18, left - 14, 14, juce::Justification::centredLeft, true);
-            juce::Graphics::ScopedSaveState ss (g);
+            g.setColour (theme.ink); g.setFont (uiFont (11.0f, selT)); g.drawText (t.name, 10, y + 2, left - 14, std::min (16, laneH - 2), juce::Justification::centredLeft, true);
+            if (laneH >= 34) { g.setFont (uiFont (9.0f)); g.setColour (theme.ink.withAlpha (0.7f)); g.drawText (t.isAudio() ? "audio" : (t.instrument ? t.instrument->name : ""), 10, y + 18, left - 14, 14, juce::Justification::centredLeft, true); }
             g.reduceClipRegion (left, la.getY(), la.getWidth() - left, la.getHeight());
+            const double vis0 = bar (left), vis1 = bar (la.getRight());
             for (auto& c : *t.clips)
             {
-                auto r = juce::Rectangle<float> ((float) x (c.startBar), (float) y + 4.0f, (float) (c.bars * pxPerBar) - 2.0f, (float) laneH - 10.0f);
-                if (r.getRight() < left || r.getX() > la.getRight()) continue;
-                const bool live = s.mode.load() == (int) PlayMode::Arrange && t.shownPattern.load() == c.pattern && s.currentBar() >= c.startBar && s.currentBar() < c.startBar + c.bars && s.playPpq.load() >= 0;
-                g.setColour (trackColour (t).withAlpha (live ? 1.0f : 0.6f));
+                if (c.startBar + c.bars < vis0 || c.startBar > vis1) continue;
+                auto r = juce::Rectangle<float> ((float) xd (c.startBar), (float) y + 3.0f, (float) (c.bars * pxPerBar) - 1.0f, (float) laneH - 7.0f);
+                r = r.getIntersection (juce::Rectangle<float> ((float) left - 4.0f, (float) y, (float) la.getWidth() + 8.0f, (float) laneH));
+                const bool live = ! c.muted && s.mode.load() == (int) PlayMode::Arrange && t.shownPattern.load() == c.pattern && s.currentBar() >= c.startBar && s.currentBar() < c.startBar + c.bars && s.playPpq.load() >= 0;
+                g.setColour (trackColour (t).withAlpha (c.muted ? 0.18f : live ? 1.0f : 0.6f));
                 if (theme.mirror) g.fillRect (r); else g.fillPath (ui::skewRect (r, 0.15f));
-                g.setColour (ui::inkFor (trackColour (t))); g.setFont (uiFont (10.0f));
-                g.drawText ("p" + juce::String (c.pattern + 1), r.reduced (4.0f, 0.0f), juce::Justification::centredLeft, true);
+                if (isSelected ({ t.uid, c.id, false })) { g.setColour (juce::Colours::white); g.drawRect (r, 2.0f); }
+                g.setColour (ui::inkFor (trackColour (t)).withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (10.0f));
+                juce::String label = "p" + juce::String (c.pattern + 1); if (c.offset > 1.0e-9) label << " +" << timeline::formatLength (c.offset).fromFirstOccurrenceOf (".", false, false); if (c.muted) label << " (muted)";
+                g.drawText (label, r.reduced (4.0f, 0.0f).withHeight (std::min (r.getHeight(), 16.0f)), juce::Justification::centredLeft, true);
             }
             for (auto& c : *t.aclips)
             {
-                auto r = juce::Rectangle<float> ((float) x (c.startBar), (float) y + 3.0f, (float) (c.bars * pxPerBar) - 2.0f, (float) laneH - 8.0f);
-                if (r.getRight() < left || r.getX() > la.getRight()) continue;
-                g.setColour (trackColour (t).withAlpha (0.35f)); g.fillRect (r);
-                g.setColour (trackColour (t)); g.drawRect (r, 1.0f);
-                drawWave (g, c, r, ui::inkFor (theme.ground));
-                g.setColour (theme.ink); g.setFont (uiFont (9.0f));
-                g.drawText (juce::File (c.path).getFileNameWithoutExtension(), r.reduced (3.0f, 0.0f).withHeight (12.0f), juce::Justification::centredLeft, true);
+                if (c.startBar + c.bars < vis0 || c.startBar > vis1) continue;
+                auto full = juce::Rectangle<float> ((float) xd (c.startBar), (float) y + 3.0f, (float) (c.bars * pxPerBar) - 1.0f, (float) laneH - 6.0f);
+                auto r = full.getIntersection (juce::Rectangle<float> ((float) left - 4.0f, (float) y, (float) la.getWidth() + 8.0f, (float) laneH));
+                g.setColour (trackColour (t).withAlpha (c.muted ? 0.12f : 0.35f)); g.fillRect (r);
+                if (! c.muted) drawWave (g, c, full, r, ui::inkFor (theme.ground));
+                g.setColour (isSelected ({ t.uid, c.id, true }) ? juce::Colours::white : trackColour (t)); g.drawRect (r, isSelected ({ t.uid, c.id, true }) ? 2.0f : 1.0f);
+                // the fades, and their handles at the top corners
+                const double secPerBar = 4.0 * 60.0 / s.tempo();
+                const float fi = (float) (c.fadeIn / secPerBar * pxPerBar), fo = (float) (c.fadeOut / secPerBar * pxPerBar);
+                g.setColour (theme.ink.withAlpha (0.8f));
+                if (fi > 1) g.drawLine (full.getX(), full.getBottom(), full.getX() + fi, full.getY(), 1.0f);
+                if (fo > 1) g.drawLine (full.getRight() - fo, full.getY(), full.getRight(), full.getBottom(), 1.0f);
+                if (laneH >= 30) { g.fillRect (full.getX() + fi - 2.0f, full.getY(), 4.0f, 4.0f); g.fillRect (full.getRight() - fo - 2.0f, full.getY(), 4.0f, 4.0f); }
+                g.setColour (theme.ink.withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (9.0f));
+                juce::String label = juce::File (c.path).getFileNameWithoutExtension();
+                if (std::abs (c.gain - 1.0f) > 1.0e-4f) label << "  " << juce::String (juce::Decibels::gainToDecibels (c.gain), 1) << " db";
+                if (c.muted) label << " (muted)";
+                g.drawText (label, r.reduced (5.0f, 0.0f).withHeight (12.0f).translated (0.0f, 4.0f), juce::Justification::centredLeft, true);
             }
+        }
+        // the band being drawn
+        if (dragMode == DragMode::Band) { g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRect (bandRect()); g.setColour (juce::Colours::white.withAlpha (0.7f)); g.drawRect (bandRect(), 1); }
+        // the horizontal scroll bar: the view against the whole project
+        {
+            const auto sa = scrollArea();
+            const double total = std::max (s.projectBars() + 8.0, scrollBar + visibleBars());
+            g.setColour (theme.ink.withAlpha (0.08f)); g.fillRect (sa);
+            const int tx = sa.getX() + (int) (sa.getWidth() * scrollBar / total), tw = std::max (12, (int) (sa.getWidth() * visibleBars() / total));
+            g.setColour (theme.ink.withAlpha (dragMode == DragMode::Scroll ? 0.6f : 0.35f)); g.fillRect (tx, sa.getY() + 2, tw, sa.getHeight() - 4);
         }
         // playhead
         const double cb = s.currentBar();
-        if (cb >= b0) { g.setColour (juce::Colours::white); g.fillRect (x (cb), 0, 1, la.getBottom()); }
+        if (xd (cb) >= left && xd (cb) <= la.getRight()) { g.setColour (juce::Colours::white); g.fillRect (x (cb), top, 1, la.getBottom() - top); }
         paintLanes (g);
-        g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (left - 1, 0, 1, la.getBottom());
-        g.setColour (theme.ink.withAlpha (0.7f)); g.setFont (uiFont (9.5f));
-        if (ctx.status) ctx.status (ui::U ("arrange: drag clips · edge: length · alt-drag: copy · double-click a lane: add the track's pattern · drop audio files here · right-click a clip · , and . nudge the clip last touched by 5 ms · ruler drag: loop · shift-click ruler: marker"));
+        g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (left - 1, top, 1, la.getBottom() - top);
+        if (ctx.status && hoverBar >= 0) ctx.status (ui::U ("arrange: click a clip: select (shift: add) · drag: move (cmd: free, alt: copy) · edges: trim · top corners: fades · drag empty space: select · cmd+c x v d: copy cut paste duplicate · cmd+t: split · delete · = -: zoom · z: zoom to selection · ←→: move by the grid · [ ]: markers"));
     }
-    void drawWave (juce::Graphics& g, const AudioClip& c, juce::Rectangle<float> r, juce::Colour ink)
+    void drawWave (juce::Graphics& g, const AudioClip& c, juce::Rectangle<float> full, juce::Rectangle<float> vis, juce::Colour ink)
     {
         if (! c.sample) return;
         const auto& d = c.sample->data; const int n = d.getNumSamples();
-        if (n < 2) return;
+        if (n < 2 || full.getWidth() < 1) return;
         const double srcLen = c.mode == 0 ? std::min ((double) n, (c.bars * 4.0 * 60.0 / ctx.s.tempo()) * c.sample->rate * std::exp2 (c.pitch / 12.0)) : c.sourceSeconds() * c.sample->rate;
-        const int px = (int) r.getWidth();
+        const double perPx = srcLen / std::max (1.0f, full.getWidth());
         g.setColour (ink.withAlpha (0.8f));
-        const float mid = r.getCentreY(), hh = r.getHeight() * 0.45f;
-        for (int i = 0; i < px; i += 2)
+        const float mid = full.getCentreY(), hh = full.getHeight() * 0.42f * std::min (2.0f, c.gain);
+        const int i0 = std::max (0, (int) (vis.getX() - full.getX())), i1 = (int) (vis.getRight() - full.getX());
+        const int stepPx = perPx < 1.0 ? 1 : 2;
+        for (int i = i0; i < i1; i += stepPx)
         {
-            const int a = (int) (c.offset * c.sample->rate + srcLen * i / std::max (1, px)), b = (int) (c.offset * c.sample->rate + srcLen * (i + 2) / std::max (1, px));
-            if (a >= n) break;
+            const double off = c.offset * c.sample->rate;
+            int a = (int) (off + perPx * i), b = (int) (off + perPx * (i + stepPx));
+            if (c.reverse) { a = (int) (off + srcLen - perPx * (i + stepPx)); b = (int) (off + srcLen - perPx * i); }
+            if (a >= n || b < 0) continue;
+            a = std::max (0, a); b = std::min (n, std::max (a + 1, b));
             float lo = 0, hi = 0;
-            for (int k = a; k < std::min (n, std::max (a + 1, b)); k += std::max (1, (b - a) / 64)) { const float v = d.getSample (0, k); lo = std::min (lo, v); hi = std::max (hi, v); }
-            g.fillRect (r.getX() + i, mid - hi * hh, 2.0f, std::max (1.0f, (hi - lo) * hh));
+            const int stride = std::max (1, (b - a) / 64);
+            for (int k = a; k < b; k += stride) { const float v = d.getSample (0, k); lo = std::min (lo, v); hi = std::max (hi, v); }
+            g.fillRect (full.getX() + (float) i, mid - hi * hh, (float) stepPx, std::max (1.0f, (hi - lo) * hh));
         }
     }
     // ---- automation lanes of the selected track ----------------------------------------------------
@@ -381,6 +568,7 @@ public:
             g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (l->enabled ? "on" : "off", 8, y + 18, 40, 14, juce::Justification::centredLeft);
             juce::Graphics::ScopedSaveState ss (g);
             g.reduceClipRegion (left, y, aa.getWidth() - left, lh);
+            if (pxPerBeat() >= 6) eachLine (bar (left), bar (aa.getWidth()), 0.25, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (x (b), y, 1, lh - 2); });
             juce::Path p;
             const double bStart = scrollBar, bEnd = bar (aa.getWidth());
             for (int px = left; px < aa.getWidth(); px += 2)
@@ -395,7 +583,7 @@ public:
             {
                 const double b = pt.beat / 4.0;
                 if (b < bStart || b > bEnd) continue;
-                const float px = (float) x (b), yy = (float) y + (float) (lh - 6) - pt.value * (float) (lh - 10);
+                const float px = (float) xd (b), yy = (float) y + (float) (lh - 6) - pt.value * (float) (lh - 10);
                 g.setColour (juce::Colours::white); g.fillEllipse (px - 3.0f, yy - 3.0f, 6.0f, 6.0f);
             }
         }
@@ -449,33 +637,200 @@ public:
         g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (juce::String (b) + " bars  " + juce::String (b * 4.0 * 60.0 / s.tempo() / 60.0, 1) + " min", sa.getX() + 8, sa.getBottom() - 40, sa.getWidth() - 16, 16, juce::Justification::centredLeft);
         g.drawText (ui::U ("click: scene · drag: bars · right-click: remove"), sa.getX() + 8, sa.getBottom() - 22, sa.getWidth() - 16, 16, juce::Justification::centredLeft, true);
     }
+
+    // ---- selection --------------------------------------------------------------------------------------
+    bool isSelected (const ClipRef& r) const { return std::find (sel.begin(), sel.end(), r) != sel.end(); }
+    void pruneSelection() { sel.erase (std::remove_if (sel.begin(), sel.end(), [this] (const ClipRef& r) { double a, b; return ! ctx.s.clipSpan (r, a, b); }), sel.end()); }
+    void selectAll() { sel = ctx.s.allClips(); repaint(); }
+
+    // ---- editing (the edit menu and the keys) ---------------------------------------------------------------
+    Session::ClipBoard board;
+    void copySel() { pruneSelection(); if (! sel.empty()) { board = ctx.s.copyClips (sel); say (juce::String (board.items.size()) + " clip(s) copied"); } }
+    void cutSel() { copySel(); deleteSel(); }
+    void deleteSel() { pruneSelection(); if (sel.empty()) return; ctx.s.deleteClips (sel); say (juce::String (sel.size()) + " clip(s) removed"); sel.clear(); repaint(); }
+    void pasteAtPlayhead()
+    {
+        if (board.empty()) { say ("nothing to paste"); return; }
+        auto made = ctx.s.pasteClips (board, ctx.s.currentBar(), ctx.selected());
+        if (! made.empty()) { sel = made; say (juce::String (made.size()) + " clip(s) pasted at " + timeline::formatPosition (ctx.s.currentBar() * 4.0)); }
+        else say ("paste: no track of the right kind");
+        repaint();
+    }
+    void duplicateSel() { pruneSelection(); if (sel.empty()) return; sel = ctx.s.duplicateClips (sel); say ("duplicated"); repaint(); }
+    void splitSel()
+    {
+        pruneSelection();
+        const double at = ctx.s.currentBar();
+        auto targets = sel;
+        if (targets.empty()) { if (auto* t = ctx.selected()) targets = ctx.s.clipsBetween (at, at, { t->uid }); }
+        auto made = ctx.s.splitClips (targets, at);
+        say (made.empty() ? juce::String ("split: no clip under the playhead") : juce::String (made.size()) + " clip(s) split at " + timeline::formatPosition (at * 4.0));
+        repaint();
+    }
+    void muteSel() { pruneSelection(); if (sel.empty()) return; bool anyOn = false; for (auto& r : sel) if (! ctx.s.clipMuted (r)) anyOn = true; ctx.s.setClipsMuted (sel, anyOn); say (anyOn ? "muted" : "unmuted"); repaint(); }
+    void loopSelection()
+    {
+        double a = 1.0e12, b = -1;
+        for (auto& r : sel) { double s0, len; if (ctx.s.clipSpan (r, s0, len)) { a = std::min (a, s0); b = std::max (b, s0 + len); } }
+        if (b < 0) { say ("loop: select clips first"); return; }
+        ctx.s.loopStart.store (a); ctx.s.loopEnd.store (b); ctx.s.loopOn.store (true); ctx.s.dirty = true; repaint();
+    }
+    /** move the selection by bars; with nothing selected the playhead moves */
+    void moveSel (double bars)
+    {
+        pruneSelection();
+        if (sel.empty()) { ctx.s.locate (std::max (0.0, ctx.s.currentBar() + bars)); repaint(); return; }
+        ctx.s.moveClips (sel, bars); repaint();
+    }
+    /** move the selected clips by milliseconds, off the grid (what , and . do) */
+    bool nudge (double ms)
+    {
+        pruneSelection();
+        if (sel.empty()) return false;
+        ctx.s.moveClips (sel, ms * 0.001 / (60.0 / ctx.s.tempo() * 4.0)); repaint(); return true;
+    }
+    void stepGrid (bool forward, const juce::ModifierKeys& mods)
+    {
+        double d = gridBars();
+        if (mods.isCommandDown()) d = 1.0 / (4.0 * timeline::kTicksPerBeat);          // one tick
+        else if (mods.isAltDown()) d = 0.001 / (60.0 / ctx.s.tempo() * 4.0);           // one ms
+        if (sel.empty() && ! mods.isAnyModifierKeyDown())
+        {
+            // the playhead to the next / previous grid line
+            const double cb = ctx.s.currentBar(), g = gridBars();
+            const double nb = forward ? (std::floor (cb / g + 1.0e-6) + 1) * g : (std::ceil (cb / g - 1.0e-6) - 1) * g;
+            ctx.s.locate (std::max (0.0, nb)); repaint(); return;
+        }
+        moveSel (forward ? d : -d);
+    }
+    void jumpMarker (bool forward)
+    {
+        const double cb = ctx.s.currentBar();
+        double best = forward ? 1.0e12 : -1;
+        for (auto& m : *ctx.s.markers) { if (forward && m.bar > cb + 1.0e-6) best = std::min (best, m.bar); if (! forward && m.bar < cb - 1.0e-6) best = std::max (best, m.bar); }
+        if (! forward && best < 0) best = 0;
+        if (best < 1.0e11) { ctx.s.locate (best); repaint(); }
+    }
+    void insertBars()
+    {
+        ask ("insert time", "how long, from the playhead (bars.beats.sixteenths.ticks, or time)", "1", [this] (juce::String t)
+        {
+            const double len = timeline::parse (t, true, [this] (double secs) { return ctx.s.beatAt (ctx.s.secondsAt (ctx.s.currentBar() * 4.0) + secs) - ctx.s.currentBar() * 4.0; }) / 4.0;
+            if (len <= 0) { say ("insert time: could not read \"" + t + "\""); return; }
+            ctx.s.insertTime (ctx.s.currentBar(), len); say (timeline::formatLength (len * 4.0) + " inserted at " + timeline::formatPosition (ctx.s.currentBar() * 4.0)); repaint();
+        });
+    }
+    void deleteLoopTime()
+    {
+        if (! ctx.s.loopOn.load()) { say ("delete time: set the loop around the bars to remove first"); return; }
+        const double a = ctx.s.loopStart.load(), b = ctx.s.loopEnd.load();
+        ctx.s.deleteTime (a, b); sel.clear(); say ("bars " + timeline::formatPosition (a * 4.0) + " - " + timeline::formatPosition (b * 4.0) + " removed"); repaint();
+    }
+    /** type where a clip starts and how long it is (the rest of the selection moves with it) */
+    void positionDialog (ClipRef r)
+    {
+        double s0, len; if (! ctx.s.clipSpan (r, s0, len)) return;
+        auto* w = new juce::AlertWindow ("position", "bars.beats.sixteenths.ticks (960 ticks a beat), or time: 1:05.250", juce::MessageBoxIconType::NoIcon);
+        w->addTextEditor ("start", timeline::formatPosition (s0 * 4.0), "start");
+        w->addTextEditor ("length", timeline::formatLength (len * 4.0), "length");
+        w->addButton ("ok", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, r, s0, len] (int res)
+        {
+            if (res != 1) return;
+            auto toBeats = [this] (double secs) { return ctx.s.beatAt (secs); };
+            const double ns = timeline::parse (w->getTextEditorContents ("start"), false, toBeats) / 4.0;
+            const double nl = timeline::parse (w->getTextEditorContents ("length"), true, [this, s0] (double secs) { return ctx.s.beatAt (ctx.s.secondsAt (s0 * 4.0) + secs) - s0 * 4.0; }) / 4.0;
+            if (ns >= 0 && std::abs (ns - s0) > 1.0e-12) { auto moving = isSelected (r) ? sel : std::vector<ClipRef> { r }; ctx.s.moveClips (moving, ns - s0); }
+            if (nl > 0 && std::abs (nl - len) > 1.0e-12) ctx.s.setClipLength (r, nl);
+            if (ns < 0 || nl <= 0) say ("position: could not read what was typed");
+            repaint();
+        }), true);
+    }
+    void ask (const juce::String& title, const juce::String& msg, const juce::String& def, std::function<void (juce::String)> then)
+    {
+        auto* w = new juce::AlertWindow (title, msg, juce::MessageBoxIconType::NoIcon);
+        w->addTextEditor ("v", def); w->addButton ("ok", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([w, then] (int r) { if (r == 1) then (w->getTextEditorContents ("v")); }), true);
+    }
+    void say (const juce::String& m) { if (ctx.status) ctx.status (m); }
+
+    /** the arrangement's own keys (the view sends them first while this page shows). True when used */
+    bool key (const juce::KeyPress& k)
+    {
+        const auto c = k.getTextCharacter(); const int kc = k.getKeyCode(); const auto mods = k.getModifiers();
+        if (kc == juce::KeyPress::leftKey || kc == juce::KeyPress::rightKey) { stepGrid (kc == juce::KeyPress::rightKey, mods); return true; }
+        if (mods.isCommandDown()) return false;
+        if (c == '=' || c == '+') { zoomKey (true); return true; }
+        if (c == '-' || c == '_') { zoomKey (false); return true; }
+        if (c == 'z') { zoomToSelection(); return true; }
+        if (c == 'Z') { zoomToFit(); return true; }
+        if (c == 'n') { toggleSnap(); return true; }
+        if (c == '[' || c == ']') { jumpMarker (c == ']'); return true; }
+        if (kc == juce::KeyPress::homeKey) { ctx.s.locate (0.0); scrollBar = 0; repaint(); return true; }
+        if (kc == juce::KeyPress::endKey) { ctx.s.locate (ctx.s.projectBars()); return true; }
+        if (kc == juce::KeyPress::deleteKey || kc == juce::KeyPress::backspaceKey) { deleteSel(); return true; }
+        if (kc == juce::KeyPress::escapeKey) { sel.clear(); repaint(); return true; }
+        return false;
+    }
+
     // ---- mouse --------------------------------------------------------------------------------------
-    struct Hit { Track* t = nullptr; int clip = -1; bool audio = false; bool edge = false; };
-    Hit hitClip (juce::Point<int> p)
+    enum class DragMode { None, Ruler, Loop, Marker, Song, LanePoint, Freehand, Move, TrimStart, TrimEnd, FadeIn, FadeOut, Band, Scroll };
+    struct Hit { Track* t = nullptr; ClipRef ref; bool found = false; enum Part { Body, Start, End, FadeIn, FadeOut } part = Body; };
+    Hit hitClip (juce::Point<int> p) const
     {
         Hit h; const auto la = lanesArea();
         if (! la.contains (p) || p.x < left) return h;
         auto rs = rows();
-        const int row = (p.y - la.getY() + scrollY) / laneH;
+        const int row = rowAt (p.y);
         if (row < 0 || row >= (int) rs.size()) return h;
         h.t = rs[(size_t) row];
         const double b = bar (p.x);
-        for (int i = 0; i < (int) h.t->clips->size(); ++i) { auto& c = (*h.t->clips)[(size_t) i]; if (b >= c.startBar && b < c.startBar + c.bars) { h.clip = i; h.edge = x (c.startBar + c.bars) - p.x < 6; return h; } }
-        for (int i = 0; i < (int) h.t->aclips->size(); ++i) { auto& c = (*h.t->aclips)[(size_t) i]; if (b >= c.startBar && b < c.startBar + c.bars) { h.clip = i; h.audio = true; h.edge = x (c.startBar + c.bars) - p.x < 6; return h; } }
+        const int y = rowY (row);
+        auto edges = [&] (double s0, double len)
+        {
+            const double x0 = xd (s0), x1 = xd (s0 + len), w = x1 - x0;
+            const double zone = std::min (6.0, w * 0.25);
+            if (p.x - x0 <= zone) h.part = Hit::Start; else if (x1 - p.x <= zone) h.part = Hit::End;
+        };
+        for (auto& c : *h.t->aclips)
+            if (b >= c.startBar && b < c.startBar + c.bars)
+            {
+                h.ref = { h.t->uid, c.id, true }; h.found = true; edges (c.startBar, c.bars);
+                const double secPerBar = 4.0 * 60.0 / ctx.s.tempo();
+                const double fiX = xd (c.startBar) + c.fadeIn / secPerBar * pxPerBar, foX = xd (c.startBar + c.bars) - c.fadeOut / secPerBar * pxPerBar;
+                if (p.y < y + 3 + 8 && laneH >= 30) { if (std::abs (p.x - fiX) <= 5) h.part = Hit::FadeIn; else if (std::abs (p.x - foX) <= 5) h.part = Hit::FadeOut; }
+                return h;
+            }
+        for (auto& c : *h.t->clips)
+            if (b >= c.startBar && b < c.startBar + c.bars) { h.ref = { h.t->uid, c.id, false }; h.found = true; edges (c.startBar, c.bars); return h; }
         return h;
     }
+    juce::Rectangle<int> bandRect() const { return juce::Rectangle<int> (bandA, bandB).getIntersection (lanesArea().withTrimmedLeft (left)); }
+    int markerAt (int px) const { for (int i = 0; i < (int) ctx.s.markers->size(); ++i) if (std::abs (x ((*ctx.s.markers)[(size_t) i].bar) - px) <= 5) return i; return -1; }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const double hb = e.x >= left && e.x < lanesArea().getRight() ? bar (e.position.x) : -1;
+        if (hb != hoverBar) { hoverBar = hb; repaint (0, 0, lanesArea().getWidth(), top); if (ctx.status && hb >= 0) repaint(); }
+        auto h = hitClip (e.getPosition());
+        auto cur = juce::MouseCursor::NormalCursor;
+        if (h.found) cur = h.part == Hit::Start || h.part == Hit::End ? juce::MouseCursor::LeftRightResizeCursor : h.part == Hit::Body ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::CrosshairCursor;
+        else if (e.y >= top && e.y < ruler && markerAt (e.x) >= 0) cur = juce::MouseCursor::LeftRightResizeCursor;
+        setMouseCursor (cur);
+    }
+    void mouseExit (const juce::MouseEvent&) override { hoverBar = -1; repaint (0, 0, lanesArea().getWidth(), top); }
     void mouseDown (const juce::MouseEvent& e) override
     {
         auto& s = ctx.s;
         const auto la = lanesArea(), aa = autoArea(), sa = songArea();
-        drag = Hit(); dragLane = -1;
+        dragMode = DragMode::None; dragLane = -1; downPos = e.getPosition(); downBar = bar (e.position.x); moved = false;
         if (sa.contains (e.getPosition()))
         {
             const int i = (e.y - sa.getY() - 50) / 20;
             if (i >= 0 && i < (int) s.song->size())
             {
                 if (e.mods.isPopupMenu()) { s.editSong ([i] (std::vector<SongEntry>& v) { v.erase (v.begin() + i); }); repaint(); return; }
-                songDrag = i; songStart = (*s.song)[(size_t) i].bars;
+                dragMode = DragMode::Song; songDrag = i; songStart = (*s.song)[(size_t) i].bars;
                 if (e.getNumberOfClicks() > 1 || e.mods.isShiftDown())
                 {
                     juce::PopupMenu m; for (int k = 0; k < (int) s.scenes->size() && k < 32; ++k) m.addItem (k + 1, juce::String (k + 1) + " " + (*s.scenes)[(size_t) k].name);
@@ -484,11 +839,22 @@ public:
             }
             return;
         }
-        if (e.y < ruler && e.x >= left)
+        if (scrollArea().contains (e.getPosition()))
         {
-            if (e.mods.isShiftDown()) { const double b = snapBar (bar (e.x)); s.editMarkers ([b] (std::vector<Marker>& m) { m.push_back ({ "marker " + juce::String (m.size() + 1), b }); }); repaint(); return; }
-            if (e.mods.isPopupMenu()) { const double b = bar (e.x); s.editMarkers ([b] (std::vector<Marker>& m) { m.erase (std::remove_if (m.begin(), m.end(), [b] (const Marker& x) { return std::abs (x.bar - b) < 0.5; }), m.end()); }); repaint(); return; }
-            loopDrag = true; loopA = snapBar (bar (e.x)); s.loopStart.store (loopA); s.loopEnd.store (loopA + 1); s.loopOn.store (true);
+            dragMode = DragMode::Scroll; scrollStart = scrollBar;
+            const auto sr = scrollArea(); const double total = std::max (s.projectBars() + 8.0, scrollBar + visibleBars());
+            const int tx = sr.getX() + (int) (sr.getWidth() * scrollBar / total), tw = std::max (12, (int) (sr.getWidth() * visibleBars() / total));
+            if (e.x < tx || e.x > tx + tw) { scrollBar = std::max (0.0, (e.x - sr.getX()) / (double) sr.getWidth() * total - visibleBars() * 0.5); scrollStart = scrollBar; repaint(); }
+            return;
+        }
+        if (e.y >= top && e.y < ruler && e.x >= left)
+        {
+            const int mk = markerAt (e.x);
+            if (mk >= 0 && e.mods.isPopupMenu()) { s.editMarkers ([mk] (std::vector<Marker>& m) { if (mk < (int) m.size()) m.erase (m.begin() + mk); }); repaint(); return; }
+            if (mk >= 0 && e.getNumberOfClicks() > 1) { renameMarker (mk); return; }
+            if (mk >= 0) { dragMode = DragMode::Marker; markerDrag = mk; return; }
+            if (e.mods.isShiftDown()) { const double b = magnetBar (bar (e.position.x), e.mods.isCommandDown(), {}); s.editMarkers ([b] (std::vector<Marker>& m) { m.push_back ({ "marker " + juce::String (m.size() + 1), b }); }); repaint(); return; }
+            dragMode = DragMode::Ruler; loopA = magnetBar (bar (e.position.x), e.mods.isCommandDown(), {});
             return;
         }
         if (aa.contains (e.getPosition()))
@@ -503,112 +869,288 @@ public:
             if (e.mods.isShiftDown())
             {
                 // freehand: the drag itself is the curve (an arc drawn by hand, a point every few pixels)
-                freehand = true; lastFreeBeat = bar (e.x) * 4.0;
+                dragMode = DragMode::Freehand; lastFreeBeat = bar (e.position.x) * 4.0;
                 const double fb = std::max (0.0, lastFreeBeat); const float fv = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
                 s.editLane (laneTarget, [fb, fv] (AutoLane& ll) { ll.pts.erase (std::remove_if (ll.pts.begin(), ll.pts.end(), [fb] (const AutoPoint& p) { return std::abs (p.beat - fb) < 0.02; }), ll.pts.end()); ll.pts.push_back ({ fb, fv, 0.0f }); });
                 repaint(); return;
             }
-            const double beat = bar (e.x) * 4.0; const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
+            const double beat = bar (e.position.x) * 4.0; const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
             auto l = s.lane (laneTarget);
-            int near = -1; double best = 0.3;
-            for (int k = 0; l && k < (int) l->pts.size(); ++k) { const double d = std::abs (l->pts[(size_t) k].beat - beat) / 4.0 * pxPerBar; if (d < 6 && d < best * pxPerBar) { near = k; best = d / pxPerBar; } }
+            int near = -1; double bestPx = 6.0;
+            for (int k = 0; l && k < (int) l->pts.size(); ++k) { const double d = std::abs (l->pts[(size_t) k].beat - beat) * pxPerBeat(); if (d < bestPx) { near = k; bestPx = d; } }
             if (e.mods.isPopupMenu() || e.getNumberOfClicks() > 1) { if (near >= 0) s.editLane (laneTarget, [near] (AutoLane& ll) { ll.pts.erase (ll.pts.begin() + near); }); repaint(); return; }
+            dragMode = DragMode::LanePoint;
             if (near >= 0) { dragPoint = near; curveDrag = e.mods.isAltDown(); }
-            else { const double nb = s.snap.load() ? snapBar (beat / 4.0) * 4.0 : beat; s.editLane (laneTarget, [nb, v] (AutoLane& ll) { ll.pts.push_back ({ nb, v, 0.0f }); }); l = s.lane (laneTarget); dragPoint = -1; for (int k = 0; k < (int) l->pts.size(); ++k) if (std::abs (l->pts[(size_t) k].beat - nb) < 1.0e-9) dragPoint = k; curveDrag = false; }
+            else { const double nb = magnetBar (beat / 4.0, e.mods.isCommandDown(), {}) * 4.0; s.editLane (laneTarget, [nb, v] (AutoLane& ll) { ll.pts.push_back ({ nb, v, 0.0f }); }); l = s.lane (laneTarget); dragPoint = -1; for (int k = 0; k < (int) l->pts.size(); ++k) if (std::abs (l->pts[(size_t) k].beat - nb) < 1.0e-9) dragPoint = k; curveDrag = false; }
             repaint();
             return;
         }
         if (! la.contains (e.getPosition())) return;
         if (e.x < left)
         {
-            auto rs = rows(); const int row = (e.y - la.getY() + scrollY) / laneH;
+            auto rs = rows(); const int row = rowAt (e.y);
             if (row >= 0 && row < (int) rs.size()) ctx.select (rs[(size_t) row]);
             repaint(); return;
         }
         auto h = hitClip (e.getPosition());
         if (h.t) ctx.select (h.t);
-        if (h.clip < 0)
+        if (! h.found)
         {
-            if (h.t && e.getNumberOfClicks() > 1 && ! h.t->isAudio()) { const double b = snapBar (bar (e.x)); const int p = h.t->pattern.load(); s.editClips (*h.t, [b, p] (std::vector<Clip>& v) { v.push_back ({ p, b, 4.0 }); }); }
-            else if (! e.mods.isPopupMenu()) { s.locate (snapBar (bar (e.x))); }
+            if (h.t && e.getNumberOfClicks() > 1 && ! h.t->isAudio()) { const double b = snapBar (bar (e.position.x)); const int p = h.t->pattern.load(); s.editClips (*h.t, [b, p] (std::vector<Clip>& v) { v.push_back ({ p, b, 4.0 }); }); repaint(); return; }
+            if (e.mods.isPopupMenu()) return;
+            dragMode = DragMode::Band; bandA = bandB = e.getPosition(); bandAdd = e.mods.isShiftDown() || e.mods.isCommandDown(); bandBase = bandAdd ? sel : std::vector<ClipRef>();
             repaint(); return;
         }
-        if (e.mods.isPopupMenu()) { clipMenu (h); return; }
-        drag = h; dragStartBar = bar (e.x);
-        if (h.audio) { const auto& c = (*h.t->aclips)[(size_t) h.clip]; dragClipStart = c.startBar; dragClipLen = c.bars; touched = h.t; touchedClip = c.id; if (e.getNumberOfClicks() > 1) { clipEditor (h); drag = Hit(); } }
-        else { const auto& c = (*h.t->clips)[(size_t) h.clip]; dragClipStart = c.startBar; dragClipLen = c.bars; }
-        if (e.mods.isAltDown() && h.t)
+        // a clip: select it (shift / cmd: add or take away)
+        if (e.mods.isShiftDown() || (e.mods.isCommandDown() && ! e.mods.isPopupMenu()))
         {
-            // duplicate, then drag the copy
-            if (h.audio) { s.editAudioClips (*h.t, [&] (std::vector<AudioClip>& v) { AudioClip c = v[(size_t) h.clip]; c.id = 0; v.push_back (c); }); drag.clip = (int) h.t->aclips->size() - 1; }
-            else { s.editClips (*h.t, [&] (std::vector<Clip>& v) { v.push_back (v[(size_t) h.clip]); }); drag.clip = (int) h.t->clips->size() - 1; }
+            if (isSelected (h.ref)) { sel.erase (std::remove (sel.begin(), sel.end(), h.ref), sel.end()); repaint(); return; }
+            sel.push_back (h.ref);
         }
+        else if (! isSelected (h.ref)) sel = { h.ref };
+        if (e.mods.isPopupMenu()) { clipMenu (h); repaint(); return; }
+        if (h.ref.audio && e.getNumberOfClicks() > 1) { clipEditor (h.ref); return; }
+        anchor = h.ref; s.clipSpan (h.ref, anchorStart, anchorLen);
+        dragTrackRow = rowAt (e.y);
+        if (h.part == Hit::FadeIn || h.part == Hit::FadeOut) { dragMode = h.part == Hit::FadeIn ? DragMode::FadeIn : DragMode::FadeOut; return; }
+        if (h.part == Hit::Start || h.part == Hit::End) { dragMode = h.part == Hit::Start ? DragMode::TrimStart : DragMode::TrimEnd; return; }
+        dragMode = DragMode::Move;
+        if (e.mods.isAltDown())
+        {
+            // copy, then drag the copies
+            auto b = s.copyClips (sel);
+            auto made = s.pasteClips (b, b.startBar);
+            for (size_t k = 0; k < sel.size() && k < made.size(); ++k) if (sel[k] == anchor) anchor = made[k];
+            sel = made;
+        }
+        origins.clear();
+        for (auto& r : sel) { double a0, l0; if (s.clipSpan (r, a0, l0)) origins.push_back ({ r, a0 }); }
+    }
+    void renameMarker (int mk)
+    {
+        if (mk < 0 || mk >= (int) ctx.s.markers->size()) return;
+        ask ("marker", "its name", (*ctx.s.markers)[(size_t) mk].name, [this, mk] (juce::String n)
+        {
+            ctx.s.editMarkers ([mk, n] (std::vector<Marker>& m) { if (mk < (int) m.size()) m[(size_t) mk].name = n.trim().isEmpty() ? m[(size_t) mk].name : n.trim(); });
+            repaint();
+        });
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
         auto& s = ctx.s;
-        if (loopDrag) { const double b = snapBar (bar (e.x)); s.loopStart.store (std::min (loopA, b)); s.loopEnd.store (std::max (loopA + (s.snap.load() ? 1.0 : 0.25), std::max (loopA, b))); repaint(); return; }
-        if (songDrag >= 0) { const int d = e.getDistanceFromDragStartX() / 12; const int i = songDrag; const int nb = std::max (1, songStart + d); s.editSong ([i, nb] (std::vector<SongEntry>& v) { if (i < (int) v.size()) v[(size_t) i].bars = nb; }); repaint(); return; }
-        if (dragLane >= 0 && freehand)
+        if (e.getDistanceFromDragStart() > 3) moved = true;
+        const bool free = e.mods.isCommandDown();
+        mouseMove (e);
+        switch (dragMode)
         {
-            const int y = autoArea().getY() + 26 + dragLane * 52;
-            const double b1 = std::max (0.0, bar (e.x) * 4.0); const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
-            const double lo = std::min (lastFreeBeat, b1), hi = std::max (lastFreeBeat, b1);
-            if (hi - lo < 4.0 * 3.0 / pxPerBar) return;   // a point every three pixels
-            s.editLane (laneTarget, [=] (AutoLane& l) { l.pts.erase (std::remove_if (l.pts.begin(), l.pts.end(), [=] (const AutoPoint& p) { return p.beat > lo + 1.0e-6 && p.beat <= hi + 1.0e-6; }), l.pts.end()); l.pts.push_back ({ b1, v, 0.0f }); });
-            lastFreeBeat = b1; repaint(); return;
-        }
-        if (dragLane >= 0 && dragPoint >= 0)
-        {
-            const int y = autoArea().getY() + 26 + dragLane * 52;
-            const double beat = (s.snap.load() ? snapBar (bar (e.x)) : bar (e.x)) * 4.0; const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
-            const int k = dragPoint; const bool cv = curveDrag; const float dy = (float) e.getDistanceFromDragStartY();
-            s.editLane (laneTarget, [=] (AutoLane& l) { if (k < (int) l.pts.size()) { if (cv) l.pts[(size_t) k].curve = juce::jlimit (-1.0f, 1.0f, -dy / 40.0f); else { l.pts[(size_t) k].beat = std::max (0.0, beat); l.pts[(size_t) k].value = v; } } });
-            repaint(); return;
-        }
-        if (! drag.t || drag.clip < 0) return;
-        const double d = bar (e.x) - dragStartBar;
-        Track* t = drag.t; const int ci = drag.clip; const bool edge = drag.edge;
-        const double start = dragClipStart, len = dragClipLen;
-        if (drag.audio) s.editAudioClips (*t, [&] (std::vector<AudioClip>& v) { if (ci < (int) v.size()) { if (edge) v[(size_t) ci].bars = std::max (0.05, snapBar (start + len + d) - start); else v[(size_t) ci].startBar = snapBar (start + d); } });
-        else s.editClips (*t, [&] (std::vector<Clip>& v) { if (ci < (int) v.size()) { if (edge) v[(size_t) ci].bars = std::max (0.25, snapBar (start + len + d) - start); else v[(size_t) ci].startBar = snapBar (start + d); } });
-        repaint();
-    }
-    void mouseUp (const juce::MouseEvent&) override { loopDrag = false; songDrag = -1; drag = Hit(); dragLane = -1; dragPoint = -1; freehand = false; }
-    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
-    {
-        if (autoArea().contains (e.getPosition())) { laneScroll = std::max (0, laneScroll + (w.deltaY < 0 ? 1 : w.deltaY > 0 ? -1 : 0)); repaint(); return; }
-        if (e.mods.isCommandDown()) { pxPerBar = juce::jlimit (4.0, 200.0, pxPerBar * (1.0 + w.deltaY)); }
-        else { scrollBar = std::max (0.0, scrollBar - w.deltaX * 8.0 / pxPerBar * 10.0); scrollY = juce::jlimit (0, std::max (0, (int) ctx.s.tracks.size() * laneH - lanesArea().getHeight()), scrollY - (int) (w.deltaY * 60)); }
-        repaint();
-    }
-    void clipMenu (Hit h)
-    {
-        juce::PopupMenu m;
-        if (h.audio) { m.addItem (1, "edit clip (gain, fades, pitch, stretch)"); m.addItem (2, "split at the playhead"); m.addItem (3, "reverse"); m.addItem (4, "remove"); }
-        else { juce::PopupMenu sub; for (int k = 0; k < kPatterns; ++k) sub.addItem (100 + k, "pattern " + juce::String (k + 1)); m.addSubMenu ("pattern", sub); m.addItem (4, "remove"); }
-        m.showMenuAsync (juce::PopupMenu::Options(), [this, h] (int r)
-        {
-            auto& s = ctx.s; const int ci = h.clip;
-            if (r == 0 || ! h.t) return;
-            if (h.audio)
+            case DragMode::Scroll:
             {
-                if (r == 1) clipEditor (h);
-                else if (r == 2) { const int id = (*h.t->aclips)[(size_t) ci].id; s.splitClip (*h.t, id, s.currentBar()); }
-                else if (r == 3) s.editAudioClips (*h.t, [ci] (std::vector<AudioClip>& v) { if (ci < (int) v.size()) v[(size_t) ci].reverse = ! v[(size_t) ci].reverse; });
-                else if (r == 4) s.editAudioClips (*h.t, [ci] (std::vector<AudioClip>& v) { if (ci < (int) v.size()) v.erase (v.begin() + ci); });
+                const double total = std::max (s.projectBars() + 8.0, scrollStart + visibleBars());
+                scrollBar = std::max (0.0, scrollStart + e.getDistanceFromDragStartX() / (double) scrollArea().getWidth() * total);
+                repaint(); return;
+            }
+            case DragMode::Ruler:
+                if (! moved) return;
+                dragMode = DragMode::Loop; [[fallthrough]];
+            case DragMode::Loop:
+            {
+                const double b = magnetBar (bar (e.position.x), free, {});
+                const double minLen = std::max (1.0 / 256.0, s.snap.load() && ! free ? gridBars() : 1.0 / 256.0);
+                s.loopStart.store (std::min (loopA, b)); s.loopEnd.store (std::max (std::min (loopA, b) + minLen, std::max (loopA, b))); s.loopOn.store (true);
+                repaint(); return;
+            }
+            case DragMode::Marker:
+            {
+                const double b = magnetBar (bar (e.position.x), free, {}); const int mk = markerDrag;
+                // (editMarkers sorts: follow the marker by its name and old place)
+                if (mk >= 0 && mk < (int) s.markers->size())
+                {
+                    const auto name = (*s.markers)[(size_t) mk].name;
+                    s.editMarkers ([mk, b] (std::vector<Marker>& m) { if (mk < (int) m.size()) m[(size_t) mk].bar = b; });
+                    for (int i = 0; i < (int) s.markers->size(); ++i) if ((*s.markers)[(size_t) i].name == name && std::abs ((*s.markers)[(size_t) i].bar - b) < 1.0e-12) markerDrag = i;
+                }
+                repaint(); return;
+            }
+            case DragMode::Song: { const int d = e.getDistanceFromDragStartX() / 12; const int i = songDrag; const int nb = std::max (1, songStart + d); s.editSong ([i, nb] (std::vector<SongEntry>& v) { if (i < (int) v.size()) v[(size_t) i].bars = nb; }); repaint(); return; }
+            case DragMode::Freehand:
+            {
+                const int y = autoArea().getY() + 26 + dragLane * 52;
+                const double b1 = std::max (0.0, bar (e.position.x) * 4.0); const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
+                const double lo = std::min (lastFreeBeat, b1), hi = std::max (lastFreeBeat, b1);
+                if ((hi - lo) * pxPerBeat() < 3.0) return;   // a point every three pixels
+                s.editLane (laneTarget, [=] (AutoLane& l) { l.pts.erase (std::remove_if (l.pts.begin(), l.pts.end(), [=] (const AutoPoint& p) { return p.beat > lo + 1.0e-6 && p.beat <= hi + 1.0e-6; }), l.pts.end()); l.pts.push_back ({ b1, v, 0.0f }); });
+                lastFreeBeat = b1; repaint(); return;
+            }
+            case DragMode::LanePoint:
+            {
+                if (dragPoint < 0) return;
+                const int y = autoArea().getY() + 26 + dragLane * 52;
+                const double beat = magnetBar (bar (e.position.x), free, {}) * 4.0; const float v = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - e.y) / 42.0f);
+                const int k = dragPoint; const bool cv = curveDrag; const float dy = (float) e.getDistanceFromDragStartY();
+                s.editLane (laneTarget, [=] (AutoLane& l) { if (k < (int) l.pts.size()) { if (cv) l.pts[(size_t) k].curve = juce::jlimit (-1.0f, 1.0f, -dy / 40.0f); else { l.pts[(size_t) k].beat = std::max (0.0, beat); l.pts[(size_t) k].value = v; } } });
+                repaint(); return;
+            }
+            case DragMode::Band: { bandB = e.getPosition(); applyBand(); repaint(); return; }
+            case DragMode::TrimEnd:
+            {
+                double end = magnetBar (anchorStart + anchorLen + (bar (e.position.x) - downBar), free, { anchor });
+                s.setClipLength (anchor, end - anchorStart); repaint(); return;
+            }
+            case DragMode::TrimStart:
+            {
+                const double ns = magnetBar (anchorStart + (bar (e.position.x) - downBar), free, { anchor });
+                s.trimClipStart (anchor, ns); repaint(); return;
+            }
+            case DragMode::FadeIn: case DragMode::FadeOut:
+            {
+                auto* t = s.clipTrack (anchor); if (! t) return;
+                const double secPerBar = 4.0 * 60.0 / s.tempo();
+                const bool in = dragMode == DragMode::FadeIn;
+                const double secs = juce::jlimit (0.0, anchorLen * secPerBar, (in ? bar (e.position.x) - anchorStart : anchorStart + anchorLen - bar (e.position.x)) * secPerBar);
+                const int id = anchor.id;
+                s.editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == id) { if (in) c.fadeIn = std::min (secs, c.bars * secPerBar - c.fadeOut); else c.fadeOut = std::min (secs, c.bars * secPerBar - c.fadeIn); } });
+                repaint(); return;
+            }
+            case DragMode::Move:
+            {
+                if (! moved) return;
+                // the clicked clip's start (or end) lands on the grid / the magnet; the others keep their distance
+                const double raw = anchorStart + (bar (e.position.x) - downBar);
+                bool hit = false;
+                double ns = magnetBar (raw, free, sel, &hit);
+                if (! hit && ! free && s.snap.load()) { bool endHit = false; const double ne = magnetBar (raw + anchorLen, free, sel, &endHit); if (endHit) ns = ne - anchorLen; }
+                double delta = ns - anchorStart;
+                for (auto& o : origins) delta = std::max (delta, -o.start);
+                // to another track (a clip only lands on a track of its kind)
+                const int rowDelta = rowAt (e.y) - dragTrackRow;
+                if (rowDelta != 0) relocate (rowDelta);
+                std::map<int, std::vector<std::pair<int, double>>> pat, aud;
+                for (auto& o : origins) (o.ref.audio ? aud : pat)[o.ref.track].push_back ({ o.ref.id, o.start + delta });
+                for (auto& [uid, v] : pat) if (auto* t = s.clipTrack ({ uid, 0, false })) s.editClips (*t, [&v] (std::vector<Clip>& cs) { for (auto& c : cs) for (auto& [id, st] : v) if (c.id == id) c.startBar = st; });
+                for (auto& [uid, v] : aud) if (auto* t = s.clipTrack ({ uid, 0, true })) s.editAudioClips (*t, [&v] (std::vector<AudioClip>& cs) { for (auto& c : cs) for (auto& [id, st] : v) if (c.id == id) c.startBar = st; });
+                repaint(); return;
+            }
+            default: return;
+        }
+    }
+    /** the clips being dragged go up or down a number of rows (each keeps its id) */
+    void relocate (int rowDelta)
+    {
+        auto& s = ctx.s;
+        // every clip must have a track of its kind there, or none moves
+        for (auto& o : origins)
+        {
+            auto* t = s.clipTrack (o.ref); const int row = t ? s.indexOf (t) + rowDelta : -1;
+            if (row < 0 || row >= (int) s.tracks.size() || s.tracks[(size_t) row]->isAudio() != o.ref.audio) return;
+        }
+        for (auto& o : origins)
+        {
+            auto* from = s.clipTrack (o.ref); auto* to = s.tracks[(size_t) (s.indexOf (from) + rowDelta)].get();
+            if (o.ref.audio)
+            {
+                AudioClip moved; bool got = false;
+                for (auto& c : *from->aclips) if (c.id == o.ref.id) { moved = c; got = true; }
+                if (! got) continue;
+                s.editAudioClips (*from, [&] (std::vector<AudioClip>& v) { v.erase (std::remove_if (v.begin(), v.end(), [&] (const AudioClip& c) { return c.id == o.ref.id; }), v.end()); });
+                s.editAudioClips (*to, [&] (std::vector<AudioClip>& v) { v.push_back (moved); });
             }
             else
             {
-                if (r >= 100) s.editClips (*h.t, [ci, r] (std::vector<Clip>& v) { if (ci < (int) v.size()) v[(size_t) ci].pattern = r - 100; });
-                else if (r == 4) s.editClips (*h.t, [ci] (std::vector<Clip>& v) { if (ci < (int) v.size()) v.erase (v.begin() + ci); });
+                Clip moved; bool got = false;
+                for (auto& c : *from->clips) if (c.id == o.ref.id) { moved = c; got = true; }
+                if (! got) continue;
+                s.editClips (*from, [&] (std::vector<Clip>& v) { v.erase (std::remove_if (v.begin(), v.end(), [&] (const Clip& c) { return c.id == o.ref.id; }), v.end()); });
+                s.editClips (*to, [&] (std::vector<Clip>& v) { v.push_back (moved); });
             }
+            const ClipRef old = o.ref; o.ref.track = to->uid;
+            for (auto& r : sel) if (r == old) r = o.ref;
+            if (anchor == old) anchor = o.ref;
+        }
+        dragTrackRow += rowDelta;
+    }
+    void applyBand()
+    {
+        const auto r = bandRect();
+        sel = bandBase;
+        if (r.getWidth() < 2 && r.getHeight() < 2) return;
+        const double a = bar (r.getX()), b = bar (r.getRight());
+        std::vector<int> uids;
+        auto rs = rows();
+        for (int i = 0; i < (int) rs.size(); ++i) { const int y = rowY (i); if (y + laneH > r.getY() && y < r.getBottom()) uids.push_back (rs[(size_t) i]->uid); }
+        if (uids.empty()) return;
+        for (auto& c : ctx.s.clipsBetween (a, b, uids)) if (! isSelected (c)) sel.push_back (c);
+    }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        auto& s = ctx.s;
+        if (dragMode == DragMode::Ruler && ! moved && ! e.mods.isPopupMenu()) s.locate (magnetBar (bar (e.position.x), e.mods.isCommandDown(), {}));
+        if (dragMode == DragMode::Band && ! moved)
+        {
+            // a click on empty space: the playhead goes there, the selection clears
+            if (! bandAdd) sel.clear();
+            s.locate (magnetBar (bar (e.position.x), e.mods.isCommandDown(), {}));
+        }
+        songDrag = -1; dragLane = -1; dragPoint = -1; markerDrag = -1; origins.clear();
+        dragMode = DragMode::None; repaint();
+    }
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        // double-click the ruler (not a marker): a marker there
+        if (e.y >= top && e.y < ruler && e.x >= left && markerAt (e.x) < 0)
+        {
+            const double b = magnetBar (bar (e.position.x), e.mods.isCommandDown(), {});
+            ctx.s.editMarkers ([b] (std::vector<Marker>& m) { m.push_back ({ "marker " + juce::String (m.size() + 1), b }); });
+            repaint();
+        }
+    }
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+    {
+        if (autoArea().contains (e.getPosition()) && ! e.mods.isCommandDown()) { laneScroll = std::max (0, laneScroll + (w.deltaY < 0 ? 1 : w.deltaY > 0 ? -1 : 0)); repaint(); return; }
+        if (e.mods.isCommandDown() || e.mods.isCtrlDown()) { zoomAt (std::pow (2.0, (double) w.deltaY * 3.0), juce::jmax ((double) left, (double) e.x)); return; }
+        if (e.mods.isAltDown()) { setTrackHeight (laneH + (w.deltaY > 0 ? 6 : w.deltaY < 0 ? -6 : 0)); return; }
+        const float dx = e.mods.isShiftDown() ? w.deltaY : w.deltaX, dy = e.mods.isShiftDown() ? 0.0f : w.deltaY;
+        scrollBar = std::max (0.0, scrollBar - dx * 500.0 / pxPerBar);
+        scrollY = juce::jlimit (0, maxScrollY(), scrollY - (int) (dy * 400));
+        repaint();
+    }
+    void mouseMagnify (const juce::MouseEvent& e, float scale) override { zoomAt (scale, juce::jmax ((double) left, (double) e.x)); }
+    void clipMenu (Hit h)
+    {
+        juce::PopupMenu m;
+        const bool muted = ctx.s.clipMuted (h.ref);
+        if (h.ref.audio) m.addItem (1, "edit clip (gain, fades, pitch, stretch)...");
+        m.addItem (6, "position and length...");
+        m.addItem (2, "split at the playhead  (cmd+t)");
+        m.addItem (7, "duplicate  (cmd+d)");
+        m.addItem (8, muted ? "unmute" : "mute", true, muted);
+        m.addItem (9, "loop these clips");
+        if (h.ref.audio) m.addItem (3, "reverse");
+        else { juce::PopupMenu sub; for (int k = 0; k < kPatterns; ++k) sub.addItem (100 + k, "pattern " + juce::String (k + 1)); m.addSubMenu ("pattern", sub); }
+        m.addSeparator(); m.addItem (4, "remove  (delete)");
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, h] (int r)
+        {
+            auto& s = ctx.s;
+            auto* t = s.clipTrack (h.ref);
+            if (r == 0 || ! t) return;
+            const int id = h.ref.id;
+            if (r == 1) clipEditor (h.ref);
+            else if (r == 2) splitSel();
+            else if (r == 3) s.editAudioClips (*t, [id] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == id) c.reverse = ! c.reverse; });
+            else if (r == 4) deleteSel();
+            else if (r == 6) positionDialog (h.ref);
+            else if (r == 7) duplicateSel();
+            else if (r == 8) muteSel();
+            else if (r == 9) loopSelection();
+            else if (r >= 100) s.editClips (*t, [id, r] (std::vector<Clip>& v) { for (auto& c : v) if (c.id == id) c.pattern = r - 100; });
             repaint();
         });
     }
-    void clipEditor (Hit h)
+    void clipEditor (ClipRef ref)
     {
-        if (! h.t || h.clip < 0 || h.clip >= (int) h.t->aclips->size()) return;
+        auto* t = ctx.s.clipTrack (ref);
+        if (! t || ! ref.audio) return;
+        const AudioClip* found = nullptr; for (auto& c : *t->aclips) if (c.id == ref.id) found = &c;
+        if (! found) return;
         struct Ed : juce::Component
         {
             Ed (Session& s, Track& t, int id) : session (s), track (t), clipId (id)
@@ -621,25 +1163,25 @@ public:
                 add (pitch = new ValueRow ("pitch", -24.0f, 24.0f, c->pitch, [] (float v) { return (v > 0 ? "+" : "") + juce::String (v, 2) + " st"; }));
                 add (mode = new ValueRow ("mode", { "repitch", "stretch", "warp to tempo" }, c->mode));
                 add (stretch = new ValueRow ("stretch", 0.25f, 4.0f, (float) c->stretch, [] (float v) { return "x" + juce::String (v, 2); }));
-                add (offset = new ValueRow ("start in file", 0.0f, (float) std::max (0.01, c->sample ? c->sample->seconds() : 1.0), (float) c->offset, [] (float v) { return juce::String (v, 2) + " s"; }));
+                add (offset = new ValueRow ("start in file", 0.0f, (float) std::max (0.01, c->sample ? c->sample->seconds() : 1.0), (float) c->offset, [] (float v) { return juce::String (v, 3) + " s"; }));
                 add (rev = new ValueRow ("reverse", { "off", "on" }, c->reverse ? 1 : 0)); rev->boolStyle = true;
                 add (loop = new ValueRow ("loop", { "off", "on" }, c->loop ? 1 : 0)); loop->boolStyle = true;
+                add (mute = new ValueRow ("mute", { "off", "on" }, c->muted ? 1 : 0)); mute->boolStyle = true;
                 for (auto* r : rows) r->onChange = [this] (float) { push(); };
                 setSize (320, 24 + (int) rows.size() * 20 + 8);
             }
             void push()
             {
-                session.editAudioClips (track, [this] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == clipId) { c.gain = juce::Decibels::decibelsToGain (gain->get(), -48.0f); c.fadeIn = fin->get(); c.fadeOut = fout->get(); c.pitch = pitch->get(); c.mode = mode->getInt(); c.stretch = stretch->get(); c.offset = offset->get(); c.reverse = rev->getInt() > 0; c.loop = loop->getInt() > 0; } });
+                session.editAudioClips (track, [this] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == clipId) { c.gain = juce::Decibels::decibelsToGain (gain->get(), -48.0f); c.fadeIn = fin->get(); c.fadeOut = fout->get(); c.pitch = pitch->get(); c.mode = mode->getInt(); c.stretch = stretch->get(); c.offset = offset->get(); c.reverse = rev->getInt() > 0; c.loop = loop->getInt() > 0; c.muted = mute->getInt() > 0; } });
             }
             void add (ValueRow* r) { rows.push_back (r); owned.add (r); addAndMakeVisible (r); }
             void resized() override { int y = 22; for (auto* r : rows) { r->setBounds (8, y, getWidth() - 16, 18); y += 20; } }
             void paint (juce::Graphics& g) override { g.fillAll (studioTheme().ground.brighter (0.12f)); g.setColour (studioTheme().ink); g.setFont (uiFont (11.0f, true)); g.drawText ("clip", 8, 4, 200, 16, juce::Justification::centredLeft); }
             Session& session; Track& track; int clipId; std::vector<ValueRow*> rows; juce::OwnedArray<ValueRow> owned;
-            ValueRow *gain = nullptr, *fin = nullptr, *fout = nullptr, *pitch = nullptr, *mode = nullptr, *stretch = nullptr, *offset = nullptr, *rev = nullptr, *loop = nullptr;
+            ValueRow *gain = nullptr, *fin = nullptr, *fout = nullptr, *pitch = nullptr, *mode = nullptr, *stretch = nullptr, *offset = nullptr, *rev = nullptr, *loop = nullptr, *mute = nullptr;
         };
-        const int id = (*h.t->aclips)[(size_t) h.clip].id;
-        auto* ed = new Ed (ctx.s, *h.t, id);
-        juce::CallOutBox::launchAsynchronously (std::unique_ptr<juce::Component> (ed), juce::Rectangle<int> (getScreenX() + x ((*h.t->aclips)[(size_t) h.clip].startBar), getScreenY() + lanesArea().getY(), 10, 10), nullptr);
+        auto* ed = new Ed (ctx.s, *t, ref.id);
+        juce::CallOutBox::launchAsynchronously (std::unique_ptr<juce::Component> (ed), juce::Rectangle<int> (getScreenX() + x (found->startBar), getScreenY() + lanesArea().getY(), 10, 10), nullptr);
     }
     // ---- drops --------------------------------------------------------------------------------------
     bool isInterestedInFileDrag (const juce::StringArray& files) override { for (auto& f : files) if (juce::File (f).hasFileExtension ("wav;aif;aiff;flac;mp3;ogg")) return true; return false; }
@@ -651,7 +1193,7 @@ public:
         auto& s = ctx.s;
         const auto la = lanesArea();
         auto rs = rows();
-        const int row = (py - la.getY() + scrollY) / laneH;
+        const int row = rowAt (py);
         Track* t = (la.contains (px, py) && row >= 0 && row < (int) rs.size()) ? rs[(size_t) row] : nullptr;
         if (t && ! t->isAudio() && t->instrument)
         {
@@ -660,19 +1202,32 @@ public:
             t = nullptr;
         }
         if (! t) { t = s.addTrack (f.getFileNameWithoutExtension(), -1, TrackKind::Audio); if (! t) return; }
-        const double b = px >= left ? snapBar (bar (px)) : s.currentBar();
+        const double b = px >= left ? magnetBar (bar (px), false, {}) : s.currentBar();
         juce::String err;
-        s.addAudioClip (*t, f, b, &err);
+        if (auto* c = s.addAudioClip (*t, f, b, &err)) sel = { { t->uid, c->id, true } };
         if (err.isNotEmpty()) ctx.status (err); else ctx.status (f.getFileName() + " on " + t->name);
         ctx.select (t);
         repaint();
     }
-    void tick() override { repaint(); }
+    void tick() override
+    {
+        // follow: turn the page when the playhead leaves the view (not while dragging)
+        auto& s = ctx.s;
+        if (s.follow.load() && s.playPpq.load() >= 0 && dragMode == DragMode::None && ! juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown())
+        {
+            const double cb = s.currentBar(), vb = visibleBars();
+            if (cb > scrollBar + vb * 0.92 || cb < scrollBar) scrollBar = std::max (0.0, cb - vb * 0.05);
+        }
+        repaint();
+    }
 private:
-    ui::TextLink addLane, addSong, snapLink, zoomIn, zoomOut;
-    Hit drag; double dragStartBar = 0, dragClipStart = 0, dragClipLen = 0;
-    bool loopDrag = false; double loopA = 0; int songDrag = -1, songStart = 0;
-    int dragLane = -1, dragPoint = -1; bool curveDrag = false, freehand = false; double lastFreeBeat = 0; Target laneTarget;
+    ui::TextLink addLane, addSong, snapLink, gridLink, zoomIn, zoomOut, fitLink, selLink, taller, shorter, followLink;
+    DragMode dragMode = DragMode::None;
+    juce::Point<int> downPos, bandA, bandB; double downBar = 0; bool moved = false, bandAdd = false; std::vector<ClipRef> bandBase;
+    struct Origin { ClipRef ref; double start = 0; };
+    std::vector<Origin> origins; ClipRef anchor; double anchorStart = 0, anchorLen = 0; int dragTrackRow = 0;
+    double loopA = 0, scrollStart = 0; int songDrag = -1, songStart = 0, markerDrag = -1;
+    int dragLane = -1, dragPoint = -1; bool curveDrag = false; double lastFreeBeat = 0; Target laneTarget;
 };
 
 // =================================================================================================

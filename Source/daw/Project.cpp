@@ -73,7 +73,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         x->setAttribute ("i", i); x->setAttribute ("length", p->length);
         for (int s = 0; s < kMaxSteps; ++s) if (p->s[(size_t) s].on || p->s[(size_t) s].micro != 0.0f || std::abs (p->s[(size_t) s].dur - 1.0f) > 1.0e-6f) saveStep (*x, s, p->s[(size_t) s]);
     }
-    for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); }
+    for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); }
     for (auto& c : *t.aclips)
     {
         auto* x = e.createNewChildElement ("aclip");
@@ -83,6 +83,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); x->setAttribute ("offset", c.offset); x->setAttribute ("gain", c.gain);
         x->setAttribute ("fin", c.fadeIn); x->setAttribute ("fout", c.fadeOut); x->setAttribute ("rev", c.reverse ? 1 : 0); x->setAttribute ("loop", c.loop ? 1 : 0);
         x->setAttribute ("pitch", c.pitch); x->setAttribute ("mode", c.mode); x->setAttribute ("stretch", c.stretch);
+        if (c.muted) x->setAttribute ("muted", 1);
     }
     if (! t.chain->empty()) { juce::StringArray a; for (int p : *t.chain) a.add (juce::String (p)); e.createNewChildElement ("chain")->addTextElement (a.joinIntoString (" ")); }
     for (auto& r : *t.routes) { auto* x = e.createNewChildElement ("route"); x->setAttribute ("dst", r.dst); x->setAttribute ("ch", r.channels); x->setAttribute ("so", r.srcOffset); x->setAttribute ("do", r.dstOffset); x->setAttribute ("gain", r.gain); if (r.feedback) x->setAttribute ("fb", 1); }
@@ -151,7 +152,13 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         setPattern (t, i, std::make_shared<const Pattern> (p));
     }
     std::vector<Clip> clips;
-    for (auto* x : e.getChildWithTagNameIterator ("clip")) clips.push_back ({ x->getIntAttribute ("pattern"), x->getDoubleAttribute ("start"), x->getDoubleAttribute ("bars", 4.0) });
+    for (auto* x : e.getChildWithTagNameIterator ("clip"))
+    {
+        Clip c; c.pattern = x->getIntAttribute ("pattern"); c.startBar = x->getDoubleAttribute ("start"); c.bars = x->getDoubleAttribute ("bars", 4.0);
+        c.offset = x->getDoubleAttribute ("offset"); c.muted = x->getIntAttribute ("muted") != 0; c.id = x->getIntAttribute ("id", 0);
+        nextClipId = std::max (nextClipId, c.id + 1);
+        clips.push_back (c);
+    }
     editClips (t, [&] (std::vector<Clip>& c) { c = clips; });
     std::vector<AudioClip> aclips;
     for (auto* x : e.getChildWithTagNameIterator ("aclip"))
@@ -166,7 +173,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         c.path = f.getFullPathName();
         c.startBar = x->getDoubleAttribute ("start"); c.bars = x->getDoubleAttribute ("bars", 1.0); c.offset = x->getDoubleAttribute ("offset"); c.gain = (float) x->getDoubleAttribute ("gain", 1.0);
         c.fadeIn = x->getDoubleAttribute ("fin"); c.fadeOut = x->getDoubleAttribute ("fout"); c.reverse = x->getIntAttribute ("rev") != 0; c.loop = x->getIntAttribute ("loop") != 0;
-        c.pitch = (float) x->getDoubleAttribute ("pitch"); c.mode = x->getIntAttribute ("mode"); c.stretch = x->getDoubleAttribute ("stretch", 1.0);
+        c.pitch = (float) x->getDoubleAttribute ("pitch"); c.mode = x->getIntAttribute ("mode"); c.stretch = x->getDoubleAttribute ("stretch", 1.0); c.muted = x->getIntAttribute ("muted") != 0;
         nextClipId = std::max (nextClipId, c.id + 1);
         aclips.push_back (c);
     }
@@ -199,7 +206,7 @@ std::unique_ptr<juce::XmlElement> Session::save() const
     e->setAttribute ("name", projectName);
     e->setAttribute ("mode", mode.load()); e->setAttribute ("loop", loopOn.load() ? 1 : 0); e->setAttribute ("loopStart", loopStart.load()); e->setAttribute ("loopEnd", loopEnd.load());
     e->setAttribute ("micro", microMs.load()); e->setAttribute ("masterOut", masterOut.load()); e->setAttribute ("quant", launchQuant.load()); e->setAttribute ("selected", selectedTrack.load());
-    e->setAttribute ("multiOut", multiOut.load() ? 1 : 0); e->setAttribute ("masterBypass", masterBypass.load() ? 1 : 0); e->setAttribute ("snap", snap.load() ? 1 : 0); e->setAttribute ("punch", punch.load() ? 1 : 0); e->setAttribute ("click", metronome.load() ? 1 : 0); e->setAttribute ("countIn", countInBars.load());
+    e->setAttribute ("multiOut", multiOut.load() ? 1 : 0); e->setAttribute ("masterBypass", masterBypass.load() ? 1 : 0); e->setAttribute ("snap", snap.load() ? 1 : 0); e->setAttribute ("grid", gridIndex.load()); e->setAttribute ("follow", follow.load() ? 1 : 0); e->setAttribute ("punch", punch.load() ? 1 : 0); e->setAttribute ("click", metronome.load() ? 1 : 0); e->setAttribute ("countIn", countInBars.load());
     e->setAttribute ("nextUid", nextUid); e->setAttribute ("nextClip", nextClipId); e->setAttribute ("nextMod", nextModId);
     global->save (*e->createNewChildElement ("global"));
     for (int i = 0; i < kMacros; ++i) { auto* m = e->createNewChildElement ("macro"); m->setAttribute ("i", i); m->setAttribute ("name", macroNames[(size_t) i]); }
@@ -251,7 +258,7 @@ void Session::clear()
     stopPreview(); keyLearning.store (0); learning.store (false);
     { const juce::SpinLock::ScopedLockType sl (lock); lanes = std::make_shared<const std::vector<LanePtr>>(); }
     mode.store ((int) PlayMode::Session); loopOn.store (false); loopStart.store (0); loopEnd.store (8); microMs.store (12.0f); masterOut.store (1); launchQuant.store (1);
-    multiOut.store (false); masterBypass.store (false); snap.store (true); punch.store (false); metronome.store (false); countInBars.store (1);
+    multiOut.store (false); masterBypass.store (false); snap.store (true); gridIndex.store (0); follow.store (true); punch.store (false); metronome.store (false); countInBars.store (1);
     selectedTrack.store (0); currentScene.store (-1); internalPpq.store (0.0);
     projectName = "untitled"; projectFile = juce::File();
     nextUid = 1; nextClipId = 1; nextModId = 1;
@@ -268,7 +275,7 @@ bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
     mode.store (e.getIntAttribute ("mode", 0)); loopOn.store (e.getIntAttribute ("loop", 0) != 0);
     loopStart.store (e.getDoubleAttribute ("loopStart", 0.0)); loopEnd.store (e.getDoubleAttribute ("loopEnd", 8.0));
     microMs.store ((float) e.getDoubleAttribute ("micro", 12.0)); masterOut.store (e.getIntAttribute ("masterOut", 1)); launchQuant.store (e.getIntAttribute ("quant", 1));
-    multiOut.store (e.getIntAttribute ("multiOut", 0) != 0); masterBypass.store (e.getIntAttribute ("masterBypass", 0) != 0); snap.store (e.getIntAttribute ("snap", 1) != 0); punch.store (e.getIntAttribute ("punch", 0) != 0); metronome.store (e.getIntAttribute ("click", 0) != 0); countInBars.store (juce::jlimit (0, 4, e.getIntAttribute ("countIn", 1)));
+    multiOut.store (e.getIntAttribute ("multiOut", 0) != 0); masterBypass.store (e.getIntAttribute ("masterBypass", 0) != 0); snap.store (e.getIntAttribute ("snap", 1) != 0); gridIndex.store (e.getIntAttribute ("grid", 0)); follow.store (e.getIntAttribute ("follow", 1) != 0); punch.store (e.getIntAttribute ("punch", 0) != 0); metronome.store (e.getIntAttribute ("click", 0) != 0); countInBars.store (juce::jlimit (0, 4, e.getIntAttribute ("countIn", 1)));
     if (auto* g = e.getChildByName ("global")) global->load (*g);
     for (auto* m : e.getChildWithTagNameIterator ("macro")) { const int i = m->getIntAttribute ("i", -1); if (i >= 0 && i < kMacros) macroNames[(size_t) i] = m->getStringAttribute ("name"); }
     for (auto* x : e.getChildWithTagNameIterator ("track"))

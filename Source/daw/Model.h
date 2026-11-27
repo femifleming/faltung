@@ -101,7 +101,15 @@ struct Pattern
 };
 using PatternPtr = std::shared_ptr<const Pattern>;
 
-struct Clip { int pattern = 0; double startBar = 0, bars = 4; };
+struct Clip
+{
+    int pattern = 0; double startBar = 0, bars = 4;
+    double offset = 0;               // beats into the pattern where the clip starts (a clip split or trimmed from the left)
+    bool muted = false;
+    int id = 0;                      // stable while the project is open (selection, undo)
+};
+/** a clip on the timeline, by track and id */
+struct ClipRef { int track = 0; int id = 0; bool audio = false; bool operator== (const ClipRef& o) const { return track == o.track && id == o.id && audio == o.audio; } };
 struct Scene { juce::String name; std::vector<int> pattern; int patternFor (int track) const { return track >= 0 && track < (int) pattern.size() ? pattern[(size_t) track] : -2; } };   // -1 stop, -2 keep playing
 struct SongEntry { int scene = 0; int bars = 8; };
 struct Marker { juce::String name; double bar = 0; };
@@ -181,6 +189,7 @@ struct AudioClip
     float gain = 1.0f;               // linear
     double fadeIn = 0, fadeOut = 0;  // seconds
     bool reverse = false, loop = false;
+    bool muted = false;
     float pitch = 0.0f;              // semitones (+ cents as fraction)
     int mode = 0;                    // 0 repitch (speed = pitch), 1 stretch (length free, pitch kept), 2 warp (fits the bars at the project tempo)
     double stretch = 1.0;            // mode 1: output seconds / source seconds

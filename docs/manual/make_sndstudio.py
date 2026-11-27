@@ -48,7 +48,7 @@ add(f'''<section class="cover">{chevrons('#8ec3e6')}
     ('#ee8e6e', 'mix', 'strips, outputs, routes'), ('#f6c590', 'mod', 'modulators, macros, midi'), ('#cfe6f0', 'browse', 'devices, plug-ins, files')])) + '</div></section>')
 
 add('''<section class="page"><h2>contents</h2><ol class="toc">
-<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li>
+<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#window">the window: bigger and smaller</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
 <li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out</a></li>
 <li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll</a></li><li><a href="#artists">to work like …</a></li></ol>
@@ -95,10 +95,11 @@ to <i>capture</i> what is playing into it; double-click to rename. The white tic
 
 add('''<section class="page"><h2 id="arrange">arrange</h2>
 ''' + shot('sndstudio-1') + '''
-<p>The ruler counts bars; the loop region is the strip under it (drag on the ruler to set it, <b>l</b> or the header to switch it on); shift-click the ruler for a marker.
-Each lane holds pattern clips (p1, p2 …) and audio clips (with their waveform). Drag a clip to move it, its right edge to change its length, alt-drag to copy,
-double-click an empty spot to add the track's current pattern for four bars, right-click a clip for its pattern, split, reverse, remove. <b>snap</b> keeps edits on
-the bar (or the beat when zoomed in); off, clips go where you drop them. <b>+ / -</b> and cmd-wheel zoom.</p>
+<p>The ruler counts bars, beats, sixteenths and ticks (as many as the zoom has room for) and, under them, minutes and seconds (to the millisecond when
+zoomed in; it follows a tempo lane). Click the ruler to put the playhead there, drag on it to set the loop (<b>l</b> or the header switches it on), double-click or
+shift-click it for a marker. Each lane holds pattern clips (p1, p2 …) and audio clips (with their waveform and fades). Click a clip to select it, drag to move,
+drag either edge to trim, alt-drag to copy, right-click for its menu; double-click an empty spot to add the track's current pattern for four bars. Everything about
+zooming, the grid, selecting and editing is on the next page.</p>
 <p><b>Audio clips.</b> Drop wav / aif / flac / mp3 files from the Finder or from the browser onto a lane (a new audio track if the lane is an instrument). Double-click a clip
 (or right-click → edit) for gain, fades, pitch, mode, stretch, start in file, reverse, loop. Modes: <i>repitch</i> (speed follows pitch, like a varispeed deck),
 <i>stretch</i> (length free, pitch kept, transient-preserving), <i>warp to tempo</i> (the clip fits its bars at the project tempo). Playback is sample accurate with
@@ -108,6 +109,43 @@ control's right-click. Click in a lane to add a point, drag it, alt-drag for the
 right-click it to remove it. With <b>write</b> on, moving a control while playing records points. Automation is the base value; modulators ride on top of it.</p>
 <p><b>Song.</b> The list on the right: scenes in order with bar counts. <b>+ song entry</b>, click one to choose its scene, drag to change its bars, right-click to remove.
 The header's mode cycles session → song → arrange: in song mode the scenes play in order from bar 1; in arrange the clips on the timeline play.</p></section>''')
+
+add('''<section class="page"><h2 id="timeline">the timeline: zoom, grid, editing</h2>
+''' + shot('sndstudio-arrange-zoom') + '''
+<p><b>Zoom.</b> From a thousand bars across down to about two samples a pixel. Cmd (ctrl) + scroll or a trackpad pinch zooms where the mouse is; <b>=</b> and <b>-</b>
+(or the toolbar's + and −) zoom around the playhead; <b>z</b> zooms to the selected clips (or the loop), <b>shift+z</b> shows the whole project. Scroll sideways
+with the trackpad, shift + scroll or the bar under the lanes; alt + scroll or <i>rows + / −</i> makes the rows taller or shorter. <b>follow</b> turns the page
+with the playhead while it plays.</p>
+<p><b>The grid.</b> <i>grid</i> in the toolbar (or the view menu) chooses it: <i>adaptive</i> follows the zoom (from 64 bars to a 1/512 note), or a fixed bar, 1/2 …
+1/128, triplets (1/2t … 1/32t), dotted (1/4d, 1/8d, 1/16d), a quintuplet or a septuplet sixteenth. With <b>snap</b> on (<b>n</b>) clips, edges, the loop, markers and
+automation points land on the grid, and they also catch on anything close by: the edges of other clips, markers, the loop and the playhead. Hold <b>cmd</b>
+(ctrl) while dragging to put things exactly where the mouse is, to the sample.</p>
+<p><b>Selecting.</b> Click a clip; shift- or cmd-click adds or takes one away; drag across empty space to draw a box around clips (on several tracks at once);
+<b>cmd+a</b> selects every clip, <b>esc</b> none. A click on empty space moves the playhead there. Dragging moves every selected clip together, and up or down onto
+other tracks of the same kind.</p>
+<table class="params"><tr><th>edit</th><th>keys</th><th>does</th></tr>
+<tr><td class="n">cut · copy · paste</td><td>cmd+x · cmd+c · cmd+v</td><td>paste puts the clips at the playhead, the topmost on the selected track, the others keeping their distance below it</td></tr>
+<tr><td class="n">duplicate</td><td>cmd+d</td><td>the selection again, right after itself</td></tr>
+<tr><td class="n">split</td><td>cmd+t</td><td>cuts the selected clips (or the selected track's clip) at the playhead. A pattern clip's second half carries on in the pattern where the first stopped</td></tr>
+<tr><td class="n">delete</td><td>delete / backspace</td><td>removes the selected clips</td></tr>
+<tr><td class="n">mute</td><td>cmd+shift+m</td><td>a muted clip stays in place, greyed, silent</td></tr>
+<tr><td class="n">trim</td><td>drag an edge</td><td>the right edge sets the length; the left edge moves the start while the sound stays where it is (audio: the start in the file moves with it; a pattern: it starts further into its loop)</td></tr>
+<tr><td class="n">fades</td><td>drag a top corner</td><td>an audio clip's fade in and fade out, drawn on the clip</td></tr>
+<tr><td class="n">move by the grid</td><td>← →</td><td>the selected clips by one grid step; cmd ← → by one tick (1/960 of a beat), alt ← → by a millisecond; <b>,</b> and <b>.</b> by 5 ms. With nothing selected the playhead moves from grid line to grid line</td></tr>
+<tr><td class="n">position and length</td><td>right-click a clip</td><td>type where it starts and how long it is (the rest of the selection moves with it)</td></tr>
+<tr><td class="n">loop the selection</td><td>cmd+l</td><td>the loop around the selected clips</td></tr>
+<tr><td class="n">insert time</td><td>cmd+shift+i</td><td>empty bars at the playhead: clips across it are cut, everything after it (clips, automation, markers, the loop) moves later; automation holds its value through the gap</td></tr>
+<tr><td class="n">delete time</td><td>cmd+shift+backspace</td><td>removes the looped bars from every track, lane and marker; everything after closes up</td></tr>
+<tr><td class="n">go to</td><td>cmd+g, or click the position in the header</td><td>type a position as bars.beats.sixteenths.ticks (17.2.3.120) or a time (1:05.250, 90s, 250ms)</td></tr>
+<tr><td class="n">markers</td><td>[ · ]</td><td>the playhead to the previous / next marker. Drag a marker to move it, double-click it to name it, right-click it to remove it</td></tr>
+<tr><td class="n">start · end</td><td>home · end</td><td>the playhead to bar 1 / the end of the project</td></tr></table>
+<p>Positions are written <i>bar.beat.sixteenth.tick</i>, counted from 1 like every daw, with 960 ticks a beat (240 a sixteenth); lengths count from 0 (<i>2.1.0.0</i> is two
+bars and a beat). The header shows where the playhead is in both, and the arrangement's toolbar shows where the mouse is. Every edit is one step of undo.</p>
+<h2 id="window">the window: bigger and smaller</h2>
+''' + shot('sndstudio-ui-125') + '''
+<p>The window can be any size. <b>cmd+=</b> and <b>cmd+-</b> (the view menu) make everything bigger or smaller, from 50 % to 200 % (cmd+0: actual size); the size is
+remembered. Smaller leaves more room for the timeline and the mixer; bigger is easier to read. When the window is too small for the size chosen, sndstudio draws
+everything as large as still fits, and says so; make the window bigger to get the rest. In a narrow window the header puts the master, punch and capture on its second row.</p></section>''')
 
 add('''<section class="page"><h2 id="seq">seq</h2>
 ''' + shot('sndstudio-2') + '''
@@ -234,10 +272,11 @@ the project's rate or 44.1 / 48 / 88.2 / 96 khz; normalised to -1, -0.3 or 0 dbf
 <tr><td class="n">space</td><td>play / stop</td></tr><tr><td class="n">1–8</td><td>launch scene 1–8</td></tr><tr><td class="n">shift 1–8</td><td>launch pattern 1–8 on the selected track</td></tr>
 <tr><td class="n">m · s</td><td>mute / solo the selected track</td></tr><tr><td class="n">f</td><td>fill, while held</td></tr><tr><td class="n">r</td><td>record</td></tr><tr><td class="n">l</td><td>loop</td></tr>
 <tr><td class="n">↑ ↓</td><td>select the previous / next track</td></tr><tr><td class="n">return</td><td>stop the selected track at the next bar</td></tr><tr><td class="n">tab</td><td>next page</td></tr>
-<tr><td class="n">cmd+z · cmd+shift+z</td><td>undo · redo (cmd+y too)</td></tr><tr><td class="n">cmd+s · cmd+shift+s</td><td>save · save as</td></tr><tr><td class="n">cmd+o · cmd+n</td><td>open · a new empty project</td></tr><tr><td class="n">cmd+e</td><td>export audio</td></tr></table>
+<tr><td class="n">cmd+z · cmd+shift+z</td><td>undo · redo (cmd+y too)</td></tr><tr><td class="n">cmd+= · cmd+- · cmd+0</td><td>everything bigger · smaller · actual size</td></tr>
+<tr><td class="n">arrange</td><td>= − zoom · z zoom to the selection · shift+z the whole project · n snap · ← → by the grid · [ ] markers · cmd+x c v d t a l g · delete · esc (the table under <a href="#timeline">the timeline</a>)</td></tr><tr><td class="n">cmd+s · cmd+shift+s</td><td>save · save as</td></tr><tr><td class="n">cmd+o · cmd+n</td><td>open · a new empty project</td></tr><tr><td class="n">cmd+e</td><td>export audio</td></tr></table>
 <h2 id="tech">technical notes</h2>
 <ul><li>One engine, driven by the app's own audio callback (up to 128 outputs and 128 inputs). The audio thread never allocates; structure changes happen on the message thread under a spin lock the audio thread only tries.</li>
-<li>Every block is split at bar lines, so launches, scenes and clips start exactly on the beat; hits are sample accurate; the suite's engines read their parameters at the hit.</li>
+<li>Every block is split at bar lines and, in the arrangement, wherever a clip starts or ends, so launches, scenes and clips start and stop on their sample wherever they are; hits are sample accurate; the suite's engines read their parameters at the hit.</li>
 <li>Latency: tracks are aligned to the longest chain, returns to theirs, routes to their destination's arrival; the header shows the total. Direct outputs wait for the returns and the master so all 128 channels line up.</li>
 <li>Devices: the suite's processors run in-process with their own presets and state; hosted VST3 / AU get stereo or multichannel layouts; a base value per parameter is what automation, modulators, macros and locks act on; the sum is written to the real parameter once per block when it changed.</li>
 <li>Audio clips: cubic interpolation; the stretcher is a wsola (2048-sample grains, half overlap, phase-aligned by cross-correlation) with transients pinned to their time.</li>
@@ -266,7 +305,7 @@ as closely as the other side allows, so nothing jumps.</p>
 <tr><td class="n">throw, repeat</td><td>time / grid / slice on divisions</td><td>the same in ms</td></tr>
 <tr><td class="n">line, wear, skip</td><td><i>on the grid</i> on: pass / loop / fragment on divisions</td><td>off: seconds or ms</td></tr>
 <tr><td class="n">audio clips</td><td><i>warp to tempo</i></td><td><i>repitch</i> or <i>stretch</i>, snap off for placing them anywhere</td></tr>
-<tr><td class="n">the arrangement</td><td><b>snap</b> on: bars (beats when zoomed in)</td><td>snap off; <b>,</b> and <b>.</b> nudge the clip you last touched by 5 ms</td></tr></table>
+<tr><td class="n">the arrangement</td><td><b>snap</b> on: the grid (adaptive, straight, triplet, dotted, quintuplet, septuplet), and the edges nearby</td><td>snap off, or cmd while dragging: to the sample; ← → by a tick or (alt) a millisecond; <b>,</b> and <b>.</b> by 5 ms</td></tr></table>
 <p>The divisions, wherever a list of them appears: ''' + ' · '.join(e(x) for x in _P['divisions']) + ''' (d = dotted, t = triplet).</p>
 
 <h2 id="tools2">more of the sequencer</h2>

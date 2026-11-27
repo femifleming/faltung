@@ -135,7 +135,7 @@ faltung_plugin(ms0 17 Fms0 effect  "mastering bus")
 
 # sndstudio: the daw (Source/daw). A standalone application only (no plug-in formats): its own audio callback reaches
 # up to 128 outputs of the chosen interface, it hosts VST3 / AU plug-ins.
-set(FAL_DAW_SOURCES Source/daw/Device.cpp Source/daw/Session.cpp Source/daw/Engine.cpp Source/daw/Project.cpp
+set(FAL_DAW_SOURCES Source/daw/Device.cpp Source/daw/Session.cpp Source/daw/Engine.cpp Source/daw/Project.cpp Source/daw/Arrange.cpp
     Source/daw/StudioProcessor.cpp Source/daw/StudioEditor.cpp Source/daw/devices/StudioDevices.cpp)
 set(FAL_HOST_DEFS JUCE_PLUGINHOST_VST3=1)
 if(APPLE)

@@ -185,6 +185,16 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
             const double spb = 60.0 / bpm * sr;
             double limit = std::floor (p / 4.0 + 1.0e-9) * 4.0 + 4.0;
             if (loop && lEnd > lStart && p < lEnd - 1.0e-9) limit = std::min (limit, lEnd);
+            // the arrangement: the blocks are also cut where clips start and end, so a clip anywhere (off the bar
+            // line, split, trimmed, muted) starts and stops on its sample
+            if (mode.load (std::memory_order_relaxed) == (int) PlayMode::Arrange)
+                for (auto& t : tracks)
+                    for (auto& c : *t->clips)
+                    {
+                        const double a = c.startBar * 4.0, b = (c.startBar + c.bars) * 4.0;
+                        if (a > p + 1.0e-9) { limit = std::min (limit, a); break; }   // (sorted by start)
+                        if (b > p + 1.0e-9) limit = std::min (limit, b);
+                    }
             int len = (int) std::ceil ((limit - p) * spb - 1.0e-6);
             len = juce::jlimit (1, n - done, len);
             Outs o; for (size_t i = 0; i < o.ch.size(); ++i) o.ch[i] = outs.ch[i] ? outs.ch[i] + done : nullptr;
@@ -419,6 +429,7 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
     const auto m = (PlayMode) mode.load (std::memory_order_relaxed);
     const double stepBeats = stepBeatsOf (t, headBpm);
     t.loopOffset = 0;
+    t.clipFrom = t.clipTo = -1;
     if (m == PlayMode::Session)
     {
         const int pend = t.pendingPattern.load (std::memory_order_relaxed);
@@ -475,10 +486,13 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
     {
         const double bar = ppq0 / 4.0;
         const Clip* c = nullptr;
-        for (auto& cl : *t.clips) if (bar >= cl.startBar - 1.0e-9 && bar < cl.startBar + cl.bars - 1.0e-9) { c = &cl; break; }
+        for (auto& cl : *t.clips) if (! cl.muted && bar >= cl.startBar - 1.0e-9 && bar < cl.startBar + cl.bars - 1.0e-9) { c = &cl; break; }
+        // the pattern runs from where the clip starts in it (its offset: a clip split or trimmed from the left)
+        const double anchor = c ? c->startBar * 4.0 - c->offset : 0.0;
+        if (c) { t.clipFrom = c->startBar * 4.0; t.clipTo = (c->startBar + c->bars) * 4.0; }
         if (! c) { t.silent = true; t.activePattern = -1; }
-        else if (c->pattern != t.activePattern || std::abs (t.anchor - c->startBar * 4.0) > 1.0e-6 || t.silent)
-        { t.activePattern = c->pattern; t.anchor = c->startBar * 4.0; t.silent = false; t.lastStepN = -1; t.prevFired = false; }
+        else if (c->pattern != t.activePattern || std::abs (t.anchor - anchor) > 1.0e-6 || t.silent)
+        { t.activePattern = c->pattern; t.anchor = anchor; t.silent = false; t.lastStepN = -1; t.prevFired = false; }
         t.seqAnchor = t.anchor;
     }
     t.shownPattern.store (t.silent ? -1 : t.activePattern);
@@ -653,6 +667,10 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
     const bool fl = fill.load (std::memory_order_relaxed);
     const int root = t.rootNote.load (std::memory_order_relaxed);
     const double rel0 = ppq0 - t.seqAnchor, rel1 = ppq1 - t.seqAnchor;
+    // the window the steps fire in: this span, inside the arrangement's clip. A block cut where a clip starts ends up
+    // to a sample past it: the clip's first step is still caught (on the span's first sample)
+    double lo = ppq0, hi = ppq1;
+    if (t.clipTo >= 0) { hi = std::min (hi, t.clipTo); if (t.clipFrom <= ppq0 + 1.0e-9 && ppq0 - t.clipFrom < 1.0e-3) lo = t.clipFrom; }
     // where every step starts, in steps: each step lasts its own duration (1 on an even grid, so step k starts at k)
     std::array<double, kMaxSteps + 1> at;
     at[0] = 0.0; for (int i = 0; i < len; ++i) at[(size_t) i + 1] = at[(size_t) i] + (double) juce::jlimit (0.05f, 16.0f, pat.s[(size_t) i].dur);
@@ -709,7 +727,7 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
             double ru = (double) r / rat;
             if (st.rcurve > 0.001f) ru = 1.0 - std::pow (1.0 - ru, 1.0 + 2.0 * st.rcurve); else if (st.rcurve < -0.001f) ru = std::pow (ru, 1.0 - 2.0 * st.rcurve);
             const double e = base + ru * own;
-            if (e < ppq0 - 1.0e-9 || e >= ppq1 - 1.0e-9) continue;
+            if (e < lo - 1.0e-9 || e >= hi - 1.0e-9) continue;
             if (r == 0)
             {
                 const bool ok = condOk (st.cond, loop, fl, t.prevFired);
@@ -805,7 +823,7 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
     {
         const AudioClip& c = (*t.aclips)[ci];
         ClipState* st = ci < t.clipState.size() ? t.clipState[ci].get() : nullptr;
-        if (! c.sample || c.bars <= 0 || ! st) continue;
+        if (! c.sample || c.bars <= 0 || ! st || c.muted) continue;
         const double c0 = c.startBar * 4.0, c1 = (c.startBar + c.bars) * 4.0;
         if (c1 <= ppq0 || c0 >= ppq1) continue;
         const auto& smp = c.sample->data;

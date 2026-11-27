@@ -85,6 +85,7 @@ struct Track
     std::array<NoteOff, 96> pending {}; int nPending = 0;
     double anchor = 0, seqAnchor = 0; long long loopOffset = 0; int activePattern = -1; bool silent = true;
     long long lastStepN = -1; bool prevFired = false; bool snapMixer = false;
+    double clipFrom = -1, clipTo = -1;   // arrangement: the clip playing (beats); the steps fire only inside it
     juce::MidiBuffer seqMidi;                         // this span's notes (sequenced before any track is rendered)
     int firstHit = -1; float chokeGain = 1.0f, chokeTarget = 1.0f;
     std::array<juce::uint8, kMaxSteps> flip {}; std::array<float, kMaxSteps> drift {}; long long evoPass = -1; Rng evoRng;   // the evolving copy
@@ -196,6 +197,8 @@ public:
     std::atomic<int> currentScene { -1 };
     std::atomic<int> launchQuant { 1 };          // bars (0 = immediate)
     std::atomic<bool> snap { true };             // timeline edits snap to the grid
+    std::atomic<int> gridIndex { 0 };            // the grid (timeline::grids(): 0 adaptive, follows the zoom)
+    std::atomic<bool> follow { true };           // the arrangement scrolls with the playhead
     std::array<std::atomic<float>, 128> cc;      // last midi cc values 0..1
     std::atomic<int> lastCc { -1 };              // last cc number received (for learn)
     std::atomic<bool> learning { false };
@@ -308,6 +311,43 @@ public:
     AudioClip* addAudioClip (Track&, const juce::File&, double startBar, juce::String* error = nullptr);
     void editAudioClips (Track&, const std::function<void (std::vector<AudioClip>&)>&);
     void splitClip (Track&, int clipId, double atBar);
+
+    // ---- the arrangement, edited like in any daw (Arrange.cpp). Clips by track uid and id ------------------
+    Track* clipTrack (const ClipRef& r) const;
+    bool clipSpan (const ClipRef&, double& startBar, double& bars) const;   // false when it is gone
+    bool clipMuted (const ClipRef&) const;
+    std::vector<ClipRef> allClips() const;
+    /** the clips that overlap the bars [from, to) on the tracks given (every track when the list is empty) */
+    std::vector<ClipRef> clipsBetween (double fromBar, double toBar, const std::vector<int>& trackUids = {}) const;
+    /** move clips by some bars (none before the start) */
+    void moveClips (const std::vector<ClipRef>&, double deltaBars);
+    /** cut clips at a bar; returns the right-hand halves */
+    std::vector<ClipRef> splitClips (const std::vector<ClipRef>&, double atBar);
+    /** move a clip's start, its content staying where it is (trimming or extending from the left) */
+    void trimClipStart (const ClipRef&, double newStartBar);
+    void setClipLength (const ClipRef&, double bars);
+    /** copies right after the clips (as a block); returns the copies */
+    std::vector<ClipRef> duplicateClips (const std::vector<ClipRef>&);
+    void deleteClips (const std::vector<ClipRef>&);
+    void setClipsMuted (const std::vector<ClipRef>&, bool muted);
+    struct ClipBoard
+    {
+        struct Item { int track = 0, row = 0; bool audio = false; Clip clip; AudioClip aclip; };
+        double startBar = 0, endBar = 0; std::vector<Item> items;
+        bool empty() const { return items.empty(); }
+    };
+    ClipBoard copyClips (const std::vector<ClipRef>&) const;
+    /** paste with the first clip at a bar: onto the tracks they came from, or, given a track, the topmost row lands
+        there and the others keep their distance below it (a clip lands only on a track of its kind) */
+    std::vector<ClipRef> pasteClips (const ClipBoard&, double atBar, Track* toTrack = nullptr);
+    /** empty bars at a position: clips across it are cut, everything after it (clips, automation, markers, the
+        loop) moves later */
+    void insertTime (double atBar, double bars);
+    /** remove the bars [from, to): clips across the edges are cut, everything after moves earlier */
+    void deleteTime (double fromBar, double toBar);
+    /** seconds from the start to a beat and back, following the tempo lane when there is one */
+    double secondsAt (double beat) const;
+    double beatAt (double seconds) const;
     juce::File collectSample (const juce::File&);   // copy into the project's audio folder
     // recording
     void startRecording();                           // arms the writers for armed audio tracks; recording follows play

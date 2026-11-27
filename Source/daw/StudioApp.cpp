@@ -30,7 +30,9 @@ public:
         settings = std::make_unique<juce::PropertiesFile> (Session::dataDir().getChildFile ("standalone.settings"), o);
         processor.reset (dynamic_cast<StudioProcessor*> (createPluginFilter()));
         processor->midiClockOut = [this] (const juce::MidiMessage& m) { if (clockOut) clockOut->sendMessageNow (m); };
-        processor->openAudioSettings = [this] { menuItemSelected (10, 2); };
+        processor->openAudioSettings = [this] { menuItemSelected (10, 3); };
+        processor->uiScale = (float) settings->getDoubleValue ("uiScale", 1.0);
+        processor->onUiScale = [this] (float v) { settings->setValue ("uiScale", v); settings->saveIfNeeded(); };
         std::unique_ptr<juce::XmlElement> saved (settings->getXmlValue ("audio"));
         const auto self = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SELFTEST", {});
         if (self.isNotEmpty())
@@ -161,13 +163,14 @@ public:
     }
 
     // ---- menu -------------------------------------------------------------------------------------
-    juce::StringArray getMenuBarNames() override { return { "file", "edit", "audio" }; }
+    juce::StringArray getMenuBarNames() override { return { "file", "edit", "view", "audio" }; }
     StudioEditor* studioEditor() const { return window ? window->studio() : nullptr; }
     juce::PopupMenu getMenuForIndex (int i, const juce::String&) override
     {
         juce::PopupMenu m;
         if (i == 0) { if (auto* e = studioEditor()) m = e->fileMenu(); }
         else if (i == 1) { if (auto* e = studioEditor()) m = e->editMenu(); }
+        else if (i == 2) { if (auto* e = studioEditor()) m = e->viewMenu(); }
         else
         {
             m.addItem (10, "audio and midi settings...");
@@ -179,7 +182,7 @@ public:
     }
     void menuItemSelected (int id, int menu) override
     {
-        if (menu == 0 || menu == 1) { if (auto* e = studioEditor()) e->fileAction (id); return; }
+        if (menu <= 2) { if (auto* e = studioEditor()) e->fileAction (id); return; }
         if (id >= 21) { int k = 21; for (auto& d : juce::MidiOutput::getAvailableDevices()) { if (k++ == id) setClockOut (d.identifier); } return; }
         if (id == 20) { setClockOut ({}); return; }
         if (id == 10)
