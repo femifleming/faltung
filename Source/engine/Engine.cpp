@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include "PluginHost.h"
+#include "../platform/Apps.h"
 
 namespace um
 {
@@ -58,6 +59,7 @@ IOConfig Engine::wantedConfig()
 {
     IOConfig c;
     tapOfBlock.clear(); inDevOfBlock.clear(); outDevOfBlock.clear();
+    const auto procs = CoreAudioHost::audioProcesses();
     auto indexOf = [] (std::vector<juce::String>& v, const juce::String& s) { for (size_t i = 0; i < v.size(); ++i) if (v[i] == s) return (int) i; v.push_back (s); return (int) v.size() - 1; };
     for (auto s : model.root)
     {
@@ -70,7 +72,24 @@ IOConfig Engine::wantedConfig()
             {
                 TapSpec ts;
                 ts.kind = t == BlockType::System ? (b[ids::exclude].toString().isEmpty() ? TapSpec::Kind::System : TapSpec::Kind::AllButProcesses) : TapSpec::Kind::Processes;
-                if (t == BlockType::App) { ts.pids = pidList (b[ids::pids]); ts.bundleIds = strList (b[ids::bundles]); }
+                if (t == BlockType::App)
+                {
+                    ts.pids = pidList (b[ids::pids]); ts.bundleIds = strList (b[ids::bundles]);
+                    // an app plays through helper processes inside its own bundle (Chrome, Safari, Electron apps): those
+                    // count as the app, whatever their own bundle ids (the tap matches ids, and follows new helpers)
+                    std::vector<juce::String> extra;
+                    for (auto& bid : ts.bundleIds)
+                    {
+                        for (auto& pr : procs)
+                        {
+                            const bool inside = owningApp (pr.path).bundleId == bid;   // the app bundle the process lives in
+                            if (! inside && ! pr.bundleId.startsWith (bid + ".")) continue;
+                            if (pr.bundleId.isNotEmpty() && pr.bundleId != bid && std::find (extra.begin(), extra.end(), pr.bundleId) == extra.end()) extra.push_back (pr.bundleId);
+                            if (inside && pr.bundleId.isEmpty() && std::find (ts.pids.begin(), ts.pids.end(), pr.pid) == ts.pids.end()) ts.pids.push_back (pr.pid);
+                        }
+                    }
+                    for (auto& x : extra) if (std::find (ts.bundleIds.begin(), ts.bundleIds.end(), x) == ts.bundleIds.end()) ts.bundleIds.push_back (x);
+                }
                 else ts.bundleIds = strList (b[ids::exclude]);
                 ts.muteSource = (bool) b[ids::mute]; ts.mono = (bool) b[ids::mono]; ts.name = b[ids::name].toString();
                 if (t == BlockType::App && ts.pids.empty() && ts.bundleIds.empty()) continue;   // no app chosen yet

@@ -36,7 +36,7 @@ void Inspector::show (juce::ValueTree b)
         case BlockType::App:
         {
             addLabel (juce::String (juce::CharPointer_UTF8 ("apps (a dot: playing now) — tick one or several; they are found again when they restart")));
-            auto p = std::make_unique<AppPicker> (theme, b, ids::bundles); auto* pp = p.get(); p->setSize (280, 40); p->reload(); const int h = p->getHeight(); add (std::move (p), std::min (300, h));
+            auto p = std::make_unique<AppPicker> (theme, b, ids::bundles); auto* pp = p.get(); p->setSize (280, 40); p->reload(); const int h = p->getHeight(); add (std::move (p), h);
             addLink ("show background processes too", [this, pp, b] { pp->showAll = ! pp->showAll; pp->reload(); });
             add (boundToggle (theme, b, ids::mute, "mute where it plays (you hear it only through umleitung)"), 22);
             add (boundToggle (theme, b, ids::mono, "mono"), 22);

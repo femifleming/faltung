@@ -3,6 +3,7 @@
 // points), the channel matrix (any input to any output), the app picker, and controls bound to the model.
 #include "Look.h"
 #include "Meters.h"
+#include "../platform/Apps.h"
 
 namespace um::ui
 {
@@ -247,16 +248,24 @@ public:
     void reload()
     {
         rows.clear();
-        std::set<juce::String> seen;
+        std::map<juce::String, size_t> at;   // key → row
+        auto addRow = [&] (const juce::String& key, const juce::String& name, bool playing)
+        {
+            if (auto it = at.find (key); it != at.end()) { rows[it->second].playing = rows[it->second].playing || playing; return; }
+            at[key] = rows.size(); rows.push_back ({ key, name, playing });
+        };
+        // every running app, whether it has played anything yet or not
+        for (auto& a : runningApps()) addRow (a.bundleId, a.name, false);
+        // what is using audio: a helper process counts as the app it lives in (Google Chrome Helper is Google Chrome)
         for (auto& pr : CoreAudioHost::audioProcesses())
         {
-            if (! pr.playing && ! pr.path.contains (".app/") && ! showAll) continue;   // apps (and anything playing), not the system's helpers
-            const juce::String key = pr.bundleId.isNotEmpty() ? pr.bundleId : "pid:" + juce::String (pr.pid);
-            if (! seen.insert (key).second) { for (auto& r : rows) if (r.key == key) r.playing = r.playing || pr.playing; continue; }
-            rows.push_back ({ key, pr.name.isNotEmpty() ? pr.name : key, pr.playing });
+            const auto owner = owningApp (pr.path);
+            if (owner.bundleId.isNotEmpty()) { addRow (owner.bundleId, owner.name, pr.playing); continue; }
+            if (! pr.playing && ! showAll) continue;   // the system's own helpers, unless they are playing
+            addRow (pr.bundleId.isNotEmpty() ? pr.bundleId : "pid:" + juce::String (pr.pid), pr.name.isNotEmpty() ? pr.name : pr.bundleId, pr.playing);
         }
         // apps chosen before that aren't running now stay on the list
-        for (auto& k : juce::StringArray::fromTokens (block[keys()].toString(), " ", "")) if (k.isNotEmpty() && ! seen.count (k) && ! k.startsWith ("pid:")) rows.push_back ({ k, k + " (not running)", false });
+        for (auto& k : juce::StringArray::fromTokens (block[keys()].toString(), " ", "")) if (k.isNotEmpty() && ! at.count (k) && ! k.startsWith ("pid:")) addRow (k, k + " (not running)", false);
         std::sort (rows.begin(), rows.end(), [] (auto& a, auto& b) { return a.playing != b.playing ? a.playing : a.name.compareIgnoreCase (b.name) < 0; });
         setSize (getWidth(), std::max (40, (int) rows.size() * 20 + 4));
         repaint();

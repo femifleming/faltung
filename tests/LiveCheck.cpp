@@ -7,6 +7,7 @@
 //      → volume → recorder: the file holds 523 hz
 #include "engine/Engine.h"
 #include "engine/PluginHost.h"
+#include "platform/Apps.h"
 #include <iostream>
 
 using namespace um;
@@ -95,6 +96,71 @@ int main()
             helper.kill();
         }
     }
+    std::cout << "== an app that plays through a helper inside its bundle (like chrome), chosen by the app's own id\n";
+    {
+        const juce::File toneApp (UM_TONE_PATH);
+        const auto toneBundle = toneApp.getParentDirectory().getParentDirectory().getParentDirectory();   // …/umleitung_host_check_tone.app
+        if (! toneApp.existsAsFile()) std::cout << "    (the tone helper isn't built: skipped)\n";
+        else
+        {
+            // Fake App.app (studio.umleitung.fakeapp) with Contents/Frameworks/Fake Helper.app (org.example.unrelated.helper) that plays
+            const auto fake = tmp.getChildFile ("Fake App.app"), helper = fake.getChildFile ("Contents/Frameworks/Fake Helper.app");
+            fake.getChildFile ("Contents/MacOS").createDirectory(); helper.getParentDirectory().createDirectory();
+            fake.getChildFile ("Contents/Info.plist").replaceWithText ("<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>studio.umleitung.fakeapp</string><key>CFBundleName</key><string>Fake App</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>");
+            juce::ChildProcess cp; cp.start (juce::StringArray { "/usr/bin/ditto", toneBundle.getFullPathName(), helper.getFullPathName() }); cp.waitForProcessToFinish (10000);
+            auto plist = helper.getChildFile ("Contents/Info.plist");
+            juce::ChildProcess pb; pb.start (juce::StringArray { "/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier org.example.unrelated.helper", plist.getFullPathName() }); pb.waitForProcessToFinish (5000);
+            juce::ChildProcess cs; cs.start (juce::StringArray { "/usr/bin/codesign", "--force", "--deep", "-s", "-", fake.getFullPathName() }); cs.waitForProcessToFinish (20000);
+            const auto exe = helper.getChildFile ("Contents/MacOS/umleitung_host_check_tone");
+            const auto owner = owningApp (exe.getFullPathName());
+            check (owner.bundleId == "studio.umleitung.fakeapp" && owner.name == "Fake App", "the helper belongs to Fake App (" + owner.bundleId + ", " + owner.name + ")");
+            juce::ChildProcess h;
+            check (h.start (juce::StringArray { exe.getFullPathName(), "BlackHole2ch_UID", "659", "0.2", "9" }, 0), "the helper plays 659 hz");
+            pump (1000);
+            Model m; Engine e (m);
+            m.settings().setProperty (ids::device, "BlackHole16ch_UID", nullptr);
+            auto s = m.addSession ("fake");
+            auto app = m.addBlock (s, BlockType::App, 0, 0); app.setProperty (ids::bundles, "studio.umleitung.fakeapp", nullptr); app.setProperty (ids::mute, true, nullptr);
+            auto rec = m.addBlock (s, BlockType::Recorder, 1, 0); rec.setProperty (ids::folder, tmp.getFullPathName(), nullptr); rec.setProperty (ids::pattern, "fake", nullptr);
+            m.connect (s, app[ids::id], rec[ids::id]);
+            const auto cfg = (s.setProperty (ids::on, true, nullptr), e.wantedConfig());
+            juce::String ids2; if (! cfg.taps.empty()) for (auto& x : cfg.taps[0].bundleIds) ids2 << x << " ";
+            check (! cfg.taps.empty() && ids2.contains ("org.example.unrelated.helper"), "choosing the app takes its helper in: " + ids2.trim());
+            e.rebuild(); pump (4000);
+            e.stopRecording (rec[ids::id]); pump (500);
+            float pk = 0; double hz = 0, secs = 0; int ch = 0;
+            const bool ok = analyse (tmp.getChildFile ("fake.wav"), pk, hz, ch, secs);
+            std::cout << "    fake.wav: " << secs << " s, peak " << dsp::gainToDb (pk) << " db, " << hz << " hz\n";
+            check (ok && std::abs (hz - 659.0) < 3.0 && pk > 0.15f, "the helper's sound is captured when the app is chosen");
+            s.setProperty (ids::on, false, nullptr); e.rebuild(); pump (300);
+            h.kill();
+        }
+    }
+
+    std::cout << "== google chrome, if it is running (unmuted, only measured: nothing is recorded or kept)\n";
+    {
+        bool chrome = false; for (auto& a : runningApps()) if (a.bundleId == "com.google.Chrome") chrome = true;
+        bool playing = false; for (auto& pr : CoreAudioHost::audioProcesses()) if (pr.playing && owningApp (pr.path).bundleId == "com.google.Chrome") playing = true;
+        check (! chrome || [] { for (auto& a : runningApps()) if (a.bundleId == "com.google.Chrome" && a.name == "Google Chrome") return true; return false; }(), "google chrome is on the app list by its name");
+        if (! chrome) std::cout << "    (chrome isn't running)\n";
+        else if (! playing) std::cout << "    (chrome isn't playing anything right now: nothing to measure)\n";
+        else
+        {
+            Model m; Engine e (m);
+            m.settings().setProperty (ids::device, "BlackHole16ch_UID", nullptr);
+            auto s = m.addSession ("chrome");
+            auto app = m.addBlock (s, BlockType::App, 0, 0); app.setProperty (ids::bundles, "com.google.Chrome", nullptr);
+            auto met = m.addBlock (s, BlockType::Meter, 1, 0);
+            m.connect (s, app[ids::id], met[ids::id]);
+            s.setProperty (ids::on, true, nullptr); e.rebuild(); pump (2500);
+            float pk = 0; if (auto* rt = e.runtime (met[ids::id])) for (int c = 0; c < 2; ++c) pk = std::max (pk, rt->levels.takePeak (c));
+            float lu = -120; if (auto* rt = e.runtime (met[ids::id])) lu = rt->loudness.momentary.load();
+            std::cout << "    chrome through umleitung: peak " << dsp::gainToDb (pk) << " db, " << lu << " lufs momentary\n";
+            check (pk > 1.0e-4f, "chrome's sound reaches umleitung");
+            s.setProperty (ids::on, false, nullptr); e.rebuild(); pump (300);
+        }
+    }
+
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "all good\n" : juce::String (failures) + " failure(s)\n");
     return failures == 0 ? 0 : 1;
