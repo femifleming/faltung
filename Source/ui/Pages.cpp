@@ -399,6 +399,8 @@ void PluginsPage::run()
 {
     found = ctx.plugins.scan ([this] (float p, const juce::String& f) { progress = p; const juce::ScopedLock l (lock); current = f; }, [this] { return threadShouldExit(); });
     done = true;
+    if (ctx.plugins.scannerBroken) juce::MessageManager::callAsync ([this, e = ctx.plugins.lastError] { ctx.status ("the scan stopped: " + e); });
+    else juce::MessageManager::callAsync ([this, n = found] { ctx.status (juce::String (n) + " new plug-ins found"); });
 }
 void PluginsPage::paint (juce::Graphics& g)
 {

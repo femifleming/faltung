@@ -3,6 +3,7 @@
 //   umleitung --scan-plugin <format> <file> <out.xml>    (the plug-in scanner's child process)
 //   umleitung --screenshots <dir> [--demo]              (a picture of every page, then quit)
 #include "ui/MainView.h"
+#include <iostream>
 
 namespace um
 {
@@ -43,14 +44,42 @@ class App : public juce::JUCEApplication, private juce::ValueTree::Listener, pri
 public:
     const juce::String getApplicationName() override { return "umleitung"; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override { return false; }
+    /** one window at a time, but the plug-in scanner (the app started again with --scan-plugin) and the screenshots
+        always run: a second copy is otherwise handed to the first and quits, and every scan looked like a crash */
+    bool moreThanOneInstanceAllowed() override
+    {
+        const auto cl = getCommandLineParameters();
+        return cl.contains ("--scan-plugin") || cl.contains ("--screenshots") || cl.contains ("--scan-all");
+    }
 
-    static juce::File dataDir() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Application Support/umleitung"); }
+    static juce::File dataDir()
+    {
+        // (UMLEITUNG_DATA: another folder, for tests that run the real app without touching the user's settings)
+        const auto env = juce::SystemStats::getEnvironmentVariable ("UMLEITUNG_DATA", {});
+        if (env.isNotEmpty()) return juce::File (env);
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Application Support/umleitung");
+    }
 
     void initialise (const juce::String& cl) override
     {
         const auto args = juce::StringArray::fromTokens (cl, true);
-        if (args.size() >= 4 && args[0] == "--scan-plugin") { setApplicationReturnValue (PluginHost::scanChild (args[1].unquoted(), args[2].unquoted(), juce::File (args[3].unquoted()))); quit(); return; }
+        if (args.size() >= 4 && args[0] == "--scan-plugin")
+        {
+            // the scanner: describe the file, then leave at once (some plug-ins crash in their own clean-up at exit:
+            // that would show a crash report for something that went fine)
+            // (with the message loop running: some plug-ins (Arturia's) only describe themselves once it is)
+            juce::MessageManager::callAsync ([args] { std::_Exit (PluginHost::scanChild (args[1].unquoted(), args[2].unquoted(), juce::File (args[3].unquoted()))); });
+            return;
+        }
+        if (args.contains ("--scan-all"))
+        {
+            // every plug-in, from the command line (each in its own child process, as the plug-ins page does)
+            PluginHost ph (dataDir());
+            int lastPct = -1;
+            const int n = ph.scan ([&lastPct] (float p, const juce::String& f) { const int pc = juce::roundToInt (p * 100); if (pc != lastPct) { lastPct = pc; std::cout << pc << "% " << juce::File (f).getFileName() << std::endl; } });
+            std::cout << "found " << ph.known.getNumTypes() << " (" << n << " new), left out " << ph.blacklisted().size() << (ph.scannerBroken ? ", the scanner couldn't run: " + ph.lastError : juce::String()) << std::endl;
+            setApplicationReturnValue (ph.scannerBroken ? 1 : 0); quit(); return;
+        }
         const int shotsAt = args.indexOf ("--screenshots");
         const bool shots = shotsAt >= 0 && shotsAt + 1 < args.size();
         dataDir().createDirectory();

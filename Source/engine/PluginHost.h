@@ -29,6 +29,7 @@ public:
     std::unique_ptr<juce::AudioPluginInstance> create (const juce::PluginDescription&, double sampleRate, int blockSize, juce::String& error);
     void save();
     juce::File listFile, blacklistFile;
+    bool scannerBroken = false; juce::String lastError;   // the last scan stopped because its scanner couldn't run
 
 private:
     juce::StringArray black;

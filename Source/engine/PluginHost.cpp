@@ -24,6 +24,8 @@ void PluginHost::save()
 
 int PluginHost::scanChild (const juce::String& formatName, const juce::String& file, const juce::File& out)
 {
+    // first of all a sign that the scanner is running (a crash while loading the plug-in leaves this and no result)
+    juce::File (out.getFullPathName() + ".started").replaceWithText ("1");
     juce::AudioPluginFormatManager fm;
     fm.addFormat (std::make_unique<juce::VST3PluginFormat>());
    #if JUCE_PLUGINHOST_AU && JUCE_MAC
@@ -47,6 +49,16 @@ bool PluginHost::scanFile (const juce::String& formatName, const juce::String& f
     if (! done) p.kill();
     const auto code = done ? p.getExitCode() : 999u;
     auto x = juce::XmlDocument::parse (out); out.deleteFile();
+    const juce::File started (out.getFullPathName() + ".started");
+    const bool ran = started.existsAsFile(); started.deleteFile();
+    // (a child that crashed reports exit code 0 here: what tells a crash from a scanner that never ran is the marker)
+    if (! ran)
+    {
+        // the scanner itself didn't do its job (it never looked at the plug-in): nothing is the plug-in's fault
+        error = "the scanner didn't run (" + exe.getFileName() + ")";
+        scannerBroken = true;
+        return false;
+    }
     if (! done || code != 0 || ! x)
     {
         black.addIfNotAlreadyThere (file); save();
@@ -70,6 +82,7 @@ int PluginHost::scan (std::function<void (float, const juce::String&)> progress,
         for (auto& p : files) if (! black.contains (p)) { todo.add (p); fmt.add (f->getName()); }
     }
     const int before = known.getNumTypes();
+    scannerBroken = false; lastError.clear();
     for (int i = 0; i < todo.size(); ++i)
     {
         if (cancelled && cancelled()) break;
@@ -78,6 +91,7 @@ int PluginHost::scan (std::function<void (float, const juce::String&)> progress,
         if (progress) progress ((float) i / (float) std::max (1, todo.size()), todo[i]);
         if (already) continue;
         juce::String err; scanFile (fmt[i], todo[i], err);
+        if (scannerBroken) { lastError = err; break; }   // (stop: every file would fail the same way)
     }
     save();
     if (progress) progress (1.0f, {});
