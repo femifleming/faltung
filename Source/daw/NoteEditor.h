@@ -6,6 +6,7 @@
 #include "StudioWidgets.h"
 #include "Session.h"
 #include "Timeline.h"
+#include <set>
 
 namespace fal::daw
 {
@@ -40,7 +41,57 @@ public:
     // the view: the clip's beats across, keys down from topKey
     double beat0() const { auto* c = clip(); return c ? c->offset : 0.0; }
     double beats() const { auto* c = clip(); return c ? std::max (0.25, c->bars * 4.0) : 4.0; }
-    juce::Rectangle<int> roll() const { return getLocalBounds().withTrimmedTop (head).withTrimmedLeft (keysW); }
+    juce::Rectangle<int> roll() const { return getLocalBounds().withTrimmedTop (head).withTrimmedLeft (keysW).withTrimmedBottom (laneH); }
+    /** the lane under the notes: velocity, or a controller (cc 0-127, pitch bend, pressure) */
+    juce::Rectangle<int> lane() const { return getLocalBounds().withTrimmedLeft (keysW).removeFromBottom (laneH - 4); }
+    int laneKind = -1;   // -1 velocity
+    static juce::String kindName (int k)
+    {
+        if (k < 0) return "velocity"; if (k == kCtrlBend) return "pitch bend"; if (k == kCtrlPressure) return "pressure";
+        if (k == 1) return "mod wheel (cc 1)"; if (k == 2) return "breath (cc 2)"; if (k == 11) return "expression (cc 11)"; if (k == 64) return "sustain (cc 64)"; if (k == 74) return "brightness (cc 74)";
+        return "cc " + juce::String (k);
+    }
+    std::vector<Ctrl> ctrls() const { auto* c = clip(); return c && c->ctrl ? *c->ctrl : std::vector<Ctrl>(); }
+    void setCtrls (std::vector<Ctrl> v)
+    {
+        std::stable_sort (v.begin(), v.end(), [] (const Ctrl& a, const Ctrl& b) { return a.beat < b.beat; });
+        if (auto* t = session.trackByUid (uid)) session.editClips (*t, [&] (std::vector<Clip>& cs) { for (auto& c : cs) if (c.id == id) c.ctrl = v.empty() ? nullptr : std::make_shared<const std::vector<Ctrl>> (v); });
+        repaint();
+    }
+    float laneValueAt (float y) const { const auto l = lane(); return juce::jlimit (0.0f, 1.0f, 1.0f - (y - (float) l.getY()) / (float) l.getHeight()); }
+    float laneY (float v) const { const auto l = lane(); return (float) l.getY() + (1.0f - v) * (float) l.getHeight(); }
+    juce::Rectangle<int> laneLabel() const { return { 2, lane().getY(), keysW - 4, 14 }; }
+    void laneMenu()
+    {
+        juce::PopupMenu m; const int kinds[] = { -1, 1, kCtrlBend, kCtrlPressure, 11, 64, 2, 74 };
+        for (int k : kinds) m.addItem (1000 + k, kindName (k), true, laneKind == k);
+        std::set<int> used; for (auto& c : ctrls()) used.insert (c.kind);
+        juce::PopupMenu inClip; for (int k : used) inClip.addItem (1000 + k, kindName (k), true, laneKind == k);
+        if (! used.empty()) m.addSubMenu ("in this clip", inClip);
+        m.addItem (5000, "another cc..."); m.addSeparator(); m.addItem (5001, "clear this lane", laneKind >= 0);
+        m.showMenuAsync (juce::PopupMenu::Options(), [this] (int r)
+        {
+            if (r >= 999 && r < 1200) { laneKind = r - 1000; repaint(); }
+            else if (r == 5001) { auto v = ctrls(); v.erase (std::remove_if (v.begin(), v.end(), [this] (const Ctrl& c) { return c.kind == laneKind; }), v.end()); setCtrls (v); }
+            else if (r == 5000)
+            {
+                auto* w = new juce::AlertWindow ("a controller", "cc number (0 - 127)", juce::MessageBoxIconType::NoIcon);
+                w->addTextEditor ("t", "7"); w->addButton ("ok", 1); w->addButton ("cancel", 0);
+                juce::Component::SafePointer<NoteEditor> sp (this);
+                w->enterModalState (true, juce::ModalCallbackFunction::create ([sp, w] (int rr) { if (sp && rr == 1) { sp->laneKind = juce::jlimit (0, 127, w->getTextEditorContents ("t").getIntValue()); sp->repaint(); } }), true);
+            }
+        });
+    }
+    /** draw a controller from a to b (the lane's points between them replaced, one a grid step) */
+    void drawCtrl (double b0, float v0, double b1, float v1)
+    {
+        if (b1 < b0) { std::swap (b0, b1); std::swap (v0, v1); }
+        auto v = ctrls();
+        v.erase (std::remove_if (v.begin(), v.end(), [&] (const Ctrl& c) { return c.kind == laneKind && c.beat >= b0 - 1.0e-9 && c.beat <= b1 + 1.0e-9; }), v.end());
+        const double st = std::max (1.0 / 64.0, grid() / 2.0);
+        for (double b = std::floor (b0 / st) * st; b <= b1 + 1.0e-9; b += st) if (b >= b0 - 1.0e-9) { const double u = b1 > b0 ? (b - b0) / (b1 - b0) : 0.0; v.push_back ({ b, laneKind, (float) (v0 + (v1 - v0) * u) }); }
+        setCtrls (v);
+    }
     double beatAt (float x) const { const auto r = roll(); return beat0() + (x - r.getX()) / (double) r.getWidth() * beats(); }
     float xOf (double b) const { const auto r = roll(); return (float) r.getX() + (float) ((b - beat0()) / beats() * r.getWidth()); }
     int keyAt (float y) const { return topKey - (int) std::floor ((y - roll().getY()) / keyH); }
@@ -80,6 +131,8 @@ public:
         }
         // notes (velocity: how full)
         auto v = notes();
+        {
+        juce::Graphics::ScopedSaveState clipNotes (g); g.reduceClipRegion (r);
         for (int k = 0; k < (int) v.size(); ++k)
         {
             const auto& n = v[(size_t) k];
@@ -89,6 +142,31 @@ public:
             g.setColour (theme.fill.withAlpha (0.3f + 0.7f * n.vel)); g.fillRect (nr);
             g.setColour (s ? juce::Colours::white : theme.ink.withAlpha (0.6f)); g.drawRect (nr, s ? 2.0f : 1.0f);
         }
+        }
+        // the lane: velocity bars, or the controller as a stepped line
+        {
+            const auto l = lane();
+            g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (l);
+            g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (l.getX(), l.getY() - 2, l.getWidth(), 1);
+            g.setColour (theme.ink); g.setFont (uiFont (9.0f)); g.drawFittedText (kindName (laneKind), laneLabel().withHeight (l.getHeight()), juce::Justification::topLeft, 4);
+            if (laneKind < 0)
+                for (int k = 0; k < (int) v.size(); ++k)
+                {
+                    const auto& n = v[(size_t) k]; const float x = xOf (n.beat);
+                    if (x < (float) l.getX() || x > (float) l.getRight()) continue;
+                    const bool s = std::find (sel.begin(), sel.end(), k) != sel.end();
+                    g.setColour (s ? juce::Colours::white : theme.fill); g.fillRect (x, laneY (n.vel), 3.0f, (float) l.getBottom() - laneY (n.vel));
+                }
+            else
+            {
+                juce::Path p; bool started = false; float lastY = laneY (laneKind == kCtrlBend ? 0.5f : 0.0f);
+                p.startNewSubPath ((float) l.getX(), lastY); started = true;
+                for (auto& c : ctrls()) if (c.kind == laneKind) { const float x = juce::jlimit ((float) l.getX(), (float) l.getRight(), xOf (c.beat)); p.lineTo (x, lastY); lastY = laneY (c.value); p.lineTo (x, lastY); }
+                if (started) p.lineTo ((float) l.getRight(), lastY);
+                g.setColour (juce::Colour (0xfff6c590)); g.strokePath (p, juce::PathStrokeType (1.4f));
+                if (laneKind == kCtrlBend) { g.setColour (theme.ink.withAlpha (0.2f)); g.fillRect ((float) l.getX(), laneY (0.5f), (float) l.getWidth(), 1.0f); }
+            }
+        }
         if (band) { g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRect (bandRect()); g.setColour (juce::Colours::white.withAlpha (0.7f)); g.drawRect (bandRect(), 1); }
     }
     juce::Rectangle<int> bandRect() const { return juce::Rectangle<int> (bandA, bandB); }
@@ -97,6 +175,12 @@ public:
     {
         grabKeyboardFocus();
         if (e.y < head && e.x > getWidth() - 70) { if (onClose) onClose(); return; }
+        if (e.x < keysW && e.y >= lane().getY()) { laneMenu(); return; }
+        if (lane().contains (e.getPosition()))
+        {
+            laneDrag = true; lastLaneBeat = beatAt (e.position.x); lastLaneV = laneValueAt (e.position.y);
+            laneEdit (e); return;
+        }
         if (! roll().contains (e.getPosition())) return;
         const int k = noteAt (e.position);
         if (k >= 0 && (e.mods.isPopupMenu() || e.getNumberOfClicks() > 1)) { auto v = notes(); v.erase (v.begin() + k); sel.clear(); setNotes (v); return; }
@@ -124,8 +208,28 @@ public:
         }
         repaint();
     }
+    /** the lane: velocity of the notes under the mouse (the selected ones, if it is on one of them), or a controller drawn */
+    void laneEdit (const juce::MouseEvent& e)
+    {
+        const double b = beatAt (e.position.x); const float val = laneValueAt (e.position.y);
+        if (laneKind < 0)
+        {
+            auto v = notes(); bool any = false;
+            const double lo = std::min (lastLaneBeat, b) - 0.5 * beats() / std::max (1, lane().getWidth()) * 6.0, hi = std::max (lastLaneBeat, b) + 0.5 * beats() / std::max (1, lane().getWidth()) * 6.0;
+            for (int k = 0; k < (int) v.size(); ++k) if (v[(size_t) k].beat >= lo && v[(size_t) k].beat <= hi) { v[(size_t) k].vel = std::max (0.02f, val); any = true; }
+            if (any) setNotes (v);
+        }
+        else if (e.mods.isAltDown())
+        {
+            auto v = ctrls(); const double lo = std::min (lastLaneBeat, b), hi = std::max (lastLaneBeat, b);
+            v.erase (std::remove_if (v.begin(), v.end(), [&] (const Ctrl& c) { return c.kind == laneKind && c.beat >= lo && c.beat <= hi; }), v.end()); setCtrls (v);
+        }
+        else drawCtrl (lastLaneBeat, lastLaneV, std::max (beat0(), b), val);
+        lastLaneBeat = std::max (beat0(), b); lastLaneV = val;
+    }
     void mouseDrag (const juce::MouseEvent& e) override
     {
+        if (laneDrag) { laneEdit (e); return; }
         if (band)
         {
             bandB = e.getPosition(); sel.clear();
@@ -162,7 +266,7 @@ public:
         for (int k = 0; k < (int) tagged.size(); ++k) { out.push_back (tagged[(size_t) k].first); if (tagged[(size_t) k].second) ns.push_back (k); }
         setNotes (out); sel = ns;
     }
-    void mouseUp (const juce::MouseEvent&) override { band = false; mode = Mode::None; repaint(); }
+    void mouseUp (const juce::MouseEvent&) override { laneDrag = false; band = false; mode = Mode::None; repaint(); }
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override { topKey = juce::jlimit (12, 127, topKey + (w.deltaY > 0 ? 2 : w.deltaY < 0 ? -2 : 0)); repaint(); }
     bool keyPressed (const juce::KeyPress& k) override
     {
@@ -196,6 +300,7 @@ private:
     ui::Theme theme;
     std::vector<Note> orig; std::vector<int> dragSel; int lead = -1; Mode mode = Mode::None; float lastVel = 0.8f;
     bool band = false; juce::Point<int> bandA, bandB;
-    static constexpr int head = 38, keysW = 44; static constexpr float keyH = 10.0f;
+    bool laneDrag = false; double lastLaneBeat = 0; float lastLaneV = 0;
+    static constexpr int head = 38, keysW = 44, laneH = 84; static constexpr float keyH = 10.0f;
 };
 } // namespace fal::daw

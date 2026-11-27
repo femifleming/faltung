@@ -118,7 +118,9 @@ public:
         for (int k = 0; k < names.size(); ++k) t.addItem (100 + k, names[k]);
         m.addSubMenu ("new from template", t);
         const juce::String cmd = juce::SystemStats::getOperatingSystemType() & juce::SystemStats::MacOSX ? "cmd" : "ctrl";
-        m.addItem (1, "open...  (" + cmd + "+o)"); m.addItem (2, "save  (" + cmd + "+s)"); m.addItem (3, "save as...  (" + cmd + "+shift+s)"); m.addItem (6, "open the autosave"); m.addSeparator();
+        m.addItem (1, "open...  (" + cmd + "+o)"); m.addItem (2, "save  (" + cmd + "+s)"); m.addItem (3, "save as...  (" + cmd + "+shift+s)"); m.addItem (6, "open the autosave");
+        { const auto ms = s.missing(); m.addItem (8, "find missing files..." + (ms.empty() ? juce::String() : "  (" + juce::String (ms.audio.size()) + " audio, " + juce::String (ms.plugins.size()) + " plug-ins)")); }
+        m.addSeparator();
         m.addItem (7, "export audio (mix, stems, selected tracks, a time selection, multichannel)...  (" + cmd + "+e)"); m.addItem (5, "export midi..."); m.addSeparator();
         double a, b; s.renderRange (a, b);
         const juce::String range = s.loopOn.load() ? "the loop, " + timeline::formatPosition (a * 4.0, s.meterMap()) + " - " + timeline::formatPosition (b * 4.0, s.meterMap()) : juce::String (s.meterMap().barsBetween (a * 4.0, b * 4.0), 0) + " bars";
@@ -241,6 +243,24 @@ public:
             case 6: if (proc.autosaveFile().existsAsFile()) { windows.clear(); proc.recoverAutosave (err); select (nullptr); say (err.isNotEmpty() ? err : "autosave opened (from " + proc.autosaveFile().getLastModificationTime().formatted ("%H:%M") + "; unsaved)"); } else say ("no autosave yet"); break;
             case 7: exportDialog(); break;
             case 30: case 31: renderProject (id == 31); break;
+            case 8:
+            {
+                const auto ms = s.missing();
+                if (ms.empty()) { say ("nothing is missing"); break; }
+                juce::String msg;
+                if (! ms.audio.isEmpty()) msg << ms.audio.size() << " audio file(s) missing:\n" << ms.audio.joinIntoString ("\n").substring (0, 1200) << "\n\n";
+                if (! ms.plugins.isEmpty()) msg << ms.plugins.size() << " plug-in(s) not installed here (kept in the project as they were; they come back where they are installed):\n" << ms.plugins.joinIntoString ("\n").substring (0, 800);
+                if (ms.audio.isEmpty()) { juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "missing", msg); break; }
+                auto* w = new juce::AlertWindow ("missing files", msg, juce::MessageBoxIconType::NoIcon);
+                w->addButton ("look in a folder...", 1); w->addButton ("close", 0);
+                w->enterModalState (true, juce::ModalCallbackFunction::create ([this, choose] (int r)
+                {
+                    if (r != 1) return;
+                    choose ("where the files are (every folder in it is looked through)", juce::File::getSpecialLocation (juce::File::userMusicDirectory), {}, juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                            [this] (juce::File f) { const int n = s.findMissing (f); const auto left = s.missing().audio.size(); say ("found " + juce::String (n) + " file(s)" + (left > 0 ? ", " + juce::String (left) + " still missing" : juce::String (", nothing missing now"))); });
+                }), true);
+                break;
+            }
             case 32: case 33:
                 if (auto* t = selected())
                 {
@@ -274,7 +294,8 @@ public:
         w->addComboBox ("norm", { "no normalising", "normalise to -1 dbfs", "normalise to -0.3 dbfs", "normalise to 0 dbfs" }, "normalise");
         w->addComboBox ("dither", { "dither (below 32 bit)", "no dither" }, "dither");
         w->addComboBox ("limit", { "no limiter", "true-peak limiter at -1 dbtp (the mix)" }, "limiter");
-        for (auto* id : { "what", "format", "rate", "norm", "dither", "limit" }) if (w->getComboBoxComponent (id)->getSelectedItemIndex() < 0) w->getComboBoxComponent (id)->setSelectedItemIndex (0);
+        w->addComboBox ("lufs", { "loudness as it is", "to -14 lufs (spotify, youtube, tidal)", "to -16 lufs (apple music)", "to -11 lufs (club, loud)", "to -9 lufs (very loud)", "to -23 lufs (broadcast, ebu r128)" }, "loudness (integrated; the true peak stays under the ceiling)");
+        for (auto* id : { "what", "format", "rate", "norm", "dither", "limit", "lufs" }) if (w->getComboBoxComponent (id)->getSelectedItemIndex() < 0) w->getComboBoxComponent (id)->setSelectedItemIndex (0);
         w->addButton ("export...", 1); w->addButton ("cancel", 0);
         w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int r)
         {
@@ -288,6 +309,7 @@ public:
             o.normalise = nm > 0; o.normaliseDb = nm == 1 ? -1.0f : nm == 2 ? -0.3f : 0.0f;
             o.dither = w->getComboBoxComponent ("dither")->getSelectedItemIndex() == 0;
             o.limit = w->getComboBoxComponent ("limit")->getSelectedItemIndex() == 1;
+            if (const int lu = w->getComboBoxComponent ("lufs")->getSelectedItemIndex(); lu > 0) { o.loudnessTarget = true; o.targetLufs = std::array<float, 6> { 0, -14, -16, -11, -9, -23 }[(size_t) juce::jlimit (0, 5, lu)]; if (! o.limit) o.ceilingDb = -1.0f; o.limit = o.limit; }
             double a = 0, b = s.projectBars();
             const int range = w->getComboBoxComponent ("range")->getSelectedItemIndex();
             if (range == 1) { a = s.loopStart.load(); b = s.loopEnd.load(); }
@@ -299,7 +321,12 @@ public:
             const auto ext = juce::String (ExportOptions::extension (o.format));
             if (what <= 1)
                 choose ("export the mix", StudioProcessor::projectsDir().getChildFile (s.projectName + ext), "*" + ext, juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
-                        [this, o, a, b, what, ext] (juce::File f) { juce::String e; s.renderMaster (f.withFileExtension (ext), a, b, nullptr, e, o, what == 1); say (e.isNotEmpty() ? e : "written: " + f.withFileExtension (ext).getFileName()); });
+                        [this, o, a, b, what, ext] (juce::File f)
+                        {
+                            juce::String e; s.renderMaster (f.withFileExtension (ext), a, b, nullptr, e, o, what == 1);
+                            const float lu = s.exportLufs.load(), tp = s.exportTruePeak.load();
+                            say (e.isNotEmpty() ? e : "written: " + f.withFileExtension (ext).getFileName() + (lu > -70.0f ? "   " + juce::String (lu, 1) + " lufs integrated, true peak " + juce::String (tp, 1) + " dbtp" : juce::String()));
+                        });
             else
                 choose ("export stems into a folder", StudioProcessor::projectsDir(), {}, juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
                         [this, o, a, b] (juce::File f) { juce::String e; const auto dir = f.getChildFile (s.projectName + " stems"); s.renderStems (dir, a, b, nullptr, e, o); say (e.isNotEmpty() ? e : "stems in " + dir.getFullPathName()); });
@@ -387,8 +414,58 @@ public:
         for (auto* pg : pages) pg->rebuild();
         structure = structureKey();
     }
+    /** a controller's command (a mapped button, or a mackie control surface) */
+    void runCommand (int c)
+    {
+        auto* t = s.trackAt (s.selectedTrack.load());
+        auto arrKey = [this] (juce::juce_wchar ch) { if (auto* ap = dynamic_cast<ArrangePage*> (pages[1])) ap->key (juce::KeyPress (ch, {}, ch)); };
+        auto bankTrack = [this] (int ch) -> Track* { const int i = s.mackieBank.load() + ch; return i >= 0 && i < (int) s.tracks.size() ? s.tracks[(size_t) i].get() : nullptr; };
+        if (c < 0)
+        {
+            // a learnt button: -(command·1000 + (cc: 500) + number)
+            const int v = -c, cmd = v / 1000, rest = v % 1000; const bool cc = rest >= 500; const int num = cc ? rest - 500 : rest;
+            auto maps = *s.cmdMaps; maps.erase (std::remove_if (maps.begin(), maps.end(), [&] (const CmdMap& m) { return m.command == cmd || (m.note == ! cc && m.number == num); }), maps.end());
+            maps.push_back ({ ! cc, num, cmd }); s.setCmdMaps (maps);
+            say (commandName (cmd) + ": " + (cc ? "cc " : "note ") + juce::String (num)); return;
+        }
+        switch (c)
+        {
+            case CMD_PLAY: s.togglePlay(); break;
+            case CMD_STOP: s.stop(); break;
+            case CMD_RECORD: rec.onClick(); break;
+            case CMD_LOOP: s.loopOn.store (! s.loopOn.load()); break;
+            case CMD_CLICK: s.metronome.store (! s.metronome.load()); break;
+            case CMD_PREV_MARKER: arrKey ('['); break;
+            case CMD_NEXT_MARKER: arrKey (']'); break;
+            case CMD_UNDO: fileAction (40); break;
+            case CMD_REDO: fileAction (41); break;
+            case CMD_PREV_TRACK: case CMD_NEXT_TRACK: { const int i = juce::jlimit (0, std::max (0, (int) s.tracks.size() - 1), s.selectedTrack.load() + (c == CMD_PREV_TRACK ? -1 : 1)); if (! s.tracks.empty()) select (s.tracks[(size_t) i].get()); break; }
+            case CMD_ARM: if (t) t->armed.store (! t->armed.load()); break;
+            case CMD_MUTE: if (t) { t->mixer->setBase (MP_MUTE, t->muted() ? 0.0f : 1.0f); s.dirty = true; } break;
+            case CMD_SOLO: if (t) { t->solo.store (! t->solo.load()); s.dirty = true; } break;
+            case CMD_TO_START: s.locate (0.0); break;
+            case CMD_BACK_BAR: s.locate (std::max (0.0, std::ceil (s.currentBar() - 1.0e-6) - 1.0)); break;
+            case CMD_FWD_BAR: s.locate (std::floor (s.currentBar() + 1.0e-6) + 1.0); break;
+            case CMD_SAVE: fileAction (2); break;
+            case CMD_MCU_BANK_DOWN: s.mackieBank.store (std::max (0, s.mackieBank.load() - 8)); say ("mackie: tracks " + juce::String (s.mackieBank.load() + 1) + "-" + juce::String (s.mackieBank.load() + 8)); break;
+            case CMD_MCU_BANK_UP: s.mackieBank.store (std::max (0, std::min ((int) s.tracks.size() - 1, s.mackieBank.load() + 8))); say ("mackie: tracks " + juce::String (s.mackieBank.load() + 1) + "-" + juce::String (s.mackieBank.load() + 8)); break;
+            case CMD_MCU_CH_DOWN: s.mackieBank.store (std::max (0, s.mackieBank.load() - 1)); break;
+            case CMD_MCU_CH_UP: s.mackieBank.store (std::max (0, std::min ((int) s.tracks.size() - 1, s.mackieBank.load() + 1))); break;
+            default:
+                if (c >= CMD_SCENE1 && c <= CMD_LAST) s.launchScene (c - CMD_SCENE1);
+                else if (c >= CMD_MCU_ARM && c < CMD_MCU_ARM + 8) { if (auto* bt = bankTrack (c - CMD_MCU_ARM)) bt->armed.store (! bt->armed.load()); }
+                else if (c >= CMD_MCU_SOLO && c < CMD_MCU_SOLO + 8) { if (auto* bt = bankTrack (c - CMD_MCU_SOLO)) bt->solo.store (! bt->solo.load()); }
+                else if (c >= CMD_MCU_MUTE && c < CMD_MCU_MUTE + 8) { if (auto* bt = bankTrack (c - CMD_MCU_MUTE)) bt->mixer->setBase (MP_MUTE, bt->muted() ? 0.0f : 1.0f); }
+                else if (c >= CMD_MCU_SELECT && c < CMD_MCU_SELECT + 8) { if (auto* bt = bankTrack (c - CMD_MCU_SELECT)) select (bt); }
+                break;
+        }
+    }
     void tick()
     {
+        for (int c : s.takeCommands()) runCommand (c);
+        // the master's loudness: its numbers, and a new measurement each time the transport starts
+        s.loudness.update();
+        if (const bool pl = s.playPpq.load() >= 0; pl != wasPlayingLoud) { if (pl) s.loudness.reset(); wasPlayingLoud = pl; }
         if (structureKey() != structure) rebuildAll();
         // drop windows of devices that vanished
         windows.erase (std::remove_if (windows.begin(), windows.end(), [this] (auto& w) { bool alive = false; auto chk = [&] (Track& t) { t.forEachDevice ([&] (Device& d) { if (&d == w->device) alive = true; }); }; for (auto& t : s.tracks) chk (*t); for (auto& r : s.returns) chk (*r); chk (*s.master); return ! alive; }), windows.end());
@@ -534,6 +611,7 @@ public:
     StudioProcessor& proc; Session& s; ui::Theme theme; Ctx ctx;
     juce::OwnedArray<Page> pages; juce::OwnedArray<ui::TextLink> tabs; int page = 0;
     ui::TextLink play, stop, rec, loop, mode, outMode, save, panic, autoWrite, audio, file, punch, capture; HoldLink fill;
+    bool wasPlayingLoud = false;
     CpuMeter cpuMeter { s, theme };
     ui::TextLink click { "click", theme }, countIn { "count-in 1", theme };
     DevSlider bpm, swing, master;

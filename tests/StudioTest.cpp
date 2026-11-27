@@ -2349,6 +2349,306 @@ int main (int argc, char** argv)
         check (p2.session.groups->size() == 1 && (*p2.session.groups)[0].folded && p2.session.tracks[0]->group.load() == (*p2.session.groups)[0].id && p2.session.tracks.size() >= 2 && p2.session.tracks[1]->group.load() == (*p2.session.groups)[0].id, "groups are saved");
     }
 
+    std::cout << "== tempo automation: changes and ramps, the clock, steps and audio clips through them\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f); s.mode.store ((int) PlayMode::Arrange);
+        // 120 for the first bar, 60 from the second
+        s.editLane ({ 0, 0, GP_TEMPO }, [] (AutoLane& l) { l.pts = { { 0.0, tempoToNorm (120.0f), 0.0f }, { 3.9999, tempoToNorm (120.0f), 0.0f }, { 4.0, tempoToNorm (60.0f), 0.0f } }; });
+        std::cout << "  bar 2 starts at " << s.secondsAt (4.0) << " s, bar 3 at " << s.secondsAt (8.0) << " s (2 and 6)\n";
+        check (std::abs (s.secondsAt (4.0) - 2.0) < 1.0e-3 && std::abs (s.secondsAt (8.0) - 6.0) < 2.0e-3 && std::abs (s.beatAt (6.0) - 8.0) < 2.0e-3, "the clock follows the tempo lane");
+        auto& t = *s.tracks[0]; shortHit (t);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k : { 0, 4, 8, 12 }) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } });
+        s.editClips (t, [] (std::vector<Clip>& v) { v.push_back ({ 0, 0.0, 2.0 }); });
+        auto r = render (p, 2.0 * 6.0 / 4.0 * 120.0 / 120.0 + 0.1);   // (render counts bars at the start tempo: 3.1 bars of 120 = 6.2 s)
+        auto on = onsets (r.out, 0);
+        juce::String got; for (int o : on) got << juce::String (o / kSr, 3) << " ";
+        std::cout << "  hits at " << got << "s\n";
+        const double want[] = { 0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0 };
+        bool ok = on.size() == 8; for (size_t k = 0; ok && k < 8; ++k) ok = std::abs (on[k] / kSr - want[k]) < 0.002;
+        check (ok, "the steps play at the tempo of where they are");
+        // a repitched audio clip over the change plays on at its own speed: the output is the file, sample for sample
+        s.editClips (t, [] (std::vector<Clip>& v) { v.clear(); });
+        const int N = (int) (7.0 * kSr);
+        juce::AudioBuffer<float> ramp (2, N); for (int i = 0; i < N; ++i) { ramp.setSample (0, i, (float) i / N); ramp.setSample (1, i, (float) i / N); }
+        const auto rf = tmp.getChildFile ("ramp.wav"); writeWav (rf, ramp);
+        auto* at = s.addTrack ("ramp", -1, TrackKind::Audio); juce::String err;
+        auto* rc = s.addAudioClip (*at, rf, 0.0, &err); const int rid = rc ? rc->id : 0;
+        s.setClipLength ({ at->uid, rid, true }, 2.0);
+        auto rr = render (p, 3.05);
+        const float g0 = rr.out.getSample (0, 48000) / (48000.0f / N);   // (the master's level)
+        double worst = 0; for (int i = 1000; i < (int) (5.9 * kSr); i += 997) worst = std::max (worst, (double) std::abs (rr.out.getSample (0, i) / g0 - (float) i / N));
+        std::cout << "  repitched clip over the change: worst error " << worst << "\n";
+        check (worst < 2.0e-4, "a repitched clip keeps its own time through a tempo change");
+        // warp to the bars: it fits its two bars, whatever the tempo does (at 4 s, beat 6: 6/8 of the source)
+        s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { for (auto& c : v) c.mode = 2; });
+        auto rw = render (p, 3.05);
+        const float v4 = rw.out.getSample (0, (int) (4.0 * kSr)) / g0;
+        std::cout << "  warped clip at 4 s reads " << v4 * N / kSr << " s of the source (5.25)\n";
+        check (std::abs (v4 * N / kSr - 6.0 / 8.0 * 7.0) < 0.03, "a warped clip follows the bars through a tempo change");
+        // a ramp: 120 to 60 over a bar (the seconds are the integral of the tempo)
+        s.editLane ({ 0, 0, GP_TEMPO }, [] (AutoLane& l) { l.pts = { { 0.0, tempoToNorm (120.0f), 0.0f }, { 4.0, tempoToNorm (60.0f), 0.0f } }; });
+        double exact = 0; for (int k = 0; k < 4000; ++k) { const double b = (k + 0.5) / 1000.0; exact += 0.001 * 60.0 / tempoFromNorm (tempoToNorm (120.0f) + (tempoToNorm (60.0f) - tempoToNorm (120.0f)) * (float) (b / 4.0)); }
+        std::cout << "  a ramp 120 -> 60 over a bar takes " << s.secondsAt (4.0) << " s (" << exact << ")\n";
+        check (std::abs (s.secondsAt (4.0) - exact) < 0.01, "ramps");
+    }
+    std::cout << "== recording midi into a note clip (notes, controllers, pitch bend, pressure); a controller lane plays back\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); tr->armed.store (false); }
+        s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange); s.countInBars.store (0);
+        auto& t = *s.tracks[0]; shortHit (t); t.armed.store (true);
+        p.standaloneInputs = 0; p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        s.locate (1.0); s.startRecording(); s.play();
+        const int bar = (int) (4.0 * spb (120));
+        juce::AudioBuffer<float> blk (kOutChannels, kBs);
+        // played: notes at beats 1.3 and 2.7 of bar 2 (bar 1 counted from 0), a mod wheel sweep, a bend
+        struct Ev { int at; juce::MidiMessage m; };
+        std::vector<Ev> evs { { (int) (1.3 * spb (120)), juce::MidiMessage::noteOn (1, 36, 0.9f) }, { (int) (1.6 * spb (120)), juce::MidiMessage::noteOff (1, 36) },
+                              { (int) (2.7 * spb (120)), juce::MidiMessage::noteOn (1, 38, 0.5f) }, { (int) (3.2 * spb (120)), juce::MidiMessage::noteOff (1, 38) },
+                              { (int) (0.5 * spb (120)), juce::MidiMessage::controllerEvent (1, 1, 20) }, { (int) (2.0 * spb (120)), juce::MidiMessage::controllerEvent (1, 1, 100) },
+                              { (int) (3.0 * spb (120)), juce::MidiMessage::pitchWheel (1, 12000) } };
+        for (int pos = 0; pos < bar; pos += kBs)
+        {
+            blk.clear(); juce::MidiBuffer m;
+            for (auto& e : evs) if (e.at >= pos && e.at < pos + kBs) m.addEvent (e.m, e.at - pos);
+            p.processBlock (blk, m);
+            s.collectRecordedNotes();
+        }
+        s.stopRecording(); s.stop();
+        const Clip* rec = nullptr; for (auto& c : *t.clips) if (c.notes) rec = &c;
+        check (rec != nullptr, "a note clip was recorded");
+        if (rec)
+        {
+            juce::String got; for (auto& n : *rec->notes) got << n.pitch << "@" << juce::String (n.beat, 3) << "+" << juce::String (n.len, 2) << " ";
+            std::cout << "  clip at bar " << rec->startBar + 1 << ", " << rec->bars << " bar(s): " << got << " / " << (rec->ctrl ? (int) rec->ctrl->size() : 0) << " controller points\n";
+            const auto& nv = *rec->notes;
+            check (std::abs (rec->startBar - 1.0) < 1.0e-9 && nv.size() == 2 && nv[0].pitch == 36 && std::abs (nv[0].beat - 1.3) < 0.002 && std::abs (nv[0].len - 0.3) < 0.003 && nv[1].pitch == 38 && std::abs (nv[1].beat - 2.7) < 0.002 && std::abs (nv[0].vel - 0.9f) < 0.01f,
+                   "the notes where they were played, as long as they were held, as hard");
+            int ccs = 0, bends = 0; if (rec->ctrl) for (auto& c : *rec->ctrl) { if (c.kind == 1) ++ccs; if (c.kind == kCtrlBend) ++bends; }
+            check (ccs == 2 && bends == 1, "the mod wheel and the bend recorded too");
+            // played back: the hits land where they were played
+            t.armed.store (false);
+            auto r = render (p, 2.0); auto on = onsets (r.out, 0);
+            check (on.size() == 2 && std::abs (on[0] - (int) ((4.0 + 1.3) * spb (120))) <= 2 && std::abs (on[1] - (int) ((4.0 + 2.7) * spb (120))) <= 2, "the recording plays back as played");
+            // the controllers go out with the notes (midi export, read back)
+            juce::String err; const auto mf = tmp.getChildFile ("rec.mid");
+            check (s.exportMidi (mf, 0.0, 2.0, err), "midi export: " + err);
+            double len = 0; CtrlPtr back; auto nb = Session::notesFromMidi (mf, len, &back);
+            int bk = 0, cc1 = 0; if (back) for (auto& c : *back) { if (c.kind == kCtrlBend) ++bk; if (c.kind == 1) ++cc1; }
+            check (nb && back && bk >= 1 && cc1 >= 2, "the controller lane is played (exported with the notes)");
+        }
+    }
+    std::cout << "== warp markers: the audio moves to them (transients land where the markers are)\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange);
+        // clicks every half second: beats 0 1 2 3 at 120
+        const int N = (int) (2.0 * kSr); juce::AudioBuffer<float> cl (2, N); cl.clear();
+        for (int k = 0; k < 4; ++k) for (int i = 0; i < 300; ++i) { const float v = 0.8f * std::exp (-i / 60.0f) * (i % 2 ? 1.0f : -1.0f); cl.setSample (0, k * 24000 + i, v); cl.setSample (1, k * 24000 + i, v); }
+        const auto cf = tmp.getChildFile ("clicks.wav"); writeWav (cf, cl);
+        auto* at = s.addTrack ("clicks", -1, TrackKind::Audio); juce::String err;
+        auto* c0 = s.addAudioClip (*at, cf, 0.0, &err); const int id = c0 ? c0->id : 0;
+        s.setClipLength ({ at->uid, id, true }, 1.0);
+        // the third click (source 1.0 s, beat 2) to beat 2.5
+        s.editAudioClips (*at, [id] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == id) { c.mode = 3; c.warp = { { 2.5, 1.0 } }; } });
+        auto r = render (p, 1.0); auto on = onsets (r.out, 0, 0.05f, 3000);
+        juce::String got; for (int o : on) got << juce::String (o / kSr, 4) << " ";
+        std::cout << "  clicks at " << got << "s (0, 0.625, 1.25, 1.75)\n";
+        const double want[] = { 0.0, 0.625, 1.25, 1.75 };
+        bool ok = on.size() == 4; for (size_t k = 0; ok && k < 4; ++k) ok = std::abs (on[k] / kSr - want[k]) < 0.004;
+        check (ok, "the marked click lands on its marker; the audio before and after stretches to fit");
+        juce::String e2; s.projectFile = tmp.getChildFile ("warp.fstudio");
+        check (p.saveProject (s.projectFile, e2), "save: " + e2);
+        StudioProcessor p2; check (p2.loadProject (s.projectFile, e2), "reopen: " + e2);
+        bool kept = false; for (auto& tr : p2.session.tracks) for (auto& c : *tr->aclips) if (c.mode == 3 && c.warp.size() == 1 && std::abs (c.warp[0].first - 2.5) < 1.0e-9) kept = true;
+        check (kept, "warp markers are saved");
+    }
+    std::cout << "== freeze: the track's chain as a file, the same sound, no devices running\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange); s.global->setBase (GP_SWING, 0.0f);
+        s.projectFile = tmp.getChildFile ("freeze.fstudio"); s.projectName = "freeze";
+        auto& t = *s.tracks[0];
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k : { 0, 3, 6, 10, 12 }) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 0.8f; } });
+        s.editClips (t, [] (std::vector<Clip>& v) { v.push_back ({ 0, 0.0, 2.0 }); });
+        s.addInsert (t, s.createDevice ("fal:dl4"));
+        auto live = render (p, 2.0);
+        juce::String err;
+        check (s.freezeTrack (t, err), "freeze: " + err);
+        check (t.isFrozen() && t.frozenFile.existsAsFile(), "the frozen file");
+        auto frozen = render (p, 2.0);
+        double worst = 0, peak = 0; for (int i = 0; i < live.out.getNumSamples(); ++i) { worst = std::max (worst, (double) std::abs (live.out.getSample (0, i) - frozen.out.getSample (0, i))); peak = std::max (peak, (double) std::abs (live.out.getSample (0, i))); }
+        std::cout << "  live vs frozen: largest difference " << worst << " (peak " << peak << ")\n";
+        check (peak > 0.05 && worst < 1.0e-3, "frozen sounds the same");
+        check (p.saveProject (s.projectFile, err), "save: " + err);
+        StudioProcessor p2; check (p2.loadProject (s.projectFile, err), "reopen: " + err);
+        check (p2.session.tracks[0]->isFrozen(), "frozen stays frozen when reopened");
+        s.unfreezeTrack (t);
+        auto again = render (p, 2.0); double w2 = 0; for (int i = 0; i < live.out.getNumSamples(); ++i) w2 = std::max (w2, (double) std::abs (live.out.getSample (0, i) - again.out.getSample (0, i)));
+        check (! t.isFrozen() && w2 < 1.0e-3, "unfrozen: live again, the same");
+        t.frozenFile.deleteFile();
+    }
+    std::cout << "== hosted plug-ins: a sidechain input fed from the key track; low latency\n";
+    {
+        // a plug-in with a sidechain bus that plays what comes into its sidechain
+        struct ScPlug : juce::AudioPluginInstance
+        {
+            ScPlug() : juce::AudioPluginInstance (BusesProperties().withInput ("in", juce::AudioChannelSet::stereo(), true).withInput ("sidechain", juce::AudioChannelSet::stereo(), false).withOutput ("out", juce::AudioChannelSet::stereo(), true)) {}
+            void fillInPluginDescription (juce::PluginDescription& d) const override { d.name = "sc test"; d.pluginFormatName = "test"; d.fileOrIdentifier = "sc-test"; d.isInstrument = false; d.numInputChannels = 4; d.numOutputChannels = 2; }
+            bool isBusesLayoutSupported (const BusesLayout& l) const override { return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo() && l.getMainInputChannelSet() == juce::AudioChannelSet::stereo(); }
+            const juce::String getName() const override { return "sc test"; }
+            void prepareToPlay (double, int) override {}
+            void releaseResources() override {}
+            void processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer&) override
+            {
+                const int n = b.getNumSamples(); const bool sc = getBusCount (true) > 1 && getBus (true, 1)->isEnabled();
+                for (int c = 0; c < 2; ++c) { if (sc && b.getNumChannels() >= 4) b.copyFrom (c, 0, b, 2 + c, 0, n); else b.clear (c, 0, n); }
+            }
+            double getTailLengthSeconds() const override { return 0; }
+            bool acceptsMidi() const override { return false; } bool producesMidi() const override { return false; }
+            juce::AudioProcessorEditor* createEditor() override { return nullptr; } bool hasEditor() const override { return false; }
+            int getNumPrograms() override { return 1; } int getCurrentProgram() override { return 0; } void setCurrentProgram (int) override {}
+            const juce::String getProgramName (int) override { return {}; } void changeProgramName (int, const juce::String&) override {}
+            void getStateInformation (juce::MemoryBlock&) override {} void setStateInformation (const void*, int) override {}
+        };
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f);
+        auto& kick = *s.tracks[0]; shortHit (kick);
+        s.editPattern (kick, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[0].vel = 1; pt.s[8].on = true; pt.s[8].vel = 1; });
+        s.launch (kick, 0);
+        auto* other = s.addTrack ("keyed", -1, TrackKind::Audio);
+        auto plug = std::make_unique<ScPlug>(); juce::PluginDescription desc; plug->fillInPluginDescription (desc);
+        auto* d = s.addInsert (*other, Device::makeHosted (950, std::move (plug), desc));
+        check (d && d->scChannels == 2, "the plug-in's sidechain bus is on, stereo");
+        other->keyTrack.store (kick.uid);
+        kick.toMaster.store (false);   // (only the keyed track is heard)
+        auto r = render (p, 1.0);
+        const float pk = r.out.getMagnitude (0, 0, r.out.getNumSamples());
+        std::cout << "  the keyed track (only its sidechain): peak " << pk << "\n";
+        check (pk > 0.1f, "the key track reaches the plug-in's sidechain");
+        // low latency: a device that delays by 2048 samples drops out while it is on
+        struct Late : WideProc { Late() : WideProc (2, 2) { setLatencySamples (2048); } bool isBusesLayoutSupported (const BusesLayout& l) const override { return l.getMainInputChannelSet().size() == 2 && l.getMainOutputChannelSet().size() == 2; } };
+        s.addInsert (kick, Device::makeFromProcessor (951, std::make_unique<Late>(), "test:late", "late"));
+        s.rebuildLatency();
+        const int before = s.totalLatency();
+        s.setLowLatency (true);
+        const int after = s.totalLatency();
+        std::cout << "  latency " << before << " samples, low latency " << after << "\n";
+        check (before >= 2048 && after < 2048, "low latency leaves out the device that delays");
+        s.setLowLatency (false);
+        check (s.totalLatency() == before, "and it is back");
+    }
+    std::cout << "== controllers: a learnt button, mackie control\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get()); ed->setSize (1440, 900);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        while (s.tracks.size() < 10) s.addTrack ("t" + juce::String (s.tracks.size() + 1), -1, TrackKind::Audio);
+        p.standaloneInputs = 0;
+        auto block = [&] (juce::MidiMessage m) { juce::AudioBuffer<float> b (kOutChannels, kBs); b.clear(); juce::MidiBuffer mb; mb.addEvent (m, 0); p.processBlock (b, mb); se->tickForTest(); };
+        s.cmdLearning.store (CMD_PLAY);
+        block (juce::MidiMessage::noteOn (1, 60, 1.0f));
+        bool mapped = false; for (auto& c : *s.cmdMaps) if (c.command == CMD_PLAY && c.note && c.number == 60) mapped = true;
+        check (mapped, "learn: note 60 plays");
+        s.stop();
+        block (juce::MidiMessage::noteOn (1, 60, 1.0f));
+        check (s.running.load(), "the button starts the transport");
+        s.cmdLearning.store (CMD_STOP); block (juce::MidiMessage::controllerEvent (1, 20, 127));
+        block (juce::MidiMessage::controllerEvent (1, 20, 127));
+        check (! s.running.load(), "a cc button (learnt) stops it");
+        s.mackie.store (true);
+        block (juce::MidiMessage::pitchWheel (2, 4096));
+        check (std::abs (s.tracks[1]->mixer->baseValue (MP_LEVEL) - 4096.0f / 16383.0f) < 1.0e-3f, "mackie: fader 2 moves track 2's level");
+        block (juce::MidiMessage::noteOn (1, 16 + 2, 1.0f));
+        check (s.tracks[2]->muted(), "mackie: mute 3");
+        block (juce::MidiMessage::noteOn (1, 47, 1.0f)); block (juce::MidiMessage::pitchWheel (1, 16383));
+        check (std::abs (s.tracks[8]->mixer->baseValue (MP_LEVEL) - 1.0f) < 1.0e-3f, "mackie: bank up, fader 1 is track 9");
+        block (juce::MidiMessage::noteOn (1, 94, 1.0f));
+        check (s.running.load(), "mackie: play");
+        s.stop();
+    }
+    std::cout << "== loudness: lufs (ebu r128 test signals), true peak, an export to a loudness\n";
+    {
+        // ebu tech 3341: a stereo 1 khz sine at -23 dbfs is -23.0 lufs
+        const int N = (int) (20.0 * kSr); juce::AudioBuffer<float> b (2, N);
+        const float a = juce::Decibels::decibelsToGain (-23.0f);
+        for (int i = 0; i < N; ++i) { const float v = a * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 1000.0 * i / kSr); b.setSample (0, i, v); b.setSample (1, i, v); }
+        float I = 0, TP = 0, LRA = 0; LoudnessMeter::measure (b, kSr, I, TP, &LRA);
+        std::cout << "  1 khz at -23 dbfs: " << I << " lufs, true peak " << TP << " dbtp\n";
+        check (std::abs (I + 23.0f) < 0.1f, "integrated loudness (-23.0 +- 0.1)");
+        // two levels alternating: a loudness range (ebu 3342 case: -20 then -30 → 10 lu)
+        juce::AudioBuffer<float> c (2, N);
+        for (int i = 0; i < N; ++i) { const float g = juce::Decibels::decibelsToGain (i < N / 2 ? -20.0f : -30.0f); const float v = g * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 1000.0 * i / kSr); c.setSample (0, i, v); c.setSample (1, i, v); }
+        LoudnessMeter::measure (c, kSr, I, TP, &LRA);
+        std::cout << "  -20 then -30: range " << LRA << " lu\n";
+        check (std::abs (LRA - 10.0f) < 1.0f, "loudness range");
+        // a sine at a quarter of the rate, 45 degrees off: its samples peak at -3 db, the wave at 0 db
+        juce::AudioBuffer<float> d (2, 48000);
+        for (int i = 0; i < 48000; ++i) { const float v = (float) std::sin (juce::MathConstants<double>::pi / 2.0 * i + juce::MathConstants<double>::pi / 4.0); d.setSample (0, i, v); d.setSample (1, i, v); }
+        LoudnessMeter::measure (d, kSr, I, TP);
+        std::cout << "  inter-sample peak: samples at " << juce::Decibels::gainToDecibels (d.getMagnitude (0, 0, 48000)) << " db, true peak " << TP << " dbtp\n";
+        check (TP > -0.6f && TP < 0.3f, "true peak sees between the samples");
+        // the master meter as it plays, and an export to -14 lufs
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        s.setTempo (120.0f);
+        { auto& k = *s.tracks[0]; s.editPattern (k, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int q = 0; q < 16; q += 2) { pt.s[(size_t) q].on = true; pt.s[(size_t) q].vel = 0.5f; } }); s.launch (k, 0); }
+        render (p, 4.0); s.loudness.update();
+        std::cout << "  the starter as it plays: momentary " << s.loudness.momentary << ", short-term " << s.loudness.shortTerm << ", integrated " << s.loudness.integrated << " lufs, true peak " << s.loudness.truePeakDb() << "\n";
+        check (s.loudness.integrated > -60.0f && s.loudness.integrated < 0.0f, "the master's loudness as it plays");
+        ExportOptions o; o.loudnessTarget = true; o.targetLufs = -14.0f; o.limit = false; o.bits = 32; o.dither = false; o.tail = false;
+        juce::String err; const auto ef = tmp.getChildFile ("loud.wav");
+        check (s.renderMaster (ef, 0.0, 4.0, nullptr, err, o), "export: " + err);
+        auto back = readWav (ef); float I2 = 0, TP2 = 0; LoudnessMeter::measure (back, kSr, I2, TP2);
+        std::cout << "  exported to -14: " << I2 << " lufs, true peak " << TP2 << " dbtp (reported " << s.exportLufs.load() << ")\n";
+        check ((std::abs (I2 + 14.0f) < 0.3f || TP2 > -0.3f) && TP2 < 0.2f, "the export is at the target loudness (or as close as the true peak allows)");
+        ef.deleteFile();
+    }
+    std::cout << "== track templates; missing files (found again), missing plug-ins (kept)\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        auto& t = *s.tracks[0];
+        s.editPattern (t, 2, [] (Pattern& pt) { pt.s[5].on = true; pt.s[5].vel = 0.37f; });
+        s.addInsert (t, s.createDevice ("fal:dl4"));
+        juce::String err;
+        check (s.saveTrackTemplate (t, "zz test template", err), "template saved: " + err);
+        const auto tf = Session::trackTemplatesDir().getChildFile ("zz test template.ftrack");
+        const int n0 = (int) s.tracks.size();
+        auto* nt = s.addTrackFromTemplate (tf, err);
+        check (nt && (int) s.tracks.size() == n0 + 1 && nt->instrument && t.instrument && nt->instrument->typeId == t.instrument->typeId && nt->inserts.size() == t.inserts.size() && nt->patternAt (2) && nt->patternAt (2)->s[5].on && std::abs (nt->patternAt (2)->s[5].vel - 0.37f) < 1.0e-4f,
+               "a track from the template: the same instrument, devices, patterns");
+        tf.deleteFile();
+        // a project whose audio moved
+        const auto dir = tmp.getChildFile ("moved"); dir.deleteRecursively(); dir.createDirectory();
+        juce::AudioBuffer<float> b (2, 4800); for (int i = 0; i < 4800; ++i) { b.setSample (0, i, 0.3f); b.setSample (1, i, 0.3f); }
+        const auto wf = tmp.getChildFile ("wander.wav"); writeWav (wf, b);
+        auto* at = s.addTrack ("aud", -1, TrackKind::Audio); s.addAudioClip (*at, wf, 0.0, &err);
+        s.projectFile = tmp.getChildFile ("missing.fstudio"); check (p.saveProject (s.projectFile, err), "save: " + err);
+        check (wf.moveFileTo (dir.getChildFile ("sub").getChildFile ("wander.wav")) || (dir.getChildFile ("sub").createDirectory() && wf.moveFileTo (dir.getChildFile ("sub").getChildFile ("wander.wav"))), "moved");
+        // and a plug-in this computer doesn't have
+        {
+            auto x = juce::XmlDocument::parse (s.projectFile);
+            if (auto* tx = x->getChildByName ("track"))
+            {
+                auto* ins = tx->createNewChildElement ("insert"); ins->setAttribute ("uid", 7777); ins->setAttribute ("type", "vst3:nowhere"); ins->setAttribute ("name", "nowhere eq");
+                juce::PluginDescription pd; pd.name = "nowhere eq"; pd.pluginFormatName = "VST3"; pd.fileOrIdentifier = "/Library/Audio/Plug-Ins/VST3/nowhere.vst3"; ins->addChildElement (pd.createXml().release());
+            }
+            x->writeTo (s.projectFile);
+        }
+        StudioProcessor p2; p2.loadProject (s.projectFile, err);
+        auto ms = p2.session.missing();
+        std::cout << "  missing: " << ms.audio.size() << " audio, " << ms.plugins.size() << " plug-in(s)\n";
+        check (ms.audio.size() == 1 && ms.plugins.size() == 1, "what is missing is listed");
+        check (p2.session.findMissing (dir) == 1 && p2.session.missing().audio.isEmpty(), "found in a folder below the one chosen");
+        const auto f2 = tmp.getChildFile ("missing2.fstudio"); check (p2.saveProject (f2, err), "save again: " + err);
+        check (f2.loadFileAsString().contains ("nowhere eq") && f2.loadFileAsString().contains ("sub"), "the missing plug-in is kept in the project; the found file's new place is saved");
+        dir.deleteRecursively();
+    }
+
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
@@ -2535,6 +2835,43 @@ int main (int argc, char** argv)
                     se->showPage (3); run (12); snap (*ed, "sndstudio-vca");
                     se->showPage (1);
                     for (auto& tr : s.tracks) s.setTrackGroup (*tr, 0); s.removeGroup (gd); s.removeGroup (gm);
+                    // tempo lane, warp markers, a controller lane, the master's loudness, the controllers panel
+                    {
+                        s.editLane ({ 0, 0, GP_TEMPO }, [] (AutoLane& l) { l.pts = { { 0.0, tempoToNorm (124.0f), 0.0f }, { 60.0, tempoToNorm (124.0f), 0.0f }, { 64.0, tempoToNorm (118.0f), 0.0f }, { 92.0, tempoToNorm (118.0f), 0.0f }, { 96.0, tempoToNorm (130.0f), 0.4f } }; });
+                        se->selectTrack (at); arr->showBars (0.0, 32.0); { const auto tg = arr->laneTargets(); for (int q = 0; q < (int) tg.size(); ++q) if (tg[(size_t) q] == Target { 0, 0, GP_TEMPO }) arr->laneScroll = std::max (0, q - 2); } run (12); snap (*ed, "sndstudio-tempo"); arr->laneScroll = 0;
+                        s.editLane ({ 0, 0, GP_TEMPO }, [] (AutoLane& l) { l.pts.clear(); });
+                        if (! at->aclips->empty())
+                        {
+                            const ClipRef wr { at->uid, (*at->aclips)[0].id, true };
+                            s.setClipGainLine (wr, {});
+                            const auto* wc = arr->audioClipOf (wr);
+                            if (wc && wc->sample)
+                            {
+                                const double bt = wc->bars * 4.0, av = wc->sourceSeconds();
+                                s.editAudioClips (*at, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == wr.id) { c.mode = 3; c.warp = { { bt * 0.2, av * 0.25 }, { bt * 0.55, av * 0.5 }, { bt * 0.8, av * 0.75 } }; } });
+                            }
+                            arr->warpClip = wr; wc = arr->audioClipOf (wr);
+                            arr->setTrackHeight (120); arr->showBars (7.95, 8.0 + (wc ? wc->bars * 1.1 : 1.0)); s.locate (8.0 + (wc ? wc->bars * 0.5 : 0.5));
+                            arr->scrollY = std::max (0, s.indexOf (at) * arr->laneH - 2 * arr->laneH);
+                            run (16); snap (*ed, "sndstudio-warp");
+                            arr->warpClip = {}; arr->setTrackHeight (40);
+                        }
+                        auto* kt = s.tracks.size() > 2 ? s.tracks[2].get() : s.tracks[0].get();
+                        for (auto& c : *kt->clips) if (c.notes)
+                        {
+                            std::vector<Ctrl> cv; for (int q = 0; q <= 64; ++q) cv.push_back ({ q * 0.25, 1, 0.5f + 0.45f * (float) std::sin (q * 0.3) });
+                            const int cid = c.id; s.editClips (*kt, [&] (std::vector<Clip>& v) { for (auto& x : v) if (x.id == cid) x.ctrl = std::make_shared<const std::vector<Ctrl>> (cv); });
+                            arr->showBars (20.0, 32.0); arr->editNotes ({ kt->uid, cid, false });
+                            if (auto* ne = arr->noteEditor()) { ne->topKey = 76; ne->laneKind = 1; }
+                            run (10); snap (*ed, "sndstudio-cclane");
+                            if (auto* ne = arr->noteEditor()) ne->onClose();
+                            break;
+                        }
+                        se->showPage (3); for (auto& tr : s.tracks) s.launch (*tr, 0); run (60); s.loudness.update(); run (4); snap (*ed, "sndstudio-loudness");
+                        se->showPage (4);
+                        if (auto* mp = dynamic_cast<ModPage*> (se->pageComponent (4))) { s.setCmdMaps ({ { true, 60, CMD_PLAY }, { true, 62, CMD_RECORD }, { false, 20, CMD_NEXT_MARKER } }); s.mackie.store (true); mp->ctlLink.onClick(); run (6); snap (*ed, "sndstudio-controllers"); mp->ctlLink.onClick(); s.mackie.store (false); s.setCmdMaps ({}); }
+                        se->showPage (1);
+                    }
                     s.gridIndex.store (0);
                 }
                 // the whole window bigger and smaller

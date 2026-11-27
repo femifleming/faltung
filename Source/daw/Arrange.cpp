@@ -324,29 +324,93 @@ void Session::deleteTime (double a, double b)
 double Session::secondsAt (double beat) const
 {
     beat = std::max (0.0, beat);
-    auto l = lane ({ 0, 0, GP_TEMPO });
-    if (! l || ! l->enabled || l->pts.empty()) return beat * 60.0 / std::max (1.0f, tempo());
-    // the lane is the tempo at every beat: a quarter of a beat at a time, the tempo at its middle
-    constexpr double step = 0.25;
-    double secs = 0, b = 0;
-    while (b + step <= beat) { secs += step * 60.0 / std::max (1.0f, tempoFromNorm (l->valueAt (b + step * 0.5))); b += step; }
-    if (beat > b) secs += (beat - b) * 60.0 / std::max (1.0f, tempoFromNorm (l->valueAt (0.5 * (b + beat))));
-    return secs;
+    const auto tt = tempoTable;
+    if (! tt || tt->secs.empty()) return beat * 60.0 / std::max (1.0f, tempo());
+    const double u = beat / TempoTable::step; const size_t i = (size_t) u;
+    if (i + 1 >= tt->secs.size()) return tt->secs.back() + (beat - (double) (tt->secs.size() - 1) * TempoTable::step) * 60.0 / tt->tailBpm;
+    return tt->secs[i] + (tt->secs[i + 1] - tt->secs[i]) * (u - (double) i);
 }
 double Session::beatAt (double seconds) const
 {
     seconds = std::max (0.0, seconds);
+    const auto tt = tempoTable;
+    if (! tt || tt->secs.empty()) return seconds * std::max (1.0f, tempo()) / 60.0;
+    const auto& v = tt->secs;
+    if (seconds >= v.back()) return (double) (v.size() - 1) * TempoTable::step + (seconds - v.back()) * tt->tailBpm / 60.0;
+    const auto it = std::upper_bound (v.begin(), v.end(), seconds);
+    const size_t i = (size_t) std::max<std::ptrdiff_t> (0, (it - v.begin()) - 1);
+    const double d = v[i + 1] - v[i];
+    return ((double) i + (d > 0 ? (seconds - v[i]) / d : 0.0)) * TempoTable::step;
+}
+void Session::tempoChanged()
+{
     auto l = lane ({ 0, 0, GP_TEMPO });
-    if (! l || ! l->enabled || l->pts.empty()) return seconds * std::max (1.0f, tempo()) / 60.0;
-    constexpr double step = 0.25;
-    double secs = 0, b = 0;
-    for (int guard = 0; guard < 4000000; ++guard)
+    std::shared_ptr<const TempoTable> nt;
+    if (l && l->enabled && ! l->pts.empty())
     {
-        const double dt = step * 60.0 / std::max (1.0f, tempoFromNorm (l->valueAt (b + step * 0.5)));
-        if (secs + dt >= seconds) return b + step * (seconds - secs) / dt;
-        secs += dt; b += step;
+        auto t = std::make_shared<TempoTable>();
+        // a quarter beat at a time, the tempo at its middle; far enough past the last point (and the project) that the tail is flat
+        const double end = std::max (l->pts.back().beat, projectBars() * 4.0) + 64.0;
+        const size_t n = (size_t) (end / TempoTable::step) + 2;
+        t->secs.resize (n); double secs = 0;
+        for (size_t i = 0; i < n; ++i) { t->secs[i] = secs; secs += TempoTable::step * 60.0 / std::max (1.0f, tempoFromNorm (l->valueAt (((double) i + 0.5) * TempoTable::step))); }
+        t->tailBpm = std::max (1.0f, tempoFromNorm (l->valueAt (end + 1.0e6)));
+        nt = t;
     }
-    return b;
+    { const juce::SpinLock::ScopedLockType sl (lock); tempoTable = nt; }
+    tempoVersion.fetch_add (1);
+}
+double Session::warpSrc (const AudioClip& c, double beat, double beats, double srcAvail)
+{
+    // the markers with the implied one at the start; past the last, the last segment's rate (or the clip's own rate without markers)
+    double pb = 0, ps = 0, rate = beats > 0 ? srcAvail / beats : 1.0;
+    for (auto& [b, sv] : c.warp)
+    {
+        if (b <= pb + 1.0e-9) continue;
+        const double seg = (sv - ps) / (b - pb);
+        if (beat <= b) return ps + (beat - pb) * seg;
+        pb = b; ps = sv;
+    }
+    return ps + (beat - pb) * rate;   // (after the last marker the audio goes on at its own tempo)
+}
+double Session::warpBeat (const AudioClip& c, double src, double beats, double srcAvail)
+{
+    double pb = 0, ps = 0, rate = beats > 0 ? srcAvail / beats : 1.0;
+    for (auto& [b, sv] : c.warp)
+    {
+        if (b <= pb + 1.0e-9) continue;
+        const double seg = (sv - ps) / (b - pb);
+        if (src <= sv && std::abs (seg) > 1.0e-12) return pb + (src - ps) / seg;
+        pb = b; ps = sv;
+    }
+    return std::abs (rate) > 1.0e-12 ? pb + (src - ps) / rate : pb;
+}
+Session::ClipTime Session::clipTime (const AudioClip& c, double fileRate) const
+{
+    ClipTime ct; ct.s = this; ct.c = &c; ct.mode = c.mode; ct.sr = sr;
+    ct.ratio = std::exp2 (c.pitch / 12.0);
+    ct.srcAvail = c.sample ? std::max (0.0, c.sample->seconds() - c.offset) : 0.0;
+    ct.beats = c.bars * 4.0; ct.beat0 = c.startBar * 4.0; ct.sec0 = secondsAt (ct.beat0);
+    const double clipSecs = secondsAt (ct.beat0 + ct.beats) - ct.sec0;
+    if (c.mode == 1) ct.stretch = std::max (0.05, c.stretch);
+    else if (c.mode == 2) ct.stretch = ct.srcAvail > 1.0e-6 ? clipSecs / ct.srcAvail : 1.0;
+    (void) fileRate;
+    return ct;
+}
+double Session::ClipTime::srcAt (double out) const
+{
+    if (mode == 0) return out / sr * ratio;
+    if (mode == 1) return out / sr / stretch;
+    const double b = beatOf (out);
+    if (mode == 2) return beats > 0 ? b / beats * srcAvail : 0.0;
+    return warpSrc (*c, b, beats, srcAvail);
+}
+double Session::ClipTime::outAt (double src) const
+{
+    if (mode == 0) return src / ratio * sr;
+    if (mode == 1) return src * stretch * sr;
+    const double b = mode == 2 ? (srcAvail > 0 ? src / srcAvail * beats : 0.0) : warpBeat (*c, src, beats, srcAvail);
+    return outOf (b);
 }
 int Session::addNoteClip (Track& t, double startBar, double bars, std::vector<Note> notes, const juce::String& name)
 {

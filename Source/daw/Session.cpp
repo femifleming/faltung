@@ -276,7 +276,7 @@ void Session::removeTrack (int index)
     editScenes ([index] (std::vector<Scene>& s) { for (auto& sc : s) if (index < (int) sc.pattern.size()) sc.pattern.erase (sc.pattern.begin() + index); });
     auto nl = std::make_shared<std::vector<LanePtr>>();
     for (auto& l : *lanes) if (l->target.track != uid) nl->push_back (l);
-    { const juce::SpinLock::ScopedLockType sl (lock); lanes = nl; }
+    { const juce::SpinLock::ScopedLockType sl (lock); lanes = nl; } tempoChanged();
     editMidiMaps ([uid] (std::vector<MidiMap>& m) { m.erase (std::remove_if (m.begin(), m.end(), [uid] (const MidiMap& x) { return x.target.track == uid; }), m.end()); });
     editKeyMaps ([uid] (std::vector<KeyMap>& m) { m.erase (std::remove_if (m.begin(), m.end(), [uid] (const KeyMap& x) { return x.target.track == uid; }), m.end()); });
     for (auto& r : *gone->routes) if (auto* d = trackByUid (r.dst)) negotiate (*d);   // they lost an input
@@ -482,7 +482,7 @@ std::unique_ptr<Device> Session::removeDevice (Track& t, int devUid)
     {
         auto nl = std::make_shared<std::vector<LanePtr>>();
         for (auto& l : *lanes) if (! (l->target.track == t.uid && l->target.device == devUid)) nl->push_back (l);
-        { const juce::SpinLock::ScopedLockType sl (lock); lanes = nl; }
+        { const juce::SpinLock::ScopedLockType sl (lock); lanes = nl; } tempoChanged();
         editMods (t, [devUid] (std::vector<Modulator>& m) { m.erase (std::remove_if (m.begin(), m.end(), [devUid] (const Modulator& x) { return x.device == devUid; }), m.end()); });
         negotiate (t);
         rebuildLatency();
@@ -610,11 +610,14 @@ void Session::editRoutes (Track& src, const std::function<void (std::vector<Rout
 void Session::rebuildLatency()
 {
     const juce::SpinLock::ScopedLockType sl (lock);
-    auto chain = [] (Track& t)
+    const bool low = lowLatency.load();
+    auto chain = [&] (Track& t)
     {
         int l = 0;
-        if (t.instrument && ! t.instrument->bypass.load()) l += t.instrument->latency();
-        for (auto& d : t.inserts) if (! d->bypass.load()) l += d->latency();
+        if (t.frozen) return 0;   // (its file is already lined up)
+        auto one = [&] (Device& d) { const int dl = d.bypass.load() ? 0 : d.latency(); const bool off = low && dl > lowLatencyLimit && ! d.isInstrument(); d.lowLatencyOff.store (off); if (! off) l += dl; };
+        if (t.instrument) one (*t.instrument);
+        for (auto& d : t.inserts) one (*d);
         return l;
     };
     // order: tracks sorted by depth along the routes (a destination after all its sources); returns after tracks
@@ -776,13 +779,13 @@ void Session::editGroups (const std::function<void (std::vector<Group>&)>& fn)
     dirty = true;
 }
 void Session::setTrackGroup (Track& t, int id) { t.group.store (groupOf (id) ? id : 0); dirty = true; }
-NotesPtr Session::notesFromMidi (const juce::File& f, double& lengthBeats)
+NotesPtr Session::notesFromMidi (const juce::File& f, double& lengthBeats, CtrlPtr* ctrlOut)
 {
     juce::FileInputStream in (f); juce::MidiFile mf;
     lengthBeats = 0;
     if (! in.openedOk() || ! mf.readFrom (in)) return nullptr;
     const double tpq = mf.getTimeFormat() > 0 ? mf.getTimeFormat() : 960.0;
-    auto v = std::make_shared<std::vector<Note>>();
+    auto v = std::make_shared<std::vector<Note>>(); auto cv = std::make_shared<std::vector<Ctrl>>();
     for (int k = 0; k < mf.getNumTracks() && v->empty(); ++k)
     {
         juce::MidiMessageSequence seq (*mf.getTrack (k)); seq.updateMatchedPairs();
@@ -794,9 +797,17 @@ NotesPtr Session::notesFromMidi (const juce::File& f, double& lengthBeats)
                 v->push_back ({ b, std::max (1.0 / 64.0, off - b), e->message.getNoteNumber(), e->message.getFloatVelocity() });
                 lengthBeats = std::max (lengthBeats, off);
             }
+            else if (ctrlOut)
+            {
+                const auto& m = e->message; const double b = m.getTimeStamp() / tpq;
+                if (m.isController()) cv->push_back ({ b, m.getControllerNumber(), m.getControllerValue() / 127.0f });
+                else if (m.isPitchWheel()) cv->push_back ({ b, kCtrlBend, m.getPitchWheelValue() / 16383.0f });
+                else if (m.isChannelPressure()) cv->push_back ({ b, kCtrlPressure, m.getChannelPressureValue() / 127.0f });
+            }
     }
     if (v->empty()) return nullptr;
     std::sort (v->begin(), v->end(), [] (const Note& a, const Note& b) { return a.beat < b.beat; });
+    if (ctrlOut) { std::stable_sort (cv->begin(), cv->end(), [] (const Ctrl& a, const Ctrl& b) { return a.beat < b.beat; }); *ctrlOut = cv->empty() ? nullptr : CtrlPtr (cv); }
     return v;
 }
 void Session::setMeter (std::vector<timeline::MeterChange> c)
@@ -873,14 +884,14 @@ void Session::editLane (const Target& t, const std::function<void (AutoLane&)>& 
     std::stable_sort (l.pts.begin(), l.pts.end(), [] (const AutoPoint& a, const AutoPoint& b) { return a.beat < b.beat; });
     auto np = std::make_shared<const AutoLane> (l);
     if (at < v->size()) (*v)[at] = np; else v->push_back (np);
-    { const juce::SpinLock::ScopedLockType sl (lock); lanes = v; }
+    { const juce::SpinLock::ScopedLockType sl (lock); lanes = v; } tempoChanged();
     dirty = true;
 }
 void Session::removeLane (const Target& t)
 {
     auto v = std::make_shared<std::vector<LanePtr>>();
     for (auto& l : *lanes) if (l->target != t) v->push_back (l);
-    { const juce::SpinLock::ScopedLockType sl (lock); lanes = v; }
+    { const juce::SpinLock::ScopedLockType sl (lock); lanes = v; } tempoChanged();
     dirty = true;
 }
 void Session::recordPoint (const Target& t, float v)
@@ -974,7 +985,7 @@ void Session::editAudioClips (Track& t, const std::function<void (std::vector<Au
         std::unique_ptr<ClipState> keep;
         for (auto& old : t.clipState) if (old && old->id == c.id) { keep = std::move (old); break; }
         if (! keep) { keep = std::make_unique<ClipState>(); keep->id = c.id; }
-        const size_t grains = (size_t) (c.bars * 4.0 * 60.0 / tempo() * sr / kHop) + 64;
+        const size_t grains = (size_t) ((secondsAt ((c.startBar + c.bars) * 4.0) - secondsAt (c.startBar * 4.0)) * sr / kHop) + 64;
         if (keep->off.size() != grains) keep->off.assign (grains, kUnknown); else std::fill (keep->off.begin(), keep->off.end(), kUnknown);
         st.push_back (std::move (keep));
     }
@@ -1036,6 +1047,7 @@ void Session::startRecording()
         }
         recWriters.push_back (std::move (tw));
     }
+    for (auto& t : tracks) { t->recNotes.clear(); t->recCtrl.clear(); t->recHeld.clear(); t->recNoteClip = 0; }
     recording.store (true);
 }
 void Session::stopRecording()
@@ -1142,6 +1154,45 @@ void Session::recordWithCountIn()
     countInTotal = (juce::int64) std::llround ((meter->barStart (b0 + bars) - s0) * 60.0 / tempo() * sr);
     countInLeft.store (countInTotal);
 }
+void Session::writeRecordedClip (Track& t)
+{
+    // notes still down when the recording stopped: up where it stopped
+    if (! recording.load())
+    {
+        const double at = internalPpq.load();
+        for (auto& [note, on] : t.recHeld) t.recNotes.push_back ({ on.first, std::max (1.0 / 128.0, at - on.first), note, on.second });
+        t.recHeld.clear();
+    }
+    if (t.recNotes.empty() && t.recCtrl.empty() && t.recHeld.empty()) return;
+    // the clip: from the bar of the first thing played to the end of the bar of the last (or of the playhead, while recording)
+    double first = 1.0e12, last = 0;
+    for (auto& n : t.recNotes) { first = std::min (first, n.beat); last = std::max (last, n.beat + n.len); }
+    for (auto& c : t.recCtrl) { first = std::min (first, c.beat); last = std::max (last, c.beat); }
+    for (auto& [note, on] : t.recHeld) { first = std::min (first, on.first); last = std::max (last, on.first); }
+    if (recording.load()) last = std::max (last, std::min (internalPpq.load(), first + 4096.0));
+    const auto b0 = meter->barAt (first + 1.0e-9); const double start = meter->barStart (b0);
+    auto b1 = meter->barAt (std::max (first, last - 1.0e-9)) + 1; const double end = meter->barStart (b1);
+    std::vector<Note> notes; for (auto n : t.recNotes) { n.beat -= start; notes.push_back (n); }
+    std::vector<Ctrl> ctl; for (auto c : t.recCtrl) { c.beat -= start; ctl.push_back (c); }
+    std::stable_sort (ctl.begin(), ctl.end(), [] (const Ctrl& a, const Ctrl& b) { return a.beat < b.beat; });
+    if (! t.recNoteClip)
+    {
+        t.recNoteClip = addNoteClip (t, start / 4.0, (end - start) / 4.0, notes, "recorded");
+        if (! ctl.empty()) editClips (t, [&] (std::vector<Clip>& v) { for (auto& c : v) if (c.id == t.recNoteClip) c.ctrl = std::make_shared<const std::vector<Ctrl>> (ctl); });
+        return;
+    }
+    editClips (t, [&] (std::vector<Clip>& v)
+    {
+        for (auto& c : v)
+            if (c.id == t.recNoteClip)
+            {
+                std::sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.beat < b.beat; });
+                c.startBar = start / 4.0; c.bars = (end - start) / 4.0; c.offset = 0;
+                c.notes = std::make_shared<const std::vector<Note>> (notes);
+                c.ctrl = ctl.empty() ? nullptr : std::make_shared<const std::vector<Ctrl>> (ctl);
+            }
+    });
+}
 int Session::collectRecordedNotes()
 {
     int written = 0;
@@ -1159,8 +1210,25 @@ int Session::collectRecordedNotes()
         t.noteFifo.finishedRead (n1 + n2);
         std::map<int, std::vector<std::function<void (Pattern&)>>> edits;
         const int root = t.rootNote.load();
+        bool freeGot = false;
         for (auto& rn : got)
         {
+            if (rn.free)
+            {
+                freeGot = true;
+                if (rn.kind == 1) t.recCtrl.push_back ({ rn.ppq, juce::jlimit (0, 127, rn.note), rn.value });
+                else if (rn.kind == 2) t.recCtrl.push_back ({ rn.ppq, kCtrlBend, rn.value });
+                else if (rn.kind == 3) t.recCtrl.push_back ({ rn.ppq, kCtrlPressure, rn.value });
+                else if (rn.on) { t.recHeld[rn.note] = { rn.ppq, rn.vel }; ++written; }
+                else if (auto it = t.recHeld.find (rn.note); it != t.recHeld.end())
+                {
+                    double len = rn.ppq - it->second.first;
+                    if (len <= 0) len += std::max (0.0, (loopEnd.load() - loopStart.load()) * 4.0);   // held over the loop's end
+                    t.recNotes.push_back ({ it->second.first, std::max (1.0 / 128.0, len), rn.note, it->second.second });
+                    t.recHeld.erase (it);
+                }
+                continue;
+            }
             if (rn.on)
             {
                 const int step = rn.step; const int pitch = juce::jlimit (-36, 36, t.scale ? t.scale->nearestDegree ((rn.note - root) * 100.0) : rn.note - root); const float vel = juce::jlimit (0.05f, 1.0f, rn.vel), micro = rn.micro;
@@ -1180,6 +1248,7 @@ int Session::collectRecordedNotes()
                     }
         }
         if (! recording.load()) t.held.clear();   // (a note still down when recording stopped keeps its default length)
+        if (freeGot || (! recording.load() && ! t.recHeld.empty())) writeRecordedClip (t);
         for (auto& [pi, fns] : edits) editPattern (t, pi, [&] (Pattern& p) { for (auto& f : fns) f (p); });
     }
     return written;

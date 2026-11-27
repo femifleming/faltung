@@ -75,6 +75,7 @@ void Session::prepare (double sampleRate, int blockSize)
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         sr = sampleRate; bs = std::max (16, blockSize);
+        loudness.prepare (sr);
         for (auto& t : tracks) prepareTrack (*t);
         for (auto& r : returns) prepareTrack (*r);
         prepareTrack (*master);
@@ -112,6 +113,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
     for (const auto m : midi)
     {
         const auto msg = m.getMessage();
+        controllerMessage (msg);
         if (! msg.isController()) continue;
         const int c = msg.getControllerNumber(); const float v = msg.getControllerValue() / 127.0f;
         cc[(size_t) c].store (v);
@@ -183,9 +185,13 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         int done = 0; double p = ppq;
         const bool loop = loopOn.load();
         const double lStart = loopStart.load() * 4.0, lEnd = loopEnd.load() * 4.0;
+        const bool mapped = tempoTable != nullptr;
         while (done < n)
         {
-            const double spb = 60.0 / bpm * sr;
+            // with a tempo lane the playhead goes through its table (the tempo where it is now), so the arrangement's seconds
+            // and the playhead agree to the sample
+            const double bpmHere = mapped ? std::max (1.0, 60.0 / 64.0 / std::max (1.0e-12, secondsAt (p + 1.0 / 64.0) - secondsAt (p))) : bpm;
+            double spb = 60.0 / bpmHere * sr;
             double limit = meter->nextBarLine (p);
             if (loop && lEnd > lStart && p < lEnd - 1.0e-9) limit = std::min (limit, lEnd);
             // the arrangement: the blocks are also cut where clips start and end, so a clip anywhere (off the bar
@@ -200,6 +206,14 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
                     }
             int len = (int) std::ceil ((limit - p) * spb - 1.0e-6);
             len = juce::jlimit (1, n - done, len);
+            double pNext = p + len / spb;
+            if (mapped)
+            {
+                pNext = beatAt (secondsAt (p) + len / sr);
+                if (pNext > limit + 1.0e-9 && len > 1) { len = std::max (1, (int) std::floor ((secondsAt (limit) - secondsAt (p)) * sr + 1.0e-6)); pNext = beatAt (secondsAt (p) + len / sr); }
+                if (pNext > p) spb = len / (pNext - p);
+            }
+            const double bpmSpan = 60.0 * sr / spb;
             Outs o; for (size_t i = 0; i < o.ch.size(); ++i) o.ch[i] = outs.ch[i] ? outs.ch[i] + done : nullptr;
             HostInfo hs = h;
             std::array<const float*, kMaxWidth * 2> inPtr {};
@@ -210,9 +224,9 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
             }
             juce::MidiBuffer span;
             for (const auto m : midi) if (m.samplePosition >= done && m.samplePosition < done + len) span.addEvent (m.getMessage(), m.samplePosition - done);
-            renderSpan (len, p, bpm, o, span, true, hs);
+            renderSpan (len, p, bpmSpan, o, span, true, hs);
             if (metronome.load (std::memory_order_relaxed)) clicks (o, len, p, spb);
-            p += len / spb; done += len;
+            p = mapped ? pNext : p + len / spb; done += len;
             if (std::abs (p - limit) < 1.0e-6) p = limit;   // land exactly on the bar line
             if (loop && lEnd > lStart && p >= lEnd - 1.0e-6)
             {
@@ -343,12 +357,26 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
                 const PatternPtr pp = t.patterns[(size_t) pi];
                 const int plen = pp ? juce::jlimit (1, kMaxSteps, pp->length) : 16;
                 const double sb = stepBeatsOf (t, bpm);
+                const bool free = mode.load (std::memory_order_relaxed) == (int) PlayMode::Arrange;
                 for (const auto m : live)
                 {
                     const auto msg = m.getMessage();
-                    if (! msg.isNoteOnOrOff()) continue;
                     const double e = ppq0 + m.samplePosition / spb;
                     if (pu && (e < lS || e >= lE)) continue;
+                    if (free)
+                    {
+                        // the arrangement: into a note clip, as played (notes, controllers, pitch bend, pressure)
+                        Track::RecNote rn; rn.free = true; rn.ppq = e;
+                        if (msg.isNoteOnOrOff()) { rn.on = msg.isNoteOn(); rn.note = msg.getNoteNumber(); rn.vel = msg.getFloatVelocity(); }
+                        else if (msg.isController()) { rn.kind = 1; rn.note = msg.getControllerNumber(); rn.value = msg.getControllerValue() / 127.0f; }
+                        else if (msg.isPitchWheel()) { rn.kind = 2; rn.value = msg.getPitchWheelValue() / 16383.0f; }
+                        else if (msg.isChannelPressure()) { rn.kind = 3; rn.value = msg.getChannelPressureValue() / 127.0f; }
+                        else continue;
+                        int s1, n1, s2, n2; t.noteFifo.prepareToWrite (1, s1, n1, s2, n2);
+                        if (n1 > 0) { t.noteBuf[(size_t) s1] = rn; t.noteFifo.finishedWrite (1); }
+                        continue;
+                    }
+                    if (! msg.isNoteOnOrOff()) continue;
                     Track::RecNote rn; rn.on = msg.isNoteOn(); rn.note = msg.getNoteNumber(); rn.vel = msg.getFloatVelocity(); rn.ppq = e; rn.pattern = pi; rn.stepBeats = sb;
                     // the nearest step start (steps may last different times), and how far off it the note was played
                     double span = 0; std::array<double, kMaxSteps + 1> at {};
@@ -385,6 +413,8 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
     modulate (*master, ppq0, n, bpm);
     scratchMidi.clear();
     renderTrack (*master, n, ppq0, bpm, macros, anySolo, outs, scratchMidi, h, playing);
+    // the master's loudness (not while rendering offline: the export measures its own)
+    if (! rendering.load (std::memory_order_relaxed)) loudness.process (master->post.getReadPointer (0), master->post.getNumChannels() > 1 ? master->post.getReadPointer (1) : nullptr, n);
 
     // the browser's audition: straight to the main pair, past the master chain
     if (auto* pv = previewNow.get(); pv && pv->sample)
@@ -447,7 +477,7 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
     const auto m = (PlayMode) mode.load (std::memory_order_relaxed);
     const double stepBeats = stepBeatsOf (t, headBpm);
     t.loopOffset = 0;
-    t.clipFrom = t.clipTo = -1; t.noteSrc = nullptr;
+    t.clipFrom = t.clipTo = -1; t.noteSrc = nullptr; t.ctrlSrc = nullptr;
     if (m == PlayMode::Session)
     {
         const int pend = t.pendingPattern.load (std::memory_order_relaxed);
@@ -508,7 +538,7 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
         // the pattern runs from where the clip starts in it (its offset: a clip split or trimmed from the left)
         const double anchor = c ? c->startBar * 4.0 - c->offset : 0.0;
         if (c) { t.clipFrom = c->startBar * 4.0; t.clipTo = (c->startBar + c->bars) * 4.0; }
-        if (c && c->notes) { t.noteSrc = c->notes; t.noteAnchor = anchor; t.silent = true; t.activePattern = -1; }
+        if (c && c->notes) { t.noteSrc = c->notes; t.ctrlSrc = c->ctrl; t.noteAnchor = anchor; t.silent = true; t.activePattern = -1; }
         else if (! c) { t.silent = true; t.activePattern = -1; }
         else if (c->pattern != t.activePattern || std::abs (t.anchor - anchor) > 1.0e-6 || t.silent)
         { t.activePattern = c->pattern; t.anchor = anchor; t.silent = false; t.lastStepN = -1; t.prevFired = false; }
@@ -690,6 +720,16 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
             if (offS < n) out.addEvent (juce::MidiMessage::noteOff (1, nn), offS);
             else if (t.nPending < (int) t.pending.size()) t.pending[(size_t) t.nPending++] = { nn, offS - n };
         }
+        if (t.ctrlSrc)
+            for (auto& cv : *t.ctrlSrc)
+            {
+                const double at = t.noteAnchor + cv.beat;
+                if (at < lo - 1.0e-9 || at >= hi - 1.0e-9) continue;
+                const int smp = juce::jlimit (0, n - 1, (int) std::floor ((at - ppq0) * spb + 1.0e-6));
+                if (cv.kind == kCtrlBend) out.addEvent (juce::MidiMessage::pitchWheel (1, juce::jlimit (0, 16383, (int) std::lround (cv.value * 16383.0f))), smp);
+                else if (cv.kind == kCtrlPressure) out.addEvent (juce::MidiMessage::channelPressureChange (1, juce::jlimit (0, 127, (int) std::lround (cv.value * 127.0f))), smp);
+                else out.addEvent (juce::MidiMessage::controllerEvent (1, juce::jlimit (0, 127, cv.kind), juce::jlimit (0, 127, (int) std::lround (cv.value * 127.0f))), smp);
+            }
         t.playStep.store (-1); return;
     }
     if (t.silent || t.activePattern < 0) { t.playStep.store (-1); return; }
@@ -808,7 +848,7 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
 
 // ---- audio clips -----------------------------------------------------------------------------------
 /** the source-sample shift of grain k of a stretched clip (computed once, kept in the clip state) */
-double Session::grainOffset (ClipState* st, const AudioClip& c, int k, double stretch, double ratio, double fileRate)
+double Session::grainOffset (ClipState* st, const AudioClip& c, int k, const ClipTime& ct, double fileRate)
 {
     if (! st || k < 0 || k >= (int) st->off.size()) return 0.0;
     float& o = st->off[(size_t) k];
@@ -816,19 +856,21 @@ double Session::grainOffset (ClipState* st, const AudioClip& c, int k, double st
     const auto& smp = c.sample->data;
     const int ns = smp.getNumSamples();
     const double offS = c.offset * fileRate;                               // file samples
-    const double natural = offS + ((double) k * kHop / sr) / stretch * fileRate;   // where grain k would start untouched
+    const double ratio = ct.ratio;
+    const double natural = offS + ct.srcAt ((double) k * kHop) * fileRate;   // where grain k would start untouched
     const double step = ratio * fileRate / sr;                              // file samples per output sample inside a grain
     // 1. an onset inside this grain's output span pins the grain
     for (int on : c.sample->onsets)
     {
-        const double tOn = ((on - offS) / fileRate) * stretch * sr;        // output sample of the onset
+        if (on < offS) continue;
+        const double tOn = ct.outAt ((on - offS) / fileRate);              // output sample of the onset
         const double k0 = (double) k * kHop;
         if (tOn >= k0 && tOn < k0 + kGrain) { o = (float) (on - natural - (tOn - k0) * step); return o; }
         if (tOn >= k0 + kGrain) break;
     }
     if (k == 0) { o = 0.0f; return 0.0; }
     // 2. otherwise continue the previous grain in phase: search ±L around the natural start for the best match
-    const double prevStart = offS + ((double) (k - 1) * kHop / sr) / stretch * fileRate + grainOffset (st, c, k - 1, stretch, ratio, fileRate);
+    const double prevStart = offS + ct.srcAt ((double) (k - 1) * kHop) * fileRate + grainOffset (st, c, k - 1, ct, fileRate);
     const double refStart = prevStart + kHop * step;                        // where grain k-1 would be now
     const int W = 256, L = (int) std::min (1200.0, fileRate * 0.025);
     const float* d = smp.getReadPointer (0);
@@ -867,12 +909,16 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
         const int nch = smp.getNumChannels(), ns = smp.getNumSamples();
         if (ns < 4) continue;
         const double fileRate = c.sample->rate;
-        const double clipSecs = c.bars * 4.0 * 60.0 / bpm;         // output seconds
-        const double srcAvail = std::max (0.0, c.sample->seconds() - c.offset);
-        const double ratio = std::exp2 (c.pitch / 12.0);            // playback speed for repitch, grain pitch for stretch
-        double stretch = 1.0;                                        // output seconds per source second
-        if (c.mode == 1) stretch = std::max (0.05, c.stretch);
-        else if (c.mode == 2) stretch = srcAvail > 1.0e-6 ? clipSecs / srcAvail : 1.0;
+        // time through the tempo map: output samples since the clip began (the tempo may change inside it), and the source
+        // second each output sample reads (repitch, stretch, warp to the bars, warp markers)
+        const ClipTime ct = clipTime (c, fileRate);
+        const double clipSecs = secondsAt (c1) - ct.sec0;            // output seconds
+        const double srcAvail = ct.srcAvail;
+        const double ratio = ct.ratio;                               // playback speed for repitch, grain pitch for stretch
+        const double outBase = (secondsAt (ppq0) - ct.sec0) * sr;    // output samples since the clip start at this block's start
+        if (const int tv = tempoVersion.load (std::memory_order_relaxed); st->tempoVer != tv) { std::fill (st->off.begin(), st->off.end(), kUnknown); st->tempoVer = tv; }
+        long long natK[2] = { -9, -9 }; double natV[2] = { 0, 0 };
+        auto naturalOf = [&] (long long k) { const int slot = (int) (k & 1); if (natK[slot] != k) { natK[slot] = k; natV[slot] = ct.srcAt ((double) k * kHop); } return natV[slot]; };
         const int s0 = std::max (0, (int) std::ceil ((c0 - ppq0) * spb - 1.0e-9)), s1 = std::min (n, (int) std::ceil ((c1 - ppq0) * spb - 1.0e-9));
         const double fadeIn = c.fadeIn * sr, fadeOut = c.fadeOut * sr, clipLen = clipSecs * sr;
         const float g = c.gain;
@@ -882,7 +928,7 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
         const int G = kGrain, H = kHop;   // stretch grains (~43 ms at 48 k), half overlap
         for (int i = s0; i < s1; ++i)
         {
-            const double tOut = (ppq0 - c0) * spb + i;              // output samples since the clip start
+            const double tOut = outBase + i;                         // output samples since the clip start
             if (tOut < 0) continue;
             float env = g;
             if (fadeIn > 1 && tOut < fadeIn) env *= (float) (tOut / fadeIn);
@@ -927,9 +973,10 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
                     const double gStart = (double) k * H;
                     const double w = tOut - gStart;                     // 0 … G
                     if (w < 0 || w >= G) continue;
-                    const float win = 0.5f - 0.5f * std::cos (kTwoPi * (float) (w / G));
-                    const double off = grainOffset (st, c, (int) k, stretch, ratio, fileRate);
-                    const double srcSec = gStart / sr / stretch + off / fileRate + w / sr * ratio;
+                    // (the first grain has no partner before it: its rising half is full, so the clip's start isn't faded in)
+                    const float win = k == 0 && w < G / 2 ? 1.0f : 0.5f - 0.5f * std::cos (kTwoPi * (float) (w / G));
+                    const double off = grainOffset (st, c, (int) k, ct, fileRate);
+                    const double srcSec = naturalOf (k) + off / fileRate + w / sr * ratio;
                     outL += read (srcSec, 0) * win; outR += (nch > 1 ? read (srcSec, 1) : read (srcSec, 0)) * win;
                     for (int ch = 2; ch < nch && ch < iw; ++ch) t.inst.getWritePointer (ch)[i] += read (srcSec, ch) * win * env;
                 }
@@ -943,8 +990,23 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
 {
     const int w = t.buf.getNumChannels();
     juce::AudioBuffer<float> buf (t.buf.getArrayOfWritePointers(), w, n);
+    // frozen: its file, where the song is, instead of the sources and the chain
+    const bool frozenNow = t.frozen != nullptr;
+    if (frozenNow)
+    {
+        const auto& d = t.frozen->data; const int ns = d.getNumSamples();
+        if (playing)
+        {
+            const double pos0 = (secondsAt (ppq0) - secondsAt (t.frozenFromBeat)) * t.frozen->rate, step = t.frozen->rate / sr;
+            for (int c = 0; c < w; ++c)
+            {
+                const int sc = std::min (c, d.getNumChannels() - 1); auto* o = buf.getWritePointer (c);
+                for (int i = 0; i < n; ++i) { const double p = pos0 + i * step; o[i] = p >= 0 && p < ns - 1 ? hermiteAt (d.getReadPointer (sc), ns, p) : 0.0f; }
+            }
+        }
+    }
     // 1. the track's own sources: instrument, clips, monitored input → inst (stereo)
-    if (! t.isMaster())
+    if (! t.isMaster() && ! frozenNow)
     {
         t.inst.clear (0, n);
         const int iw = t.inst.getNumChannels();
@@ -990,7 +1052,7 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
         for (int c = 0; c < sw; ++c) juce::FloatVectorOperations::add (buf.getWritePointer (c), t.inst.getReadPointer (c), n);
     }
     // 2. the chain
-    const bool bypassChain = t.isMaster() && masterBypass.load (std::memory_order_relaxed);
+    const bool bypassChain = (t.isMaster() && masterBypass.load (std::memory_order_relaxed)) || frozenNow;
     if (! bypassChain)
         for (auto& d : t.inserts)
         {
@@ -1001,9 +1063,11 @@ void Session::renderTrack (Track& t, int n, double ppq0, double bpm, const float
                 d->keyL = key && key != &t ? key->post.getReadPointer (0) : nullptr;
                 d->keyR = key && key != &t ? key->post.getReadPointer (std::min (1, key->post.getNumChannels() - 1)) : nullptr;
             }
+            if (d->lowLatencyOff.load (std::memory_order_relaxed)) continue;
             emptyMidi.clear();
             d->process (buf, emptyMidi);
         }
+    if (t.freezeTap) for (int c = 0; c < std::min (w, t.freezeTap->getNumChannels()); ++c) t.freezeTap->copyFrom (c, 0, buf, c, 0, n);
     // 3. the strip's gain (routes are post-fader; pan only on the first pair)
     t.mixer->apply (macros, ppq0);
     float lvl = t.isMaster() ? global->finalValue (GP_MASTER) : t.mixer->finalValue (MP_LEVEL);
@@ -1135,9 +1199,26 @@ struct Dither { Rng r; float tick (float lsb) { return (r.uni() - r.uni()) * lsb
 
 /** the second pass of an export: the 32-bit float render into the file the options ask for (type, word length, rate,
     normalised, dithered). `peak` is the render's loudest sample. The float render is deleted afterwards. */
-static bool finishExport (const juce::File& render, const juce::File& dest, const ExportOptions& opt, float peak, juce::String& error)
+static bool finishExport (const juce::File& render, const juce::File& dest, const ExportOptions& opt, float peak, juce::String& error, float* lufsOut = nullptr, float* tpOut = nullptr)
 {
     juce::WavAudioFormat wav;
+    // its loudness first (the integrated lufs and the true peak of what was rendered)
+    float lufs = LoudnessMeter::kSilent, tp = LoudnessMeter::kSilent;
+    {
+        std::unique_ptr<juce::AudioFormatReader> mr (wav.createReaderFor (new juce::FileInputStream (render), true));
+        if (mr)
+        {
+            LoudnessMeter m; m.prepare (mr->sampleRate);
+            juce::AudioBuffer<float> mb ((int) std::max (1u, mr->numChannels), 8192);
+            for (juce::int64 at = 0; at < mr->lengthInSamples; at += 8192)
+            {
+                const int n = (int) std::min<juce::int64> (8192, mr->lengthInSamples - at);
+                mr->read (&mb, 0, n, at, true, true);
+                m.process (mb.getReadPointer (0), mb.getNumChannels() > 1 ? mb.getReadPointer (1) : nullptr, n); m.update();
+            }
+            lufs = m.integrated; tp = m.truePeakDb();
+        }
+    }
     std::unique_ptr<juce::AudioFormatReader> rd (wav.createReaderFor (new juce::FileInputStream (render), true));
     if (! rd) { error = "cannot read the render " + render.getFullPathName(); return false; }
     const int ch = (int) rd->numChannels; const double srcRate = rd->sampleRate;
@@ -1153,7 +1234,18 @@ static bool finishExport (const juce::File& render, const juce::File& dest, cons
     std::unique_ptr<juce::AudioFormatWriter> w (fmt->createWriterFor (os.get(), dstRate, (unsigned) ch, bits, {}, 0));
     if (! w) { error = juce::String (fmt->getFormatName()) + " cannot be written with " + juce::String (ch) + " channels, " + juce::String (bits) + " bit at " + juce::String (dstRate, 0) + " hz"; return false; }
     os.release();
-    const float gain = opt.normalise && peak > 1.0e-9f ? juce::Decibels::decibelsToGain (opt.normaliseDb) / peak : 1.0f;
+    float gain = opt.normalise && peak > 1.0e-9f ? juce::Decibels::decibelsToGain (opt.normaliseDb) / peak : 1.0f;
+    if (opt.loudnessTarget && lufs > -70.0f)
+    {
+        // to the target loudness; never past the ceiling (with the limiter on) or 0 dbtp: the true peak decides how far up
+        float gDb = opt.targetLufs - lufs;
+        const float ceiling = opt.limit ? opt.ceilingDb : 0.0f;
+        if (tp + gDb > ceiling) gDb = ceiling - tp;
+        gain = juce::Decibels::decibelsToGain (gDb);
+    }
+    const float gDbApplied = juce::Decibels::gainToDecibels (gain);
+    if (lufsOut) *lufsOut = lufs > -70.0f ? lufs + gDbApplied : LoudnessMeter::kSilent;
+    if (tpOut) *tpOut = tp > LoudnessMeter::kSilent ? tp + gDbApplied : LoudnessMeter::kSilent;
     const float lsb = bits >= 32 || ! opt.dither ? 0.0f : 1.0f / (float) (1 << (bits - 1));
     juce::AudioFormatReaderSource src (rd.get(), false);
     juce::ResamplingAudioSource rs (&src, false, ch);
@@ -1294,7 +1386,9 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
         if (progress && ! progress ((float) ((p - fromBar * 4.0) / (end - fromBar * 4.0)))) ok = false;
     }
     w.reset();
-    if (ok) ok = finishExport (render, file, opt, peak, error);
+    float lu = LoudnessMeter::kSilent, tpk = LoudnessMeter::kSilent;
+    if (ok) ok = finishExport (render, file, opt, peak, error, &lu, &tpk);
+    exportLufs.store (lu); exportTruePeak.store (tpk);
     render.deleteFile();
     for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
     master->forEachDevice ([] (Device& d) { d.reset(); });
@@ -1462,5 +1556,115 @@ bool Session::exportMidi (const juce::File& file, double fromBar, double toBar, 
     juce::FileOutputStream os (file);
     if (! os.openedOk()) { error = "cannot write " + file.getFullPathName(); return false; }
     return mf.writeTo (os);
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+void Session::controllerMessage (const juce::MidiMessage& msg)
+{
+    // a button: a note on, or a cc going past half way
+    const bool noteBtn = msg.isNoteOn(), ccBtn = msg.isController() && msg.getControllerValue() >= 64;
+    if (const int learn = cmdLearning.load (std::memory_order_relaxed); learn > 0 && (noteBtn || ccBtn))
+    {
+        pushCommand (-(learn * 1000 + (noteBtn ? 0 : 500) + (noteBtn ? msg.getNoteNumber() : msg.getControllerNumber())));   // (the message thread stores it)
+        cmdLearning.store (0);
+        return;
+    }
+    if (noteBtn || ccBtn)
+        for (auto& cm : *cmdMaps)
+            if (cm.note == noteBtn && cm.number == (noteBtn ? msg.getNoteNumber() : msg.getControllerNumber())) pushCommand (cm.command);
+    if (! mackie.load (std::memory_order_relaxed)) return;
+    // mackie control: channel faders are pitch bend on channels 1-8 (9: the master), v-pots cc 16-23 (relative), buttons notes
+    const int bank = mackieBank.load (std::memory_order_relaxed);
+    if (msg.isPitchWheel())
+    {
+        const int ch = msg.getChannel() - 1; const float v = msg.getPitchWheelValue() / 16383.0f;
+        if (ch == 8) global->setBase (GP_MASTER, v);
+        else if (ch >= 0 && ch < 8 && bank + ch < (int) tracks.size()) tracks[(size_t) (bank + ch)]->mixer->setBase (MP_LEVEL, v);
+        return;
+    }
+    if (msg.isController() && msg.getControllerNumber() >= 16 && msg.getControllerNumber() < 24)
+    {
+        const int ch = msg.getControllerNumber() - 16, raw = msg.getControllerValue();
+        const int steps = (raw & 0x40) ? -(raw & 0x3f) : (raw & 0x3f);
+        if (bank + ch < (int) tracks.size()) { auto& m = *tracks[(size_t) (bank + ch)]->mixer; m.setBase (MP_PAN, juce::jlimit (0.0f, 1.0f, m.baseValue (MP_PAN) + steps * 0.01f)); }
+        return;
+    }
+    if (! msg.isNoteOn()) return;
+    const int nn = msg.getNoteNumber();
+    if (nn < 32) { pushCommand ((nn < 8 ? CMD_MCU_ARM : nn < 16 ? CMD_MCU_SOLO : nn < 24 ? CMD_MCU_MUTE : CMD_MCU_SELECT) + (nn & 7)); return; }
+    switch (nn)
+    {
+        case 46: pushCommand (CMD_MCU_BANK_DOWN); break; case 47: pushCommand (CMD_MCU_BANK_UP); break;
+        case 48: pushCommand (CMD_MCU_CH_DOWN); break;   case 49: pushCommand (CMD_MCU_CH_UP); break;
+        case 91: pushCommand (CMD_BACK_BAR); break;      case 92: pushCommand (CMD_FWD_BAR); break;
+        case 93: pushCommand (CMD_STOP); break;          case 94: pushCommand (CMD_PLAY); break;
+        case 95: pushCommand (CMD_RECORD); break;        case 86: pushCommand (CMD_LOOP); break;
+        case 89: pushCommand (CMD_CLICK); break;         case 84: pushCommand (CMD_NEXT_MARKER); break;
+        case 81: pushCommand (CMD_UNDO); break;          case 80: pushCommand (CMD_SAVE); break;
+        default: break;
+    }
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+void Session::setFrozen (Track& t, SamplePtr smp, const juce::File& f, double fromBeat)
+{
+    { const juce::SpinLock::ScopedLockType sl (lock); t.frozen = smp; t.frozenFile = f; t.frozenFromBeat = fromBeat; }
+    rebuildLatency(); dirty = true;
+}
+void Session::unfreezeTrack (Track& t) { setFrozen (t, nullptr, {}, 0.0); }
+bool Session::freezeTrack (Track& src, juce::String& error)
+{
+    if (! prepared) { error = "audio not running"; return false; }
+    if (src.isMaster() || src.isReturn()) { error = "only tracks freeze"; return false; }
+    if (src.frozen) unfreezeTrack (src);
+    const double fromBeat = 0.0, endBeat = (projectBars() + 1.0) * 4.0;
+    auto f = audioDir().getChildFile (juce::File::createLegalFileName (src.name) + " frozen " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M%S") + ".wav");
+    int k = 2; while (f.existsAsFile()) f = f.getSiblingFile (juce::File::createLegalFileName (src.name) + " frozen " + juce::String (k++) + ".wav");
+    const int ch = std::max (2, src.width.load()), lat = src.latency;   // (the chain's own latency: the file is moved back by it)
+    {
+        rendering.store (true);
+        const juce::SpinLock::ScopedLockType sl (lock);
+        const bool wasRunning = running.load(); const double savedPpq = internalPpq.load();
+        running.store (false);
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, (unsigned) ch, 32, {}, 0));
+        if (! w) { error = "cannot write " + f.getFullPathName(); rendering.store (false); return false; }
+        resetForOffline();
+        std::vector<float> outMem ((size_t) (kOutChannels * bs), 0.0f);
+        Outs outs; for (int c = 0; c < kOutChannels; ++c) outs.ch[(size_t) c] = outMem.data() + (size_t) c * (size_t) bs;
+        juce::AudioBuffer<float> tap (ch, bs); src.freezeTap = &tap;
+        double p = fromBeat; juce::MidiBuffer none; HostInfo h; int skip = lat;
+        const double endWithLat = endBeat + (lat > 0 ? lat / sr * tempo() / 60.0 + 0.01 : 0.0);
+        while (p < endWithLat)
+        {
+            automate (p); global->apply (nullptr, p);
+            const double limit = meter->nextBarLine (p);
+            const double spb = 60.0 / tempo() * sr;
+            int len = juce::jlimit (1, bs, (int) std::ceil ((limit - p) * spb - 1.0e-6));
+            double pNext = p + len / spb;
+            if (tempoTable) { pNext = beatAt (secondsAt (p) + len / sr); }
+            std::fill (outMem.begin(), outMem.end(), 0.0f); tap.clear();
+            headPpq = p;
+            renderSpan (len, p, 60.0 * (pNext - p) / (len / sr), outs, none, true, h);
+            const int from = std::min (skip, len); skip -= from;
+            if (len - from > 0) w->writeFromAudioSampleBuffer (juce::AudioBuffer<float> (tap.getArrayOfWritePointers(), ch, from, len - from), 0, len - from);
+            p = std::abs (pNext - limit) < 1.0e-6 ? limit : pNext;
+        }
+        src.freezeTap = nullptr;
+        w.reset();
+        for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
+        internalPpq.store (savedPpq); running.store (wasRunning);
+        for (auto* t : order) t->forEachDevice ([] (Device& d) { d.setOffline (false); });
+        master->forEachDevice ([] (Device& d) { d.setOffline (false); });
+        rendering.store (false);
+    }
+    auto smp = loadSample (f, &error);
+    if (! smp) return false;
+    setFrozen (src, smp, f, fromBeat);
+    return true;
 }
 } // namespace fal::daw

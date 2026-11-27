@@ -48,7 +48,7 @@ ul, ol { padding-left: 14pt; } li { margin: 2pt 0; }
 <div class="ct"><h1>sndstudio</h1><p class="sub">the faltung studio: tracks, scenes, song, sends, modulators, 128 outputs</p>
 <p class="ver">manual · version 1.4.0 · november 2026</p></div>
 <div class="tl"><div><span class="chip" style="background:#8ec3e6"></span><span>01</span><b>session</b><span>the scene grid</span></div><div><span class="chip" style="background:#6e80c8"></span><span>02</span><b>arrange</b><span>timeline, clips, automation</span></div><div><span class="chip" style="background:#5e8f6a"></span><span>03</span><b>seq</b><span>steps, locks, devices</span></div><div><span class="chip" style="background:#ee8e6e"></span><span>04</span><b>mix</b><span>strips, outputs, routes</span></div><div><span class="chip" style="background:#f6c590"></span><span>05</span><b>mod</b><span>modulators, macros, midi</span></div><div><span class="chip" style="background:#cfe6f0"></span><span>06</span><b>browse</b><span>devices, plug-ins, files</span></div></div></section><section class="page"><h2>contents</h2><ol class="toc">
-<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li><li><a href="#noteclips">note clips: free notes</a></li><li><a href="#clipgain">crossfades and gain lines</a></li><li><a href="#groups">groups: folders and vcas</a></li>
+<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li><li><a href="#noteclips">note clips: free notes</a></li><li><a href="#clipgain">crossfades and gain lines</a></li><li><a href="#groups">groups: folders and vcas</a></li><li><a href="#tempo">tempo changes and ramps</a></li><li><a href="#midirec">recording midi; controller lanes</a></li><li><a href="#warp">warp markers</a></li><li><a href="#freeze">freezing a track</a></li><li><a href="#sidechain">sidechain into plug-ins</a></li><li><a href="#latency">latency, low latency</a></li><li><a href="#controllers">controllers, mackie control</a></li><li><a href="#loudness">loudness (lufs, true peak)</a></li><li><a href="#tracktemplates">track templates</a></li><li><a href="#missing">missing files</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
 <li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out</a></li>
 <li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll (steps)</a></li><li><a href="#artists">to work like …</a></li></ol>
@@ -196,7 +196,80 @@ before the first and after the last it holds. <i>clear its gain line</i> takes i
 <img class="shot" src="img/sndstudio-vca.png" alt="sndstudio-vca">
 <p>Every group has a <b>vca strip</b> at the right of the mixer: its fader (-inf to +12 db; shift: fine, double-click: 0 db) scales every member's level without
 moving their own faders, so a whole drum group comes down 3 db and its balance stays. Its <b>mute</b> mutes the members; its <b>solo</b> solos them all (with any
-tracks soloed on their own). Double-click its name to rename it. Groups, folds and vca settings are saved with the project.</p></section><section class="page"><h2 id="seq">seq</h2>
+tracks soloed on their own). Double-click its name to rename it. Groups, folds and vca settings are saved with the project.</p></section><section class="page"><h2 id="tempo">tempo changes and ramps</h2>
+<img class="shot" src="img/sndstudio-tempo.png" alt="sndstudio-tempo">
+<p>The tempo can change anywhere and glide from one to another. <b>+ lane</b> → <i>tempo</i> (at the top of the menu): a lane of the song's tempo. A point is a tempo
+from there on; two points with the line between them sloping are a ramp (accelerando, ritardando); a point just before another at a new tempo is a jump. Draw it
+like any automation lane (alt-drag a point for a curve).</p>
+<p>Everything follows: the playhead and the clock in the header and on the ruler (the seconds are worked out through every change), the steps and note clips
+(they play at the tempo where they are), the click, the modulators synced to the tempo, the hosted plug-ins (they are told the tempo as it changes), the export
+and the midi file. Audio clips keep their own time: a <i>repitched</i> clip plays at its own speed across a change (sample for sample), a <i>stretched</i> one at its own
+stretch, and clips set to <i>warp to tempo</i> or with <b>warp markers</b> stay on their bars, slowing down and speeding up with the song.</p>
+
+<h2 id="midirec">recording midi into note clips</h2>
+<p>In the arrangement, arm an instrument track and record: what you play goes into a <b>note clip</b>, as played: the notes where they were played and as long as they
+were held, how hard, and the controllers moved while playing: the mod wheel and any cc, pitch bend and channel pressure. The clip starts at the bar of the first
+thing played and grows as the recording goes on; with the loop on, every pass is added to the same clip (overdub). Stop: the notes still held end there.
+In the session (and on the step pages) recording still goes into the steps of the pattern playing.</p>
+
+<h2 id="ctllane">controller lanes in note clips</h2>
+<img class="shot" src="img/sndstudio-cclane.png" alt="sndstudio-cclane">
+<p>Under the notes in the note editor is a lane: <b>velocity</b> (a bar a note: drag across them to set them), or a <b>controller</b>: click its name on the left for the mod wheel,
+pitch bend, pressure, expression, sustain, breath, brightness, any cc by number, or the ones the clip already has. Drag to draw it (it steps at half the grid);
+alt-drag to rub it out; <i>clear this lane</i> takes the controller away. The instrument gets them as midi with the notes: the suite's instruments and hosted plug-ins alike;
+they are in the midi export, and a midi file brings its controllers with it.</p></section><section class="page"><h2 id="warp">warping audio: warp markers</h2>
+<img class="shot" src="img/sndstudio-warp.png" alt="sndstudio-warp">
+<p>A clip's audio can be moved in time inside itself, without moving the clip: a loop that drags behind the beat, a live take with one hit late, a break turned into a
+different groove. Right-click an audio clip → <b>warp</b>:</p>
+<table class="params"><tr><th>item</th><th>does</th></tr>
+<tr><td class="n">set warp markers</td><td>click the audio for a marker (it pins the sound under the mouse); drag a marker left or right (on the grid; cmd: free) and the audio before and after it stretches to fit; double-click a marker to remove it. Click outside the clip when done</td></tr>
+<tr><td class="n">markers at the transients</td><td>a marker on every hit the stretcher found, where it plays now</td></tr>
+<tr><td class="n">markers to the grid</td><td>every marker onto its nearest grid line: the audio quantised (with a triplet or swung grid, a groove put onto it)</td></tr>
+<tr><td class="n">clear the markers</td><td>back to the clip's own timing</td></tr></table>
+<p>The clip plays in the <i>warp markers</i> mode (also in its editor's mode list). Between markers the audio is stretched with the pitch kept; a hit at a marker lands
+exactly on it (the stretcher pins transients). Before the first marker the audio runs from the clip's start; after the last it goes on at its own tempo. The markers
+are on the bars, so they follow tempo changes. They show as blue lines with a handle; the waveform shows the audio where it plays.</p>
+
+<h2 id="freeze">freezing a track</h2>
+<p>Right-click a track's name → <b>freeze</b>: its whole chain (the instrument or the clips, and every device) is rendered to a file, from bar 1 to the end of the project and a bar
+of tail, and the track plays the file instead: the same sound, and no processor time for its instrument and devices. The fader, pan, sends and routes still work (the file is the
+chain before the fader). A frozen track says so by its name. <b>unfreeze</b> makes it live again (to change its notes, clips or devices: edits to a frozen track are heard once it is unfrozen).
+Frozen tracks stay frozen when the project is saved and opened; the files are in the project's audio folder.</p>
+
+<h2 id="sidechain">sidechain into hosted plug-ins</h2>
+<p>A vst3 / au effect with a sidechain input (a compressor, a gate, a vocoder, a ducker) gets one: its sidechain bus is switched on (stereo, or mono) and fed from the
+track's <b>key</b> (the <i>key</i> button on the strip: any track, or the master), the same key the suite's own devices listen to. So a pumping bass from the kick is: the
+plug-in on the bass track, the key set to the kick.</p></section><section class="page"><h2 id="latency">latency: what each track waits, low latency</h2>
+<p>Devices that look ahead (limiters, linear-phase eqs, many plug-ins) delay the sound; sndstudio lines every track up with the slowest (delay compensation), so the mix stays
+in time. Each strip in the mixer shows its own delay (<i>12.3 ms</i>) and what it waits to line up with the rest (<i>+4.0 wait</i>); the header shows the total.</p>
+<p><b>low latency</b> (the mixer's top row): for recording and playing in. Devices that delay the sound by more than about 1.3 ms are left out, and the compensation shrinks to what is
+left, so what you play is heard at once. The instruments stay. Turn it off when the recording is done and everything is back.</p>
+
+<h2 id="controllers">controllers: buttons, mackie control</h2>
+<img class="shot" src="img/sndstudio-controllers.png" alt="sndstudio-controllers">
+<p><b>mod</b> → <i>controllers...</i>: every command a button on a controller can run: play / pause, stop, record, loop, metronome, previous / next marker, undo, redo,
+previous / next track, arm / mute / solo the selected track, to the start, a bar back / on, save, scenes 1-8. Click <i>learn</i>, press a button (a pad's note, or a button that
+sends a cc): it is mapped; <i>clear</i> takes it away. Knobs and faders are mapped to any control as before (right-click it → midi learn).</p>
+<p><b>mackie control</b>: for surfaces that speak it (most fader boxes and many keyboards have the mode). Its eight faders are eight tracks' levels and the ninth the master's;
+the v-pots are their pans; rec, solo, mute and select are each channel's; bank and channel move the eight along the tracks; the transport plays, stops, records, loops and
+moves by bars; click, marker, undo and save do what they say. (sndstudio listens; it doesn't move motor faders.)</p>
+
+<h2 id="loudness">loudness: lufs and true peak</h2>
+<img class="shot" src="img/sndstudio-loudness.png" alt="sndstudio-loudness">
+<p>The master strip measures loudness the way streaming services and broadcasters do (itu bs.1770, ebu r128): <b>momentary</b> (400 ms), <b>short-term</b> (3 s),
+<b>integrated</b> (the whole time since play, gated), the <b>loudness range</b> (lu) and the <b>true peak</b> (between the samples, dbtp; red above -1). It measures again
+each time playing starts; click it to start again by hand.</p>
+<p>The export can aim at a loudness: <i>-14 lufs</i> (spotify, youtube, tidal), <i>-16</i> (apple music), <i>-11</i> (club), <i>-9</i> (very loud), <i>-23</i> (broadcast). The mix is turned up
+or down to it, never past the ceiling (the limiter's -1 dbtp, or 0): when the peaks would go over, it stops there and says how loud it is. Every mix export says its integrated
+loudness and true peak when it is done.</p></section><section class="page"><h2 id="tracktemplates">track templates</h2>
+<p>A track you like (an instrument with its sound, a chain of devices, the mixer settings, its patterns) can be kept and used again in any project: right-click its
+name → <b>save as a track template...</b>. <b>new track from a template</b> (the same menu) adds it. They are files (<code>.ftrack</code>) in
+<code>Documents/faltung sndstudio/track templates</code>, to copy to another computer. A template keeps the sound, not the song: its clips stay in their project.</p>
+
+<h2 id="missing">missing files</h2>
+<p>A project opened where its audio is somewhere else, or a plug-in isn't installed: <b>file → find missing files...</b> says what is missing. <i>look in a folder...</i>:
+choose a folder (a drive, the music folder, a backup) and every folder in it is looked through for the files by name; what is found is loaded, and saved with its new place.
+A plug-in that isn't installed is kept in the project exactly as it was (its settings too) and saved back that way, so on a computer that has it, it is there again.</p></section><section class="page"><h2 id="seq">seq</h2>
 <img class="shot" src="img/sndstudio-2.png" alt="sndstudio-2">
 <h3>the track</h3>
 <table class="params"><tr><th>control</th><th>what it does</th></tr>

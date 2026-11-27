@@ -278,3 +278,8 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > do all of this: Crossfades … Clip gain envelopes … Track groups, folders and VCA faders … Note clips for hosted instruments … then update the manual and push the release
 
 (1.4.2: note clips with a note editor, midi files as clips, a pattern into notes; automatic equal-power crossfades; clip gain lines; groups as folders + vca strips; manual sections for each.)
+
+> do all of that and all the smaller things (recording midi into note clips, audio warping, controller mapping, track freeze, sidechain into hosted plug-ins, tempo automation, latency per track + low latency, lufs meter, cc / pitch-bend / aftertouch lanes, track templates, missing files)
+> then test out all the features … and update the manual
+
+(Tempo map through the whole engine; midi + controllers recorded into note clips; controller lanes; warp markers; freeze; hosted sidechain; latency readouts and low latency; learnt controller buttons and mackie control; lufs / lra / true-peak meter and export to a loudness; track templates; missing files found and missing plug-ins kept. Tests for each.)

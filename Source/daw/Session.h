@@ -1,4 +1,6 @@
 #pragma once
+#include <map>
+#include "Loudness.h"
 // faltung sndstudio — the session: tracks, returns, master, routes, arrangement, automation, modulators, clips,
 // and the audio engine that plays it (driven by the standalone application's audio callback).
 // Threads: the message thread edits the structure under `lock`; the audio thread takes the lock with
@@ -22,7 +24,9 @@ struct ModState
 /** running state of one audio clip (the stretcher's grains) */
 constexpr int kGrain = 2048, kHop = 1024;                 // the stretcher's grains
 constexpr float kUnknown = -1.0e9f;
-struct ClipState { int id = -1; std::vector<float> off; };   // per grain: the source shift found by the stretcher
+struct ClipState { int id = -1; int tempoVer = 0; std::vector<float> off; };
+/** the tempo lane as a table: the seconds at every quarter beat (beyond its end the last tempo holds) */
+struct TempoTable { std::vector<double> secs; double tailBpm = 120; static constexpr double step = 0.25; };   // per grain: the source shift found by the stretcher
 /** a route's delay (latency compensation between tracks) */
 struct RouteRun { std::vector<DelayLine> delay; int samples = 0; };
 /** the file the browser is auditioning */
@@ -87,8 +91,15 @@ struct Track
     double anchor = 0, seqAnchor = 0; long long loopOffset = 0; int activePattern = -1; bool silent = true;
     long long lastStepN = -1; bool prevFired = false; bool snapMixer = false;
     double clipFrom = -1, clipTo = -1;   // arrangement: the clip playing (beats); the steps fire only inside it
-    NotesPtr noteSrc; double noteAnchor = 0;   // a note clip playing (its notes, where its beat 0 is)
+    NotesPtr noteSrc; CtrlPtr ctrlSrc; double noteAnchor = 0;   // a note clip playing (its notes and controllers, where its beat 0 is)
     std::atomic<int> group { 0 };        // the group (folder + vca) it belongs to; 0 none
+    // frozen: the chain's output rendered to a file and played instead of the instrument, clips and devices (no cpu)
+    SamplePtr frozen; juce::File frozenFile; double frozenFromBeat = 0;
+    juce::AudioBuffer<float>* freezeTap = nullptr;   // (while freezing: the chain's output, before the fader, is copied here)
+    bool isFrozen() const { return frozen != nullptr; }
+    // devices that could not be made when the project was opened (a plug-in not installed): kept as they were, saved
+    // again as they were, and made when the project opens on a computer that has them
+    std::vector<std::shared_ptr<juce::XmlElement>> lostDevices;
     juce::MidiBuffer seqMidi;                         // this span's notes (sequenced before any track is rendered)
     int firstHit = -1; float chokeGain = 1.0f, chokeTarget = 1.0f;
     std::array<juce::uint8, kMaxSteps> flip {}; std::array<float, kMaxSteps> drift {}; long long evoPass = -1; Rng evoRng;   // the evolving copy
@@ -99,10 +110,12 @@ struct Track
     std::atomic<int> playStep { -1 }, hits { 0 }, shownPattern { -1 };
     std::atomic<float> showFollow { 0 };
     // midi recording into the steps: the audio thread hands each played note over, already placed on its step
-    struct RecNote { bool on = true; int pattern = 0, step = 0, note = 60; float vel = 0.8f, micro = 0.0f; double ppq = 0, stepBeats = 0.25; };
+    struct RecNote { bool on = true; int pattern = 0, step = 0, note = 60; float vel = 0.8f, micro = 0.0f; double ppq = 0, stepBeats = 0.25; int kind = 0; float value = 0; bool free = false; };
     juce::AbstractFifo noteFifo { 1024 }; std::array<RecNote, 1024> noteBuf;
     struct Held { int note; int pattern; int step; double ppq, stepBeats; };
     std::vector<Held> held;                           // (message thread) notes down, waiting for their note off
+    // recording into a note clip (the arrangement): what was played, at its beat in the song (message thread)
+    std::vector<Note> recNotes; std::vector<Ctrl> recCtrl; std::map<int, std::pair<double, float>> recHeld; int recNoteClip = 0;
     // recording (set up on the message thread, written on the audio thread)
     juce::AudioFormatWriter::ThreadedWriter* recWriter = nullptr;
     std::atomic<bool> recActive { false };
@@ -145,6 +158,7 @@ struct ExportOptions
     int format = 0;                // 0 wav, 1 aiff, 2 flac
     double sampleRate = 0;         // 0: the project's rate
     bool normalise = false; float normaliseDb = -1.0f;   // the loudest sample of each file to this level
+    bool loudnessTarget = false; float targetLufs = -14.0f;   // the file's integrated loudness to this (gain only; with the ceiling, the peaks are limited after)
     std::vector<int> only;         // stems: just these track uids (returns: negative uids, master: 0)
     static const char* extension (int format) { return format == 1 ? ".aif" : format == 2 ? ".flac" : ".wav"; }
 };
@@ -175,7 +189,7 @@ public:
     const Group* groupOf (int id) const { for (auto& g : *groups) if (g.id == id) return &g; return nullptr; }
     void setTrackGroup (Track&, int groupId);
     /** a note clip from a midi file (its first track with notes), or empty */
-    static NotesPtr notesFromMidi (const juce::File&, double& lengthBeats);
+    static NotesPtr notesFromMidi (const juce::File&, double& lengthBeats, CtrlPtr* ctrl = nullptr);
     /** a step of the track's patterns, in beats (its rate at this tempo) */
     double stepBeatsOf (const Track&, double bpm) const;
     /** a note clip on an instrument track (its id) */
@@ -209,6 +223,8 @@ public:
     void recordWithCountIn();
     /** the notes played into armed instrument tracks while recording, written into their steps (message thread) */
     int collectRecordedNotes();
+    /** what was played into the arrangement, as its note clip (made at the first note, grown as the recording goes on) */
+    void writeRecordedClip (Track&);
     std::atomic<float> microMs { 12.0f };
     std::atomic<bool> multiOut { false };        // produce (everything to the master) or multi-out (tracks on their own channels)
     std::atomic<bool> masterBypass { false };    // bypass the master chain (mixing elsewhere)
@@ -222,6 +238,18 @@ public:
     std::array<std::atomic<float>, 128> cc;      // last midi cc values 0..1
     std::atomic<int> lastCc { -1 };              // last cc number received (for learn)
     std::atomic<bool> learning { false };
+    // controller buttons → commands (the audio thread hands them to the message thread), and mackie control
+    std::shared_ptr<const std::vector<CmdMap>> cmdMaps = std::make_shared<const std::vector<CmdMap>>();
+    std::atomic<int> cmdLearning { 0 };          // the command the next button pressed is mapped to (0: none)
+    juce::AbstractFifo cmdFifo { 256 }; std::array<int, 256> cmdBuf {};
+    std::atomic<bool> mackie { false };          // a mackie control surface: faders, v-pots, buttons and the transport
+    std::atomic<int> mackieBank { 0 };           // the first track its eight channels show
+    void pushCommand (int c) { int s1, n1, s2, n2; cmdFifo.prepareToWrite (1, s1, n1, s2, n2); if (n1 > 0) { cmdBuf[(size_t) s1] = c; cmdFifo.finishedWrite (1); } }
+    /** the commands waiting (message thread) */
+    std::vector<int> takeCommands() { std::vector<int> v; int s1, n1, s2, n2; const int r = cmdFifo.getNumReady(); cmdFifo.prepareToRead (r, s1, n1, s2, n2); for (int i = 0; i < n1; ++i) v.push_back (cmdBuf[(size_t) (s1 + i)]); for (int i = 0; i < n2; ++i) v.push_back (cmdBuf[(size_t) (s2 + i)]); cmdFifo.finishedRead (n1 + n2); return v; }
+    void setCmdMaps (std::vector<CmdMap> v) { auto p = std::make_shared<const std::vector<CmdMap>> (std::move (v)); { const juce::SpinLock::ScopedLockType sl (lock); cmdMaps = p; } dirty = true; }
+    /** a controller's message: a mapped button's command, a learnt one, or mackie control (audio thread) */
+    void controllerMessage (const juce::MidiMessage&);
     Target learnTarget;
     std::atomic<int> keyLearning { 0 };          // 0 off, 1 toggle, 2 hold: the next key pressed is mapped to keyLearnTarget
     Target keyLearnTarget;
@@ -301,6 +329,29 @@ public:
     void editRoutes (Track& src, const std::function<void (std::vector<Route>&)>&);
     void rebuildLatency();                       // also the processing order and route delays
     int totalLatency() const { return latTotal; }
+    /** freeze: the track's chain (its instrument or clips and every device, before the fader) to a file it then plays
+        instead, from bar 1 to the end of the project and a bar of tail; unfreeze: live again */
+    bool freezeTrack (Track&, juce::String& error);
+    // ---- what is missing, and finding it --------------------------------------------------------------------------------
+    struct Missing { juce::StringArray audio, plugins, frozen; bool empty() const { return audio.isEmpty() && plugins.isEmpty() && frozen.isEmpty(); } };
+    Missing missing() const;
+    /** looks for the missing audio files (by name) in a folder and every folder in it; loads what it finds. How many */
+    int findMissing (const juce::File& folder);
+    // ---- track templates: a track (its instrument, devices, mixer, patterns, settings) kept to use again -----------------
+    static juce::File trackTemplatesDir();
+    bool saveTrackTemplate (const Track&, const juce::String& name, juce::String& error);
+    Track* addTrackFromTemplate (const juce::File&, juce::String& error);
+    void unfreezeTrack (Track&);
+    void setFrozen (Track&, SamplePtr, const juce::File&, double fromBeat);
+    /** low latency (for recording and playing in): devices that delay the sound more than this are left out, and the
+        compensation shrinks to what is left; off again, everything is back */
+    LoudnessMeter loudness;                      // the master's, as it plays (lufs, loudness range, true peak)
+    std::atomic<float> exportLufs { LoudnessMeter::kSilent }, exportTruePeak { LoudnessMeter::kSilent };   // the last export's
+    std::atomic<bool> lowLatency { false }; int lowLatencyLimit = 64;
+    void setLowLatency (bool on) { lowLatency.store (on); rebuildLatency(); dirty = true; }
+    /** what a track's own chain delays it by, and what it waits for to line up with the others (samples) */
+    int trackLatency (const Track& t) const { return t.latency; }
+    int trackAlignDelay (const Track& t) const { return t.alignDelay + t.inDelay; }
     void assignOutputs();                        // multi-out: master on 1 … w, then every track and return on its own channels
     static juce::StringArray internalInstrumentTypes();
     static juce::StringArray internalEffectTypes();
@@ -388,6 +439,22 @@ public:
     /** seconds from the start to a beat and back, following the tempo lane when there is one */
     double secondsAt (double beat) const;
     double beatAt (double seconds) const;
+    /** the tempo lane changed: its table again (message thread; every place that swaps `lanes` calls it) */
+    void tempoChanged();
+    std::shared_ptr<const TempoTable> tempoTable; std::atomic<int> tempoVersion { 1 };
+    /** an audio clip's source position (seconds from its offset) at an output time (samples since the clip started), and back */
+    struct ClipTime
+    {
+        const Session* s = nullptr; const AudioClip* c = nullptr; int mode = 0; double sr = 48000, stretch = 1, ratio = 1, srcAvail = 0, beats = 4, beat0 = 0, sec0 = 0;
+        double beatOf (double out) const { return s->beatAt (sec0 + out / sr) - beat0; }
+        double outOf (double beat) const { return (s->secondsAt (beat0 + beat) - sec0) * sr; }
+        double srcAt (double out) const;
+        double outAt (double src) const;
+    };
+    ClipTime clipTime (const AudioClip&, double fileRate) const;
+    /** a warp-marker clip: the source second at a beat of the clip, and the beat of a source second */
+    static double warpSrc (const AudioClip&, double beat, double beats, double srcAvail);
+    static double warpBeat (const AudioClip&, double src, double beats, double srcAvail);
     juce::File collectSample (const juce::File&);   // copy into the project's audio folder
     // recording
     void startRecording();                           // arms the writers for armed audio tracks; recording follows play
@@ -502,7 +569,7 @@ private:
     std::shared_ptr<Preview> previewNow, previewOld; std::atomic<bool> previewOn { false };
     void resetForOffline();
     void recomputeIds();
-    double grainOffset (ClipState*, const AudioClip&, int k, double stretch, double ratio, double fileRate);
+    double grainOffset (ClipState*, const AudioClip&, int k, const ClipTime&, double fileRate);
     JUCE_DECLARE_NON_COPYABLE (Session)
 };
 

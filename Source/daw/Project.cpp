@@ -57,6 +57,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     if (t.evolve.load() > 0.0f) e.setAttribute ("evolve", t.evolve.load());
     if (t.chokeGroup.load() > 0) e.setAttribute ("choke", t.chokeGroup.load());
     if (t.group.load() > 0) e.setAttribute ("group", t.group.load());
+    if (t.frozen) { e.setAttribute ("frozen", t.frozenFile.getFullPathName()); e.setAttribute ("frozenFrom", t.frozenFromBeat); }
     if (std::abs (t.phaseRate.load() - 1.0f) > 1.0e-6f) e.setAttribute ("phase", t.phaseRate.load());
     if (t.scale) { auto* x = e.createNewChildElement ("scale"); x->setAttribute ("name", t.scale->name); x->setAttribute ("period", t.scale->period); x->setAttribute ("cents", t.scale->text()); }
     e.setAttribute ("solo", t.solo.load() ? 1 : 0); e.setAttribute ("armed", t.armed.load() ? 1 : 0); e.setAttribute ("chainOn", t.chainOn.load() ? 1 : 0);
@@ -66,6 +67,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     t.mixer->save (*e.createNewChildElement ("mixer"));
     if (t.instrument) t.instrument->save (*e.createNewChildElement ("instrument"));
     for (auto& d : t.inserts) d->save (*e.createNewChildElement ("insert"));
+    for (auto& x : t.lostDevices) e.addChildElement (new juce::XmlElement (*x));
     for (int i = 0; i < kPatterns; ++i)
     {
         auto p = t.patterns[(size_t) i];
@@ -76,7 +78,8 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     }
     for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); if (c.name.isNotEmpty()) x->setAttribute ("name", c.name); if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
         if (c.notes) for (auto& nt : *c.notes) { auto* y = x->createNewChildElement ("n"); y->setAttribute ("b", nt.beat); y->setAttribute ("l", nt.len); y->setAttribute ("p", nt.pitch); y->setAttribute ("v", nt.vel); }
-        if (c.notes && c.notes->empty()) x->setAttribute ("notes", 1); }
+        if (c.notes && c.notes->empty()) x->setAttribute ("notes", 1);
+        if (c.ctrl) for (auto& cv : *c.ctrl) { auto* y = x->createNewChildElement ("c"); y->setAttribute ("b", cv.beat); y->setAttribute ("k", cv.kind); y->setAttribute ("v", cv.value); } }
     for (auto& c : *t.aclips)
     {
         auto* x = e.createNewChildElement ("aclip");
@@ -90,6 +93,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         if (c.name.isNotEmpty()) x->setAttribute ("name", c.name);
         if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
         if (c.takeGroup) { x->setAttribute ("takes", c.takeGroup); x->setAttribute ("take", c.take); }
+        if (! c.warp.empty()) { juce::StringArray a; for (auto& [b, sv] : c.warp) a.add (juce::String (b, 9) + ":" + juce::String (sv, 9)); x->setAttribute ("warp", a.joinIntoString (" ")); }
         if (! c.gainLine.empty()) { juce::StringArray a; for (auto& [b, d] : c.gainLine) a.add (juce::String (b, 6) + ":" + juce::String (d, 3)); x->setAttribute ("gainline", a.joinIntoString (" ")); }
     }
     if (! t.chain->empty()) { juce::StringArray a; for (int p : *t.chain) a.add (juce::String (p)); e.createNewChildElement ("chain")->addTextElement (a.joinIntoString (" ")); }
@@ -115,6 +119,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     t.swingOffset.store ((float) e.getDoubleAttribute ("swing", 0.0)); t.shiftMs.store ((float) e.getDoubleAttribute ("shift", 0.0)); t.probMul.store ((float) e.getDoubleAttribute ("prob", 1.0));
     t.freeClock.store (e.getIntAttribute ("free", 0) != 0); t.stepMs.store ((float) e.getDoubleAttribute ("stepMs", 125.0));
     t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0))); t.group.store (e.getIntAttribute ("group", 0));
+    if (const auto fz = e.getStringAttribute ("frozen"); fz.isNotEmpty()) { juce::String err; if (auto smp = loadSample (juce::File (fz), &err)) setFrozen (t, smp, juce::File (fz), e.getDoubleAttribute ("frozenFrom")); else problems.add (t.name + ": its frozen file is missing (" + juce::File (fz).getFileName() + "); it plays live"); }
     t.phaseRate.store (juce::jlimit (0.5f, 2.0f, (float) e.getDoubleAttribute ("phase", 1.0)));
     if (auto* x = e.getChildByName ("scale"))
     {
@@ -142,7 +147,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
             juce::PluginDescription desc;
             if (desc.loadFromXml (*px)) { d = createHosted (desc, &err); if (! d && known.getTypeForFile (desc.fileOrIdentifier) == nullptr) err = "not installed: " + desc.name; }
         }
-        if (! d) { problems.add (x.getStringAttribute ("name") + ": " + err); return nullptr; }
+        if (! d) { problems.add (x.getStringAttribute ("name") + ": " + err); t.lostDevices.push_back (std::make_shared<juce::XmlElement> (x)); return nullptr; }
         d->uid = x.getIntAttribute ("uid", d->uid);
         nextUid = std::max (nextUid, d->uid + 1);
         d->load (x);
@@ -169,6 +174,12 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
             auto v = std::make_shared<std::vector<Note>>();
             for (auto* y : x->getChildWithTagNameIterator ("n")) v->push_back ({ y->getDoubleAttribute ("b"), y->getDoubleAttribute ("l", 0.25), y->getIntAttribute ("p", 60), (float) y->getDoubleAttribute ("v", 0.8) });
             c.notes = v;
+            if (x->getChildByName ("c"))
+            {
+                auto cv = std::make_shared<std::vector<Ctrl>>();
+                for (auto* y : x->getChildWithTagNameIterator ("c")) cv->push_back ({ y->getDoubleAttribute ("b"), y->getIntAttribute ("k", 1), (float) y->getDoubleAttribute ("v") });
+                c.ctrl = cv;
+            }
         }
         nextClipId = std::max (nextClipId, c.id + 1);
         clips.push_back (c);
@@ -190,6 +201,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         c.pitch = (float) x->getDoubleAttribute ("pitch"); c.mode = x->getIntAttribute ("mode"); c.stretch = x->getDoubleAttribute ("stretch", 1.0); c.muted = x->getIntAttribute ("muted") != 0;
         c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
         c.takeGroup = x->getIntAttribute ("takes"); c.take = x->getIntAttribute ("take");
+        for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("warp"), " ", "")) if (tk.contains (":")) c.warp.push_back ({ tk.upToFirstOccurrenceOf (":", false, false).getDoubleValue(), tk.fromFirstOccurrenceOf (":", false, false).getDoubleValue() });
         for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("gainline"), " ", "")) if (tk.contains (":")) c.gainLine.push_back ({ tk.upToFirstOccurrenceOf (":", false, false).getDoubleValue(), tk.fromFirstOccurrenceOf (":", false, false).getFloatValue() });
         nextTakeGroup = std::max (nextTakeGroup, c.takeGroup + 1);
         nextClipId = std::max (nextClipId, c.id + 1);
@@ -243,6 +255,8 @@ std::unique_ptr<juce::XmlElement> Session::save() const
     }
     for (auto& s : *song) { auto* x = e->createNewChildElement ("song"); x->setAttribute ("scene", s.scene); x->setAttribute ("bars", s.bars); }
     for (auto& m : *markers) { auto* x = e->createNewChildElement ("marker"); x->setAttribute ("name", m.name); x->setAttribute ("bar", m.bar); }
+    for (auto& cm : *cmdMaps) { auto* x = e->createNewChildElement ("cmd"); x->setAttribute ("note", cm.note ? 1 : 0); x->setAttribute ("n", cm.number); x->setAttribute ("c", cm.command); }
+    if (mackie.load()) e->setAttribute ("mackie", 1);
     for (auto& g : *groups) { auto* x = e->createNewChildElement ("group"); x->setAttribute ("id", g.id); x->setAttribute ("name", g.name); if (g.colour) x->setAttribute ("colour", juce::String::toHexString ((int) g.colour)); x->setAttribute ("folded", g.folded ? 1 : 0); x->setAttribute ("vca", g.vcaDb); x->setAttribute ("mute", g.mute ? 1 : 0); x->setAttribute ("solo", g.solo ? 1 : 0); }
     if (! meter->plain()) for (auto& m : meter->getChanges()) { auto* x = e->createNewChildElement ("meter"); x->setAttribute ("bar", m.bar); x->setAttribute ("sigs", timeline::sigsText (m.sigs)); }
     for (auto& l : *lanes)
@@ -277,7 +291,7 @@ void Session::clear()
     editMidiMaps ([] (std::vector<MidiMap>& m) { m.clear(); });
     editKeyMaps ([] (std::vector<KeyMap>& m) { m.clear(); });
     stopPreview(); keyLearning.store (0); learning.store (false);
-    { const juce::SpinLock::ScopedLockType sl (lock); lanes = std::make_shared<const std::vector<LanePtr>>(); }
+    { const juce::SpinLock::ScopedLockType sl (lock); lanes = std::make_shared<const std::vector<LanePtr>>(); } tempoChanged();
     mode.store ((int) PlayMode::Session); loopOn.store (false); loopStart.store (0); loopEnd.store (8); microMs.store (12.0f); masterOut.store (1); launchQuant.store (1);
     multiOut.store (false); masterBypass.store (false); snap.store (true); gridIndex.store (0); follow.store (true); punch.store (false); metronome.store (false); countInBars.store (1);
     selectedTrack.store (0); currentScene.store (-1); internalPpq.store (0.0);
@@ -345,6 +359,8 @@ bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
     });
     editSong ([&] (std::vector<SongEntry>& s) { for (auto* x : e.getChildWithTagNameIterator ("song")) s.push_back ({ x->getIntAttribute ("scene"), x->getIntAttribute ("bars", 8) }); });
     editMarkers ([&] (std::vector<Marker>& m) { for (auto* x : e.getChildWithTagNameIterator ("marker")) m.push_back ({ x->getStringAttribute ("name"), x->getDoubleAttribute ("bar") }); });
+    { std::vector<CmdMap> cm; for (auto* x : e.getChildWithTagNameIterator ("cmd")) cm.push_back ({ x->getIntAttribute ("note", 1) != 0, x->getIntAttribute ("n"), x->getIntAttribute ("c") }); setCmdMaps (cm); }
+    mackie.store (e.getIntAttribute ("mackie", 0) != 0); mackieBank.store (0);
     editGroups ([&] (std::vector<Group>& v) { v.clear(); for (auto* x : e.getChildWithTagNameIterator ("group")) { Group g; g.id = x->getIntAttribute ("id"); g.name = x->getStringAttribute ("name"); g.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32(); g.folded = x->getIntAttribute ("folded") != 0; g.vcaDb = (float) x->getDoubleAttribute ("vca"); g.mute = x->getIntAttribute ("mute") != 0; g.solo = x->getIntAttribute ("solo") != 0; v.push_back (g); } });
     {
         std::vector<timeline::MeterChange> mc;
@@ -630,5 +646,75 @@ void Session::newFromTemplateImpl (int which)
     if (! longForm) loopEnd.store (8);
     rebuildLatency();
     dirty = false;
+}
+// ---- missing files ----------------------------------------------------------------------------------------------------
+Session::Missing Session::missing() const
+{
+    Missing m;
+    for (auto& t : tracks)
+    {
+        for (auto& c : *t->aclips) if (! c.sample && ! m.audio.contains (c.path)) m.audio.add (c.path);
+        for (auto& x : t->lostDevices) m.plugins.add (t->name + ": " + x->getStringAttribute ("name"));
+    }
+    for (auto& r : returns) for (auto& x : r->lostDevices) m.plugins.add (r->name + ": " + x->getStringAttribute ("name"));
+    for (auto& x : master->lostDevices) m.plugins.add ("master: " + x->getStringAttribute ("name"));
+    return m;
+}
+int Session::findMissing (const juce::File& folder)
+{
+    // every missing file's name, then one walk through the folder
+    std::map<juce::String, juce::File> found; std::set<juce::String> want;
+    for (auto& t : tracks) for (auto& c : *t->aclips) if (! c.sample) want.insert (juce::File (c.path).getFileName().toLowerCase());
+    if (want.empty() || ! folder.isDirectory()) return 0;
+    for (const auto& en : juce::RangedDirectoryIterator (folder, true, "*", juce::File::findFiles))
+    {
+        const auto nm = en.getFile().getFileName().toLowerCase();
+        if (want.count (nm) && ! found.count (nm)) found[nm] = en.getFile();
+        if (found.size() == want.size()) break;
+    }
+    int n = 0;
+    for (auto& t : tracks)
+    {
+        bool any = false; for (auto& c : *t->aclips) if (! c.sample && found.count (juce::File (c.path).getFileName().toLowerCase())) any = true;
+        if (! any) continue;
+        editAudioClips (*t, [&] (std::vector<AudioClip>& v)
+        {
+            for (auto& c : v)
+                if (! c.sample)
+                    if (auto it = found.find (juce::File (c.path).getFileName().toLowerCase()); it != found.end())
+                        if (auto smp = loadSample (it->second)) { c.sample = smp; c.path = it->second.getFullPathName(); ++n; }
+        });
+    }
+    return n;
+}
+// ---- track templates ----------------------------------------------------------------------------------------------------
+juce::File Session::trackTemplatesDir()
+{
+    auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (kDeep ? "faltung deep sndstudio" : "faltung sndstudio").getChildFile ("track templates");
+    d.createDirectory(); return d;
+}
+bool Session::saveTrackTemplate (const Track& t, const juce::String& name, juce::String& error)
+{
+    juce::XmlElement e ("track");
+    saveTrack (e, t, juce::File());
+    e.removeAttribute ("uid"); e.removeAttribute ("group"); e.removeAttribute ("key");
+    e.deleteAllChildElementsWithTagName ("aclip");   // (the sound, not the song: its clips stay in the project)
+    e.deleteAllChildElementsWithTagName ("clip");
+    auto f = trackTemplatesDir().getChildFile (juce::File::createLegalFileName (name.isEmpty() ? t.name : name) + ".ftrack");
+    if (! e.writeTo (f)) { error = "cannot write " + f.getFullPathName(); return false; }
+    return true;
+}
+Track* Session::addTrackFromTemplate (const juce::File& f, juce::String& error)
+{
+    auto x = juce::XmlDocument::parse (f);
+    if (! x || ! x->hasTagName ("track")) { error = "not a track template: " + f.getFileName(); return nullptr; }
+    x->removeAttribute ("uid"); x->removeAttribute ("routes");
+    x->deleteAllChildElementsWithTagName ("route");
+    auto* t = addTrack (x->getStringAttribute ("name", f.getFileNameWithoutExtension()), -1, (TrackKind) x->getIntAttribute ("kind", 0));
+    if (! t) { error = "no room for another track"; return nullptr; }
+    juce::StringArray problems;
+    loadTrackXml (*t, *x, problems);
+    if (! problems.isEmpty()) error = problems.joinIntoString ("; ");
+    return t;
 }
 } // namespace fal::daw

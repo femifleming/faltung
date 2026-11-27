@@ -104,6 +104,10 @@ using PatternPtr = std::shared_ptr<const Pattern>;
 /** a note of a note clip: from the clip's start (beats), its length (beats), the key, how hard */
 struct Note { double beat = 0, len = 0.25; int pitch = 60; float vel = 0.8f; };
 using NotesPtr = std::shared_ptr<const std::vector<Note>>;
+/** a controller point of a note clip: kind 0-127 a cc, 128 pitch bend (0.5 the centre), 129 channel pressure; value 0..1 */
+struct Ctrl { double beat = 0; int kind = 1; float value = 0; };
+enum { kCtrlBend = 128, kCtrlPressure = 129 };
+using CtrlPtr = std::shared_ptr<const std::vector<Ctrl>>;
 /** a group of tracks: a folder in the arrangement and a vca in the mixer (its fader scales its members' levels) */
 struct Group { int id = 0; juce::String name; juce::uint32 colour = 0; bool folded = false; float vcaDb = 0; bool mute = false, solo = false; };
 
@@ -115,6 +119,7 @@ struct Clip
     juce::String name;               // shown on the clip (empty: the pattern's number)
     juce::uint32 colour = 0;         // 0: the track's
     NotesPtr notes;                  // a note clip (free notes to the instrument) when set: the pattern isn't used
+    CtrlPtr ctrl;                    // its controllers (cc, pitch bend, pressure), in time order
     int id = 0;                      // stable while the project is open (selection, undo)
 };
 /** a clip on the timeline, by track and id */
@@ -170,6 +175,19 @@ struct MacroMap { Target target; float lo = 0, hi = 1; };
 struct MidiMap { int cc = -1; Target target; float lo = 0, hi = 1; };
 /** a computer key that plays a control: toggles it between its ends, or holds it at the top while the key is down */
 struct KeyMap { int key = 0; Target target; bool momentary = false; };
+/** a controller button (a note, or a cc pressed past half way) that runs a command: play, record, a marker … */
+struct CmdMap { bool note = true; int number = 0; int command = 0; };
+enum Command { CMD_PLAY = 1, CMD_STOP, CMD_RECORD, CMD_LOOP, CMD_CLICK, CMD_PREV_MARKER, CMD_NEXT_MARKER, CMD_UNDO, CMD_REDO, CMD_PREV_TRACK, CMD_NEXT_TRACK,
+               CMD_ARM, CMD_MUTE, CMD_SOLO, CMD_TO_START, CMD_BACK_BAR, CMD_FWD_BAR, CMD_SAVE, CMD_SCENE1, CMD_LAST = CMD_SCENE1 + 7,
+               // mackie control's own (not mappable): a channel's buttons, the bank
+               CMD_MCU_ARM = 100, CMD_MCU_SOLO = 108, CMD_MCU_MUTE = 116, CMD_MCU_SELECT = 124, CMD_MCU_BANK_DOWN = 132, CMD_MCU_BANK_UP, CMD_MCU_CH_DOWN, CMD_MCU_CH_UP };
+inline juce::String commandName (int c)
+{
+    static const char* n[] = { "", "play / pause", "stop", "record", "loop", "metronome", "previous marker", "next marker", "undo", "redo", "previous track", "next track",
+                               "arm the selected track", "mute the selected track", "solo the selected track", "to the start", "a bar back", "a bar on", "save" };
+    if (c >= CMD_SCENE1 && c <= CMD_LAST) return "scene " + juce::String (c - CMD_SCENE1 + 1);
+    return c > 0 && c < (int) (sizeof (n) / sizeof (n[0])) ? juce::String (n[c]) : juce::String();
+}
 
 /** audio from one track into another (post-fader), `channels` wide, with channel offsets. A route that would close a
     loop is a feedback route: it arrives one buffer late and passes a soft limiter, so the loop cannot run away */
@@ -205,7 +223,8 @@ struct AudioClip
     std::vector<std::pair<double, float>> gainLine;   // the clip's gain drawn over time: (beats from its start, db); empty: flat
     double xIn = 0, xOut = 0;        // crossfades where it overlaps its neighbours (bars; made by the session, not saved)
     float pitch = 0.0f;              // semitones (+ cents as fraction)
-    int mode = 0;                    // 0 repitch (speed = pitch), 1 stretch (length free, pitch kept), 2 warp (fits the bars at the project tempo)
+    int mode = 0;                    // 0 repitch (speed = pitch), 1 stretch (length free, pitch kept), 2 warp (fits the bars at the project tempo), 3 warp markers
+    std::vector<std::pair<double, double>> warp;   // warp markers: (beat from the clip's start, second of the source from its offset); (0, 0) is implied
     double stretch = 1.0;            // mode 1: output seconds / source seconds
     double sourceSeconds() const { return sample ? std::max (0.0, sample->seconds() - offset) : 0.0; }
 };

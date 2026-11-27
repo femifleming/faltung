@@ -216,8 +216,19 @@ int Device::configure (int incoming, int trackWidth)
                 if (! ok && out <= std::max (2, trackWidth) && tryLayout (in, out)) ok = true;
     if (! ok && ! tryLayout (hasIn ? 2 : 0, 2))
         if (proc->checkBusesLayoutSupported (defLayout)) proc->setBusesLayout (defLayout);   // as it arrived
+    // a sidechain input (a second input bus): on, stereo (or mono), fed from the track's key (any track, or the master)
+    scChannels = 0;
+    {
+        auto l = proc->getBusesLayout();
+        if (hasIn && l.inputBuses.size() > 1 && proc->getTotalNumInputChannels() > 0)
+            for (auto set : { juce::AudioChannelSet::stereo(), juce::AudioChannelSet::mono() })
+            {
+                auto t = l; t.inputBuses.getReference (1) = set;
+                if (proc->checkBusesLayoutSupported (t) && proc->setBusesLayout (t) && proc->getChannelCountOfBus (true, 1) == set.size()) { scChannels = set.size(); break; }
+            }
+    }
     // what the track gives it and takes from it (the buses themselves may be wider)
-    inWidth = hasIn ? std::min (proc->getTotalNumInputChannels(), std::max (1, incoming)) : 0;
+    inWidth = hasIn ? std::min (proc->getTotalNumInputChannels() - scChannels, std::max (1, incoming)) : 0;
     outWidth = std::max (1, std::min (proc->getTotalNumOutputChannels(), std::max (outWant, 1)));
     if (prepared)
     {
@@ -431,12 +442,15 @@ void Device::process (juce::AudioBuffer<float>& track, juce::MidiBuffer& midi)
     if (scratch.getNumChannels() < ch || scratch.getNumSamples() < n) { scratchChannels = ch; scratch.setSize (ch, std::max (n, scratch.getNumSamples()), false, false, true); }
     juce::AudioBuffer<float> b (scratch.getArrayOfWritePointers(), kind == Kind::Internal ? 2 : ch, n);
     b.clear();
-    for (int c = 0; c < std::min (ins, width); ++c) b.copyFrom (c, 0, track, c, 0, n);
+    const int sc = kind == Kind::Hosted ? std::min (scChannels, ins) : 0, mainIns = ins - sc;
+    for (int c = 0; c < std::min (mainIns, width); ++c) b.copyFrom (c, 0, track, c, 0, n);
+    // the sidechain bus (after the main input's channels): the key track, or silence
+    for (int c = 0; c < sc; ++c) { const float* k = c == 0 ? keyL : keyR; if (k) b.copyFrom (mainIns + c, 0, k, n); }
     if (kind == Kind::Hosted || kind == Kind::Studio)
         if (auto* kp = dynamic_cast<KeyedProcessor*> (proc.get())) kp->setKey (keyL, keyR);
     proc->processBlock (b, midi);
     // the device replaces the channels it read with the ones it wrote; channels beyond both pass through untouched
-    const int top = std::max (ins, outs);
+    const int top = std::max (mainIns, outs);
     for (int c = 0; c < width; ++c)
     {
         if (c < outs) track.copyFrom (c, 0, b, c, 0, n);

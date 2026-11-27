@@ -87,6 +87,8 @@ public:
     void reset() { if (proc) proc->reset(); }
     /** sidechain / key input for devices that take one (the studio's sidechain compressor) */
     const float* keyL = nullptr; const float* keyR = nullptr;
+    int scChannels = 0;
+    std::atomic<bool> lowLatencyOff { false };   // left out while the session's low-latency switch is on (it delays the sound)                // a hosted plug-in's sidechain input (its second input bus), fed from the key
 
     // ---- message thread --------------------------------------------------------------------------
     /** the device's own editor changed a parameter (or automation was written): for automation recording */
