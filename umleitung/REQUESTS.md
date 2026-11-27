@@ -15,3 +15,5 @@ What was asked for, in the asker's words.
 > the system eq needs to be extremely hifi and have more modes, becuase i use it to eq hifi speakers so i need to be able to extremly percice, also the slanted level control for thr eq is confusing, dont do that
 
 > when its all tested and done push to github under faltung squite qnd make homebrew cask of it.
+
+> install the driver, have iit be dark themed not light, and forget the arturia plugins. then push

@@ -8,6 +8,7 @@
 #include "engine/Engine.h"
 #include "engine/PluginHost.h"
 #include "platform/Apps.h"
+#include "platform/DriverControl.h"
 #include <iostream>
 
 using namespace um;
@@ -159,6 +160,45 @@ int main()
             check (pk > 1.0e-4f, "chrome's sound reaches umleitung");
             s.setProperty (ids::on, false, nullptr); e.rebuild(); pump (300);
         }
+    }
+
+    std::cout << "== umleitung's own driver (installed): devices made and removed by the app, a loopback through one\n";
+    if (! DriverControl::installed()) std::cout << "    (the driver isn't installed: skipped)\n";
+    else
+    {
+        const auto before = DriverControl::devices();
+        std::cout << "    driver " << DriverControl::installedVersion() << ", " << before.size() << " device(s):"; for (auto& d : before) std::cout << " \"" << d.name << "\" (" << d.channels << " ch)"; std::cout << "\n";
+        auto want = before; VirtualDevice t; t.name = "umleitung check 16"; t.channels = 16; want.push_back (t);
+        juce::String err;
+        check (DriverControl::setDevices (want, err), "a 16-channel device added: " + err);
+        juce::String uid; int ch = 0;
+        for (int k = 0; k < 40 && uid.isEmpty(); ++k) { pump (100); for (auto& d : CoreAudioHost::devices()) if (d.name == "umleitung check 16") { uid = d.uid; ch = d.inChannels; } }
+        check (uid.isNotEmpty() && ch == 16, "it appears to the whole mac (" + uid + ", " + juce::String (ch) + " ch)");
+        if (uid.isNotEmpty())
+        {
+            Model m; Engine e (m);
+            m.settings().setProperty (ids::device, uid, nullptr);
+            auto a = m.addSession ("in"); auto b = m.addSession ("out");
+            auto tone = m.addBlock (a, BlockType::Tone, 0, 0); tone.setProperty (ids::freq, 750.0f, nullptr); tone.setProperty (ids::level, -9.0f, nullptr);
+            auto mx = m.addBlock (a, BlockType::Matrix, 1, 0); mx.setProperty (ids::outs, 16, nullptr); mx.setProperty (ids::matrix, Model::matrixText ({ { 0, 12, 1.0f }, { 1, 13, 0.5f } }), nullptr);
+            auto out = m.addBlock (a, BlockType::Output, 2, 0); out.setProperty (ids::device, uid, nullptr);
+            m.connect (a, tone[ids::id], mx[ids::id]); m.connect (a, mx[ids::id], out[ids::id]);
+            auto in = m.addBlock (b, BlockType::Input, 0, 0); in.setProperty (ids::device, uid, nullptr); in.setProperty (ids::first, 12, nullptr); in.setProperty (ids::count, 2, nullptr);
+            auto rec = m.addBlock (b, BlockType::Recorder, 1, 0); rec.setProperty (ids::folder, tmp.getFullPathName(), nullptr); rec.setProperty (ids::pattern, "driver", nullptr);
+            m.connect (b, in[ids::id], rec[ids::id]);
+            a.setProperty (ids::on, true, nullptr); b.setProperty (ids::on, true, nullptr); e.rebuild(); pump (3000);
+            e.stopRecording (rec[ids::id]); pump (500);
+            float pk = 0; double hz = 0, secs = 0; int chs = 0;
+            const bool ok = analyse (tmp.getChildFile ("driver.wav"), pk, hz, chs, secs);
+            float pk2 = 0; { juce::AudioFormatManager fm; fm.registerBasicFormats(); if (std::unique_ptr<juce::AudioFormatReader> r { fm.createReaderFor (tmp.getChildFile ("driver.wav")) }) { juce::AudioBuffer<float> bb (2, (int) r->lengthInSamples); r->read (&bb, 0, (int) r->lengthInSamples, 0, true, true); pk2 = bb.getMagnitude (1, (int) (r->sampleRate * 0.5), (int) r->lengthInSamples - (int) (r->sampleRate * 0.7)); } }
+            std::cout << "    through the driver, channels 13-14: " << dsp::gainToDb (pk) << " db / " << dsp::gainToDb (pk2) << " db, " << hz << " hz\n";
+            check (ok && std::abs (dsp::gainToDb (pk) + 9.0f) < 0.05f && std::abs (dsp::gainToDb (pk2) + 15.02f) < 0.05f && std::abs (hz - 750.0) < 2.0, "a loopback through umleitung's device: channel 13 at -9 db, 14 at -15 db, 750 hz");
+            a.setProperty (ids::on, false, nullptr); b.setProperty (ids::on, false, nullptr); e.rebuild(); pump (500);
+        }
+        check (DriverControl::setDevices (before, err), "the devices put back as they were: " + err);
+        pump (1500);
+        bool gone = true; for (auto& d : CoreAudioHost::devices()) if (d.name == "umleitung check 16") gone = false;
+        check (gone && DriverControl::devices().size() == before.size(), "the test device is gone");
     }
 
     tmp.deleteRecursively();

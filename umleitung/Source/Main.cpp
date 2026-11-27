@@ -85,7 +85,7 @@ public:
         dataDir().createDirectory();
         file = shots ? juce::File::createTempFile (".xml") : dataDir().getChildFile ("umleitung.xml");
         if (auto x = juce::XmlDocument::parse (file)) { auto t = juce::ValueTree::fromXml (*x); if (t.hasType (ids::umleitung)) model.root = t; }
-        fal::ui::setDark ((bool) model.settings()["dark"]);
+        fal::ui::setDark ((bool) model.settings().getProperty ("dark", true));   // dark unless set otherwise
         plugins = std::make_unique<PluginHost> (dataDir());
         engine = std::make_unique<Engine> (model, plugins.get());
         if (shots && (args.contains ("--demo") || args.contains ("--demo-live"))) demo (args.contains ("--demo-live"));

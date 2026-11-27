@@ -523,7 +523,7 @@ void SettingsPage::build()
     addRow (boundChoice (theme, st, ids::device, "clock", names, uids), 24);
     addRow (boundChoice (theme, st, "rate", "sample rate", { "the clock device's", "44.1 khz", "48 khz", "88.2 khz", "96 khz", "192 khz" }, { "0", "44100", "48000", "88200", "96000", "192000" }), 24);
     addRow (boundChoice (theme, st, "buffer", "buffer", { "64", "128", "256", "512", "1024", "2048" }, { "64", "128", "256", "512", "1024", "2048" }), 24);
-    { auto t = std::make_unique<ValueToggle> (theme, "dark (faltung deep)", (bool) st["dark"]); t->onChange = [this, st] (bool v) mutable { st.setProperty ("dark", v, nullptr); if (onDark) onDark (v); }; addRow (std::move (t), 24); }
+    { auto t = std::make_unique<ValueToggle> (theme, "dark (faltung deep)", (bool) st.getProperty ("dark", true)); t->onChange = [this, st] (bool v) mutable { st.setProperty ("dark", v, nullptr); if (onDark) onDark (v); }; addRow (std::move (t), 24); }
     { auto t = std::make_unique<ValueToggle> (theme, "in the menu bar", (bool) st.getProperty ("menubar", true)); t->onChange = [this, st] (bool v) mutable { st.setProperty ("menubar", v, nullptr); if (onMenuBar) onMenuBar (v); }; addRow (std::move (t), 24); }
     { auto l = std::make_unique<TextLink> ("allow capturing other apps' sound (system settings)...", theme); l->onClick = [] { juce::URL ("x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture").launchInDefaultBrowser(); }; addRow (std::move (l), 24); }
     { auto l = std::make_unique<TextLink> ("allow the microphone (system settings)...", theme); l->onClick = [] { juce::URL ("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").launchInDefaultBrowser(); }; addRow (std::move (l), 24); }

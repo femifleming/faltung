@@ -37,10 +37,11 @@ inline Theme pageTheme (int p) { return themeOf (pageField (p)); }
 /** the colour a block's group wears on the canvas */
 inline juce::Colour groupColour (BlockType t)
 {
-    if (isSource (t)) return juce::Colour (pal::fields::sage.ground());
-    if (isSink (t)) return juce::Colour (pal::fields::coral.ground());
-    if (t == BlockType::Plugin) return juce::Colour (pal::fields::periwinkle.ground());
-    return juce::Colour (pal::fields::apricot.ground());
+    // (written as the light colours; in the dark look they are its dimmer accents)
+    if (isSource (t)) return accent (juce::Colour (pal::fields::sage.ground()));
+    if (isSink (t)) return accent (juce::Colour (pal::fields::coral.ground()));
+    if (t == BlockType::Plugin) return accent (juce::Colour (pal::fields::periwinkle.ground()));
+    return accent (juce::Colour (pal::fields::apricot.ground()));
 }
 
 /** level (0..1 linear) to a meter's 0..1 (-60 … +6 db) */
