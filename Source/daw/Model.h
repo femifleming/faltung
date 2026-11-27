@@ -108,6 +108,27 @@ using NotesPtr = std::shared_ptr<const std::vector<Note>>;
 struct Ctrl { double beat = 0; int kind = 1; float value = 0; };
 enum { kCtrlBend = 128, kCtrlPressure = 129 };
 using CtrlPtr = std::shared_ptr<const std::vector<Ctrl>>;
+/** a groove: how far each sixteenth of a cycle is pushed or pulled (in steps, ±0.5) and how hard it is (a multiplier) */
+struct Groove { juce::String name; int steps = 16; std::vector<float> offset, vel; float at (int k) const { return offset.empty() ? 0.0f : offset[(size_t) (k % (int) offset.size())]; } float velAt (int k) const { return vel.empty() ? 1.0f : vel[(size_t) (k % (int) vel.size())]; } };
+using GroovePtr = std::shared_ptr<const Groove>;
+/** what a pattern does when it has played `after` times (session): action a, or (1 - chanceA) of the time action b */
+enum FollowKind { FOLLOW_AGAIN = 0, FOLLOW_NEXT, FOLLOW_PREV, FOLLOW_FIRST, FOLLOW_ANY, FOLLOW_OTHER, FOLLOW_STOP, FOLLOW_COUNT };
+inline const char* followName (int k) { static const char* n[FOLLOW_COUNT] = { "again", "next", "previous", "first", "any", "another", "stop" }; return n[juce::jlimit (0, FOLLOW_COUNT - 1, k)]; }
+struct FollowAction { int after = 0; int a = FOLLOW_NEXT, b = FOLLOW_AGAIN; float chanceA = 1.0f; };
+/** a midi effect in front of the instrument: an arpeggiator, chord memory, a note generator, chance */
+enum MidiFxKind { MFX_ARP = 0, MFX_CHORD, MFX_GEN, MFX_CHANCE, MFX_COUNT };
+inline const char* midiFxName (int k) { static const char* n[MFX_COUNT] = { "arpeggiator", "chord", "generator", "chance" }; return n[juce::jlimit (0, MFX_COUNT - 1, k)]; }
+struct MidiFx
+{
+    int kind = MFX_ARP; bool on = true;
+    // arp: rate (division), mode (0 up 1 down 2 up-down 3 random 4 as played), octaves, gate
+    // chord: up to four intervals (semitones), a velocity for the added notes
+    // generator: rate, density, scale (0 chromatic 1 major 2 minor 3 pentatonic 4 dorian 5 phrygian 6 the track's), range, root, gate, velocity spread
+    // chance: how many notes get through, velocity spread, pitch spread (octaves)
+    int div = 4, mode = 0, octaves = 1, scale = 2, range = 12, root = 0; float gate = 0.5f, density = 0.5f, vel = 0.8f, spread = 0.2f, chance = 0.8f;
+    std::array<int, 4> intervals { 7, 12, 0, 0 }; int nIntervals = 2; int seed = 1;
+};
+constexpr int kMidiFx = 4;
 /** a group of tracks: a folder in the arrangement and a vca in the mixer (its fader scales its members' levels) */
 struct Group { int id = 0; juce::String name; juce::uint32 colour = 0; bool folded = false; float vcaDb = 0; bool mute = false, solo = false; };
 

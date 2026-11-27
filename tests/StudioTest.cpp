@@ -1,5 +1,6 @@
 // sndstudioTest — renders sndstudio projects offline and checks the engine feature by feature.
 //   sndstudioTest [--screenshots dir] [--wav dir] [--vst3 "path/faltung dl4.vst3"]
+#include <set>
 #include "daw/StudioProcessor.h"
 #include <cstdio>
 #include "daw/StudioEditor.h"
@@ -2647,6 +2648,175 @@ int main (int argc, char** argv)
         const auto f2 = tmp.getChildFile ("missing2.fstudio"); check (p2.saveProject (f2, err), "save again: " + err);
         check (f2.loadFileAsString().contains ("nowhere eq") && f2.loadFileAsString().contains ("sub"), "the missing plug-in is kept in the project; the found file's new place is saved");
         dir.deleteRecursively();
+    }
+
+    std::cout << "== chopping: any slice each time, slice tools\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        auto& t = *s.tracks[0];
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k : { 0, 4, 8, 12 }) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } pt.s[0].slice = 3; pt.s[4].slice = 7; pt.s[8].slice = -2; pt.s[12].slice = -2; });
+        s.mode.store ((int) PlayMode::Session); t.pattern.store (0);
+        juce::String err; const auto mf = tmp.getChildFile ("slices.mid");
+        check (s.exportMidi (mf, 0.0, 16.0, err), "export: " + err);
+        juce::FileInputStream in (mf); juce::MidiFile f; f.readFrom (in);
+        std::map<int, int> at8; int bad = 0;
+        for (int k = 0; k < f.getNumTracks(); ++k) for (auto* e : *f.getTrack (k)) if (e->message.isNoteOn())
+        {
+            const double b = e->message.getTimeStamp() / f.getTimeFormat(); const int pos = (int) std::lround (std::fmod (b, 4.0) * 4.0);
+            if (pos == 8 || pos == 12) { at8[e->message.getNoteNumber()]++; if (e->message.getNoteNumber() != 39 && e->message.getNoteNumber() != 43) ++bad; }
+        }
+        std::cout << "  the random steps played slices:"; for (auto& [nn, c] : at8) std::cout << " " << (nn - 36 + 1) << "x" << c; std::cout << "\n";
+        check (bad == 0 && at8.size() == 2, "any slice: one of the pattern's own slices, both of them over the bars");
+        Rng r; r.seed (3);
+        Pattern pt; pt.length = 16; for (int k = 0; k < 16; k += 2) pt.s[(size_t) k].on = true;
+        tools::slices (pt, 1, 8, r); bool inOrder = true; int n = 0; for (int k = 0; k < 16; k += 2) inOrder = inOrder && pt.s[(size_t) k].slice == (n++ % 8);
+        tools::slices (pt, 2, 8, r); bool rev = pt.s[0].slice == 7 && pt.s[2].slice == 6;
+        tools::slices (pt, 1, 8, r); tools::slices (pt, 3, 8, r); std::multiset<int> ms; for (int k = 0; k < 16; k += 2) ms.insert (pt.s[(size_t) k].slice);
+        check (inOrder && rev && ms == std::multiset<int> { 0, 1, 2, 3, 4, 5, 6, 7 }, "slices in order, reversed, shuffled (the same slices)");
+    }
+    std::cout << "== grooves: built-in swing, taken from a clip, written into the steps\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        auto& t = *s.tracks[0]; shortHit (t);
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k = 0; k < 4; ++k) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } });
+        s.launch (t, 0);
+        GroovePtr mpc66; for (auto& g : Session::builtinGrooves()) if (g->name == "mpc 66%") mpc66 = g;
+        check (mpc66 != nullptr, "the built-in grooves");
+        s.setGroove (t, mpc66, 1.0f);
+        auto r = render (p, 0.25); auto on = onsets (r.out, 0, 0.05f, 2000);
+        const double st = 0.25 * spb (120);
+        std::cout << "  mpc 66%: the second sixteenth at " << (on.size() > 1 ? on[1] / st : -1.0) << " steps (1.32)\n";
+        check (on.size() >= 2 && std::abs (on[1] - (1.32 * st)) <= 3, "the groove moves the offbeat sixteenths");
+        const float p0 = r.out.getMagnitude (0, on.size() > 0 ? on[0] : 0, 1500), p1 = r.out.getMagnitude (0, on.size() > 1 ? on[1] : 0, 1500);
+        check (p1 < p0 * 0.95f, "and plays them softer");
+        t.grooveAmount.store (0.5f);
+        auto rh = render (p, 0.25); auto onh = onsets (rh.out, 0, 0.05f, 2000);
+        check (onh.size() >= 2 && std::abs (onh[1] - (1.16 * st)) <= 3, "half the amount: half the push");
+        // from a note clip: notes a little late on the offbeats
+        s.mode.store ((int) PlayMode::Arrange);
+        const int nid = s.addNoteClip (t, 4.0, 1.0, { { 0.0, 0.1, 36, 1.0f }, { 0.25 + 0.05, 0.1, 36, 0.5f }, { 0.5, 0.1, 36, 1.0f }, { 0.75 + 0.05, 0.1, 36, 0.5f } });
+        juce::String err; auto g = s.grooveFromClip ({ t.uid, nid, false }, err);
+        check (g && std::abs (g->at (1) - 0.2f) < 1.0e-3f && std::abs (g->at (0)) < 1.0e-3f && std::abs (g->velAt (1) - 0.5f) < 1.0e-3f, "a groove from a note clip: the late offbeats and their weight");
+        // written into the steps (micro timing, within the micro range): a small push fits
+        GroovePtr push; for (auto& gg : Session::builtinGrooves()) if (gg->name == "push (early offbeats)") push = gg;
+        s.mode.store ((int) PlayMode::Session); s.setGroove (t, push, 1.0f); t.grooveAmount.store (1.0f);
+        auto ra = render (p, 0.25); auto ona = onsets (ra.out, 0, 0.05f, 2000);
+        s.commitGroove (t, 0);
+        check (t.groove == nullptr, "written: the groove is off");
+        auto rb = render (p, 0.25); auto onb = onsets (rb.out, 0, 0.05f, 2000);
+        bool same = ona.size() == onb.size() && ona.size() >= 4; for (size_t k = 0; same && k < ona.size(); ++k) same = std::abs (ona[k] - onb[k]) <= 2;
+        check (same, "the steps play as the groove did");
+        juce::String e2; s.setGroove (t, push, 0.75f); s.projectFile = tmp.getChildFile ("groove.fstudio"); check (p.saveProject (s.projectFile, e2), "save");
+        StudioProcessor p2; p2.loadProject (s.projectFile, e2);
+        check (p2.session.tracks[0]->groove && p2.session.tracks[0]->groove->name == push->name && std::abs (p2.session.tracks[0]->grooveAmount.load() - 0.75f) < 1.0e-4f, "the groove is saved with the track");
+    }
+    std::cout << "== follow actions: patterns hand over by themselves\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        auto& t = *s.tracks[0]; shortHit (t);
+        for (int q = 0; q < 3; ++q) s.editPattern (t, q, [q] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[(size_t) (q * 4)].on = true; pt.s[(size_t) (q * 4)].vel = 1; });
+        s.setFollow (t, 0, { 1, FOLLOW_NEXT, FOLLOW_AGAIN, 1.0f }); s.setFollow (t, 1, { 1, FOLLOW_NEXT, FOLLOW_AGAIN, 1.0f }); s.setFollow (t, 2, { 1, FOLLOW_FIRST, FOLLOW_AGAIN, 1.0f });
+        s.launch (t, 0);
+        auto r = render (p, 4.0); auto on = onsets (r.out, 0);
+        const int bar = (int) (4.0 * spb (120)), sx = (int) (0.25 * spb (120));
+        juce::String got; for (int o : on) got << juce::String ((double) o / bar, 3) << " ";
+        std::cout << "  hits at bars " << got << "(0, 1.25, 2.5, 3)\n";
+        check (on.size() == 4 && std::abs (on[0]) <= 4 && std::abs (on[1] - (bar + 4 * sx)) <= 4 && std::abs (on[2] - (2 * bar + 8 * sx)) <= 4 && std::abs (on[3] - 3 * bar) <= 4, "next, next, first: each pattern once, then the first again");
+        s.setFollow (t, 0, { 2, FOLLOW_STOP, FOLLOW_AGAIN, 1.0f });
+        s.launch (t, 0);
+        auto r2 = render (p, 4.0); auto on2 = onsets (r2.out, 0);
+        check (on2.size() == 2, "after 2 times, stop");
+        s.setFollow (t, 0, { 1, FOLLOW_OTHER, FOLLOW_AGAIN, 1.0f }); s.setFollow (t, 1, { 1, FOLLOW_OTHER, FOLLOW_AGAIN, 1.0f }); s.setFollow (t, 2, { 1, FOLLOW_OTHER, FOLLOW_AGAIN, 1.0f });
+        s.launch (t, 0);
+        auto r3 = render (p, 8.0); auto on3 = onsets (r3.out, 0);
+        bool changes = on3.size() == 8; int lastPos = -1;
+        for (size_t k = 0; changes && k < on3.size(); ++k) { const int pos = (int) std::lround ((double) (on3[k] % bar) / sx); changes = pos != lastPos; lastPos = pos; }
+        check (changes, "another: never the same pattern twice in a row");
+    }
+    std::cout << "== midi effects: arpeggiator, chord, generator, chance\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        s.mode.store ((int) PlayMode::Session);
+        auto& t = *s.tracks[0]; t.rootNote.store (60);
+        auto notesOf = [&] (double bars) { juce::String err; const auto mf = tmp.getChildFile ("fx.mid"); s.exportMidi (mf, 0.0, bars, err); juce::FileInputStream in (mf); juce::MidiFile f; f.readFrom (in); std::vector<std::pair<double, int>> v; for (int k = 0; k < f.getNumTracks(); ++k) for (auto* e : *f.getTrack (k)) if (e->message.isNoteOn()) v.push_back ({ e->message.getTimeStamp() / f.getTimeFormat(), e->message.getNoteNumber() }); std::sort (v.begin(), v.end()); return v; };
+        // a minor chord held for the bar, arpeggiated up in sixteenths over two octaves
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[0].vel = 1; pt.s[0].chord = 3; pt.s[0].len = 16.0f; });
+        t.pattern.store (0);
+        MidiFx arp; arp.kind = MFX_ARP; arp.div = 4; arp.mode = 0; arp.octaves = 2; arp.gate = 0.5f;
+        s.setMidiFx (t, { arp });
+        auto v = notesOf (1.0);
+        juce::String got; for (auto& [b, nn] : v) got << nn << "@" << juce::String (b, 2) << " ";
+        std::cout << "  arp: " << got.substring (0, 160) << "\n";
+        const int want[] = { 60, 63, 67, 72, 75, 79, 60, 63 };
+        bool ok = v.size() >= 8; for (size_t k = 0; ok && k < 8; ++k) ok = v[k].second == want[k] && std::abs (v[k].first - 0.25 * (double) k) < 1.0e-3;
+        check (ok, "up, two octaves, a sixteenth each");
+        arp.mode = 1; s.setMidiFx (t, { arp }); v = notesOf (1.0);
+        check (v.size() >= 2 && v[0].second == 79 && v[1].second == 75, "down");
+        // chord memory on a single note
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[0].vel = 1; });
+        MidiFx ch; ch.kind = MFX_CHORD; ch.intervals = { 3, 7, 10, 0 }; ch.nIntervals = 3; ch.vel = 1.0f;
+        s.setMidiFx (t, { ch }); v = notesOf (1.0);
+        check (v.size() == 4 && v[0].second == 60 && v[1].second == 63 && v[2].second == 67 && v[3].second == 70, "chord: one note becomes a minor seventh");
+        // a generator in minor, a note every sixteenth (density 1), within an octave
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; });
+        MidiFx gen; gen.kind = MFX_GEN; gen.div = 4; gen.density = 1.0f; gen.scale = 2; gen.range = 12; gen.gate = 0.5f;
+        s.setMidiFx (t, { gen }); v = notesOf (2.0);
+        bool inScale = v.size() == 32; std::set<int> pcs; for (auto& [b, nn] : v) { const int pc = (nn - 60 + 120) % 12; pcs.insert (pc); inScale = inScale && (pc == 0 || pc == 2 || pc == 3 || pc == 5 || pc == 7 || pc == 8 || pc == 10) && nn >= 60 && nn <= 72; }
+        std::cout << "  generator: " << v.size() << " notes, " << pcs.size() << " different pitch classes\n";
+        check (inScale && pcs.size() >= 4, "generator: a note each sixteenth, all in the minor scale, in the range");
+        gen.density = 0.25f; s.setMidiFx (t, { gen }); v = notesOf (8.0);
+        std::cout << "  density 25%: " << v.size() << " of 128 sixteenths\n";
+        check (v.size() > 15 && v.size() < 50, "density");
+        // chance: none through, then all
+        s.editPattern (t, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k = 0; k < 16; ++k) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } });
+        MidiFx cf; cf.kind = MFX_CHANCE; cf.chance = 0.0f; s.setMidiFx (t, { cf }); v = notesOf (1.0); const size_t none = v.size();
+        cf.chance = 0.5f; s.setMidiFx (t, { cf }); v = notesOf (4.0);
+        std::cout << "  chance 50%: " << v.size() << " of 64\n";
+        check (none == 0 && v.size() > 16 && v.size() < 48, "chance");
+        juce::String e2; s.setMidiFx (t, { arp, ch }); s.projectFile = tmp.getChildFile ("mfx.fstudio"); check (p.saveProject (s.projectFile, e2), "save");
+        StudioProcessor p2; p2.loadProject (s.projectFile, e2);
+        check (p2.session.tracks[0]->midiFx->size() == 2 && (*p2.session.tracks[0]->midiFx)[0].kind == MFX_ARP && (*p2.session.tracks[0]->midiFx)[0].octaves == 2 && (*p2.session.tracks[0]->midiFx)[1].nIntervals == 3, "midi effects are saved");
+    }
+    std::cout << "== ott, xmod, spectral freeze\n";
+    {
+        auto ott = createStudioProcessor ("st:ott"); ott->setRateAndBufferSizeDetails (kSr, kBs); ott->prepareToPlay (kSr, kBs);
+        auto level = [&] (float db) { juce::AudioBuffer<float> b (2, (int) kSr); const float a = juce::Decibels::decibelsToGain (db); for (int i = 0; i < b.getNumSamples(); ++i) { const float v = a * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 1000.0 * i / kSr); b.setSample (0, i, v); b.setSample (1, i, v); } juce::MidiBuffer m; for (int i = 0; i < b.getNumSamples(); i += kBs) { juce::AudioBuffer<float> w (b.getArrayOfWritePointers(), 2, i, std::min (kBs, b.getNumSamples() - i)); ott->processBlock (w, m); } return juce::Decibels::gainToDecibels (b.getMagnitude (0, (int) kSr / 2, (int) kSr / 2)); };
+        const float quiet = level (-50.0f), loud = level (-6.0f);
+        std::cout << "  ott: -50 db in, " << quiet << " out; -6 db in, " << loud << " out\n";
+        check (quiet > -46.0f && loud < -15.0f && loud - quiet < 25.0f, "ott: quiet parts up, loud parts down (44 db apart in, much closer out)");
+        auto xm = createStudioProcessor ("st:xmod"); xm->setRateAndBufferSizeDetails (kSr, kBs); xm->prepareToPlay (kSr, kBs);
+        auto* kp = dynamic_cast<KeyedProcessor*> (xm.get());
+        std::vector<float> key ((size_t) kBs); for (int i = 0; i < kBs; ++i) key[(size_t) i] = (float) std::sin (i * 0.05);
+        kp->setKey (key.data(), key.data());
+        juce::AudioBuffer<float> b (2, kBs); for (int i = 0; i < kBs; ++i) { b.setSample (0, i, 0.5f); b.setSample (1, i, 0.5f); }
+        juce::MidiBuffer mm; xm->processBlock (b, mm);   // ring, amount 0.5: x * k * 2
+        double worst = 0; for (int i = 0; i < kBs; ++i) worst = std::max (worst, (double) std::abs (b.getSample (0, i) - 0.5f * juce::jlimit (-1.0f, 1.0f, key[(size_t) i]) * 2.0f));
+        check (worst < 1.0e-5, "xmod ring: the key multiplies the track, sample by sample");
+        // a sine track frozen into a pad: the pad holds the sine's pitch
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*tr, [] (std::vector<AudioClip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange); s.projectFile = tmp.getChildFile ("spec.fstudio"); s.projectName = "spec";
+        juce::AudioBuffer<float> sn (2, (int) (4 * kSr)); for (int i = 0; i < sn.getNumSamples(); ++i) { const float v = 0.4f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 440.0 * i / kSr); sn.setSample (0, i, v); sn.setSample (1, i, v); }
+        const auto sf = tmp.getChildFile ("sine.wav"); writeWav (sf, sn);
+        auto* at = s.addTrack ("sine", -1, TrackKind::Audio); juce::String err; s.addAudioClip (*at, sf, 0.0, &err);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        auto* pad = s.spectralFreeze (*at, 1.0, 8.0, err);
+        check (pad != nullptr, "spectral freeze: " + err);
+        if (pad && ! pad->aclips->empty())
+        {
+            const auto& c = (*pad->aclips)[0];
+            auto w = readWav (juce::File (c.path));
+            juce::dsp::FFT fft (14); std::vector<float> fb (1 << 15, 0.0f); for (int i = 0; i < (1 << 14); ++i) fb[(size_t) i] = w.getSample (0, 20000 + i) * (0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * i / (1 << 14)));
+            fft.performFrequencyOnlyForwardTransform (fb.data());
+            int best = 1; for (int k = 1; k < (1 << 13); ++k) if (fb[(size_t) k] > fb[(size_t) best]) best = k;
+            const double hz = best * kSr / (1 << 14);
+            std::cout << "  the pad's strongest frequency " << hz << " hz (440), " << w.getNumSamples() / kSr << " s, looping " << (c.loop ? "yes" : "no") << "\n";
+            check (std::abs (hz - 440.0) < 6.0 && c.loop && w.getNumSamples() >= (int) (7.9 * kSr), "the frozen spectrum holds the sound's pitch, and loops");
+            // the loop joins without a click: the end leads into the start
+            const float jump = std::abs (w.getSample (0, 0) - w.getSample (0, w.getNumSamples() - 1)), typ = w.getMagnitude (0, 0, 2000) * 0.25f;
+            check (jump < std::max (0.05f, typ), "the loop is seamless");
+            juce::File (c.path).deleteFile();
+        }
     }
 
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";

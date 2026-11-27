@@ -234,4 +234,31 @@ inline bool typed (Pattern& p, const juce::String& text, int degreesPerOctave, j
     p = out;
     return true;
 }
+/** the sample slices of the steps that play: 1 in order, 2 reversed, 3 shuffled, 4 wandering, 5 any slice each time, 6 notes again */
+template <typename R>
+inline void slices (Pattern& p, int how, int nSlices, R& rng)
+{
+    const int len = juce::jlimit (1, kMaxSteps, p.length); nSlices = std::max (1, nSlices);
+    std::vector<int> on; for (int k = 0; k < len; ++k) if (p.s[(size_t) k].on) on.push_back (k);
+    if (how == 3)
+    {
+        std::vector<int> sl; for (int k : on) sl.push_back (p.s[(size_t) k].slice >= 0 ? p.s[(size_t) k].slice : (int) (sl.size() % (size_t) nSlices));
+        for (int i = (int) sl.size() - 1; i > 0; --i) std::swap (sl[(size_t) i], sl[(size_t) std::min (i, (int) (rng.uni() * (i + 1)))]);
+        for (size_t i = 0; i < on.size(); ++i) p.s[(size_t) on[i]].slice = sl[i];
+        return;
+    }
+    int last = 0;
+    for (size_t i = 0; i < on.size(); ++i)
+    {
+        auto& st = p.s[(size_t) on[i]];
+        switch (how)
+        {
+            case 1: st.slice = (int) (i % (size_t) nSlices); break;
+            case 2: st.slice = nSlices - 1 - (int) (i % (size_t) nSlices); break;
+            case 4: { const int step = 1 + (rng.uni() < 0.4f ? 1 : 0); last = ((last + (rng.uni() < 0.5f ? -step : step)) % nSlices + nSlices) % nSlices; st.slice = i == 0 ? 0 : last; if (i == 0) last = 0; break; }
+            case 5: st.slice = -2; break;
+            default: st.slice = -1; break;
+        }
+    }
+}
 } // namespace fal::daw::tools

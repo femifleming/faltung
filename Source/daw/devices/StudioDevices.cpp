@@ -5,6 +5,7 @@
 #include "../../dsp/Fx.h"
 #include "../../dsp/Bass.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
 
 namespace fal::daw
 {
@@ -370,6 +371,131 @@ public:
         for (int c = 0; c < buf.getNumChannels() && c < (int) ch.size(); ++c) { ch[(size_t) c].set (p); auto* d = buf.getWritePointer (c); for (int i = 0; i < buf.getNumSamples(); ++i) d[i] = ch[(size_t) c].tick (d[i], p); }
     }
     std::vector<MultibandChannel> ch;
+};
+
+// ---- ott: three bands, each compressed down above one level and up below another (the over-the-top sound) -------
+class OttFx : public StudioFx
+{
+public:
+    enum { DEPTH, TIME, INGAIN, OUTGAIN, UPW, DOWNW, XLO, XHI, LOW, MID, HIGH };
+    OttFx() : StudioFx ("st:ott", "ott", 2, 2, false, {
+        F ("depth", "depth", 0, 1, 1.0f, pctText), F ("time", "time", 0.1f, 4, 1.0f, [] (float v) { return juce::String (v * 100, 0) + "%"; }, 0.5f),
+        F ("in", "in gain", -24, 24, 0, dbText), F ("out", "out gain", -24, 24, 0, dbText),
+        F ("upward", "upward", 0, 1, 1.0f, pctText), F ("downward", "downward", 0, 1, 1.0f, pctText),
+        F ("xlo", "low / mid", 40, 1000, 120, hzText, 0.4f), F ("xhi", "mid / high", 800, 12000, 2500, hzText, 0.4f),
+        F ("low", "low", -24, 24, 0, dbText), F ("mid", "mid", -24, 24, 0, dbText), F ("high", "high", -24, 24, 0, dbText) }) {}
+    void prepareToPlay (double s, int b) override
+    {
+        sr = s; bs = b;
+        juce::dsp::ProcessSpec spec { sr, (juce::uint32) std::max (16, b), 2 };
+        for (auto* f : { &lp1, &hp1, &lp2, &hp2, &ap }) { f->prepare (spec); f->reset(); }
+        lp1.setType (juce::dsp::LinkwitzRileyFilterType::lowpass); hp1.setType (juce::dsp::LinkwitzRileyFilterType::highpass);
+        lp2.setType (juce::dsp::LinkwitzRileyFilterType::lowpass); hp2.setType (juce::dsp::LinkwitzRileyFilterType::highpass);
+        ap.setType (juce::dsp::LinkwitzRileyFilterType::allpass);
+        env.fill (-120.0f);
+    }
+    void processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffer&) override
+    {
+        const int n = buf.getNumSamples(), nc = std::min (2, buf.getNumChannels());
+        lp1.setCutoffFrequency (P (XLO)); hp1.setCutoffFrequency (P (XLO)); ap.setCutoffFrequency (std::max (P (XHI), P (XLO) * 1.5f));
+        lp2.setCutoffFrequency (std::max (P (XHI), P (XLO) * 1.5f)); hp2.setCutoffFrequency (std::max (P (XHI), P (XLO) * 1.5f));
+        const float depth = P (DEPTH), up = P (UPW), down = P (DOWNW), tm = P (TIME);
+        const float inG = juce::Decibels::decibelsToGain (P (INGAIN)), outG = juce::Decibels::decibelsToGain (P (OUTGAIN));
+        const float bandG[3] = { juce::Decibels::decibelsToGain (P (LOW)), juce::Decibels::decibelsToGain (P (MID)), juce::Decibels::decibelsToGain (P (HIGH)) };
+        // the bands' own speeds (the lows slower), scaled by time; thresholds and ratios as the classic preset has them
+        static const float attMs[3] = { 47.8f, 22.4f, 13.5f }, relMs[3] = { 282.0f, 282.0f, 132.0f };
+        static const float dnThr[3] = { -33.8f, -30.2f, -35.5f }, upThr[3] = { -40.8f, -41.8f, -40.8f };
+        constexpr float dnRatio = 66.7f, upRatio = 4.17f, maxUp = 36.0f;
+        float ca[3], cr[3];
+        for (int k = 0; k < 3; ++k) { ca[k] = std::exp (-1.0f / (attMs[k] * tm * 0.001f * (float) sr)); cr[k] = std::exp (-1.0f / (relMs[k] * tm * 0.001f * (float) sr)); }
+        for (int i = 0; i < n; ++i)
+        {
+            float band[3][2] = {};
+            float lvl[3] = { 0, 0, 0 };
+            for (int c = 0; c < nc; ++c)
+            {
+                const float x = buf.getSample (c, i) * inG;
+                const float lo = lp1.processSample (c, x), rest = hp1.processSample (c, x);
+                const float mid = lp2.processSample (c, rest), hi = hp2.processSample (c, rest);
+                band[0][c] = ap.processSample (c, lo);   // (through the upper split's all-pass, so the three bands sum flat)
+                band[1][c] = mid; band[2][c] = hi;
+                for (int k = 0; k < 3; ++k) lvl[k] = std::max (lvl[k], std::abs (band[k][c]));
+            }
+            for (int k = 0; k < 3; ++k)
+            {
+                const float db = juce::Decibels::gainToDecibels (lvl[k], -120.0f);
+                env[(size_t) k] = db > env[(size_t) k] ? db + (env[(size_t) k] - db) * ca[k] : db + (env[(size_t) k] - db) * cr[k];
+                const float e = env[(size_t) k];
+                float gDb = 0;
+                if (e > dnThr[k]) gDb -= down * (e - dnThr[k]) * (1.0f - 1.0f / dnRatio);
+                else if (e < upThr[k] && e > -70.0f) gDb += up * std::min (maxUp, (upThr[k] - e) * (1.0f - 1.0f / upRatio));
+                gain[(size_t) k] = juce::Decibels::decibelsToGain (gDb * depth) * bandG[k];
+            }
+            for (int c = 0; c < nc; ++c) buf.setSample (c, i, (band[0][c] * gain[0] + band[1][c] * gain[1] + band[2][c] * gain[2]) * outG);
+        }
+    }
+    juce::dsp::LinkwitzRileyFilter<float> lp1, hp1, lp2, hp2, ap;
+    std::array<float, 3> env {}, gain { 1, 1, 1 };
+};
+
+// ---- xmod: the key track's audio modulates this one, sample by sample ---------------------------------------------
+class XmodFx : public StudioFx
+{
+public:
+    enum { MODE, AMOUNT, SMOOTH, BASEMS, CUTOFF, RES, MIX, KEYGAIN };
+    XmodFx() : StudioFx ("st:xmod", "xmod", 2, 2, false, {
+        C ("mode", "mode", { "ring", "amplitude", "phase (delay)", "filter", "fold", "sample & hold" }, 0),
+        F ("amount", "amount", 0, 1, 0.5f, pctText), F ("smooth", "smooth", 0, 50, 0, msText, 0.5f),
+        F ("basems", "delay", 0.1f, 20, 2, msText, 0.5f), F ("cutoff", "cutoff", 40, 16000, 800, hzText, 0.3f), F ("res", "resonance", 0, 1, 0.3f, pctText),
+        F ("mix", "mix", 0, 1, 1, pctText), F ("keygain", "key gain", -24, 24, 0, dbText) }) {}
+    void prepareToPlay (double s, int b) override
+    {
+        sr = s; bs = b; for (auto& d : dl) d.assign ((size_t) (sr * 0.05) + 8, 0.0f); wp = 0; ic1.fill (0); ic2.fill (0); held.fill (0); lastK = 0; sm = 0;
+    }
+    void processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffer&) override
+    {
+        const int n = buf.getNumSamples(), nc = std::min (2, buf.getNumChannels());
+        const int mode = Pi (MODE); const float amt = P (AMOUNT), mix = P (MIX), kg = juce::Decibels::decibelsToGain (P (KEYGAIN));
+        const float smc = P (SMOOTH) > 0.01f ? std::exp (-1.0f / (P (SMOOTH) * 0.001f * (float) sr)) : 0.0f;
+        const int L = (int) dl[0].size();
+        for (int i = 0; i < n; ++i)
+        {
+            const float kraw = keyL ? 0.5f * (keyL[i] + (keyR ? keyR[i] : keyL[i])) * kg : 0.0f;
+            sm = kraw + (sm - kraw) * smc;
+            const float k = juce::jlimit (-1.0f, 1.0f, sm);
+            for (int c = 0; c < nc; ++c)
+            {
+                const float x = buf.getSample (c, i); float y = x;
+                switch (mode)
+                {
+                    case 0: y = x * k * (amt * 4.0f); break;                                   // ring: the two multiplied
+                    case 1: y = x * juce::jlimit (0.0f, 2.0f, 1.0f + amt * k * 2.0f); break;    // amplitude
+                    case 2:
+                    {
+                        auto& d = dl[(size_t) c]; d[(size_t) wp] = x;
+                        const float ms = juce::jlimit (0.05f, 45.0f, P (BASEMS) * (1.0f + amt * k * 4.0f));
+                        const float pos = (float) wp - ms * 0.001f * (float) sr; float rp = pos; while (rp < 0) rp += (float) L;
+                        const int i0 = (int) rp; const float fr = rp - (float) i0;
+                        y = d[(size_t) (i0 % L)] * (1.0f - fr) + d[(size_t) ((i0 + 1) % L)] * fr; break;
+                    }
+                    case 3:
+                    {
+                        // a state-variable low-pass whose cutoff moves with the key, at audio rate (±4 octaves)
+                        const float fc = juce::jlimit (20.0f, (float) sr * 0.45f, P (CUTOFF) * std::exp2 (amt * k * 4.0f));
+                        const float g = std::tan (juce::MathConstants<float>::pi * fc / (float) sr), kk = 2.0f - 1.9f * P (RES);
+                        const float a1 = 1.0f / (1.0f + g * (g + kk)), a2 = g * a1, a3 = g * a2;
+                        const float v3 = x - ic2[(size_t) c], v1 = a1 * ic1[(size_t) c] + a2 * v3, v2 = ic2[(size_t) c] + a2 * ic1[(size_t) c] + a3 * v3;
+                        ic1[(size_t) c] = 2.0f * v1 - ic1[(size_t) c]; ic2[(size_t) c] = 2.0f * v2 - ic2[(size_t) c]; y = v2; break;
+                    }
+                    case 4: { const float dr = 1.0f + amt * 6.0f * std::abs (k); y = std::sin (x * dr * 1.5707963f) / std::max (0.5f, std::min (1.0f, dr * 0.5f)); break; }
+                    default: { if ((lastK <= 0.0f && k > 0.0f) || amt >= 0.999f) held[(size_t) c] = x; y = held[(size_t) c] * amt + x * (1.0f - amt); break; }
+                }
+                buf.setSample (c, i, x * (1.0f - mix) + y * mix);
+            }
+            lastK = k; wp = (wp + 1) % L;
+        }
+    }
+    std::array<std::vector<float>, 2> dl; int wp = 0; std::array<float, 2> ic1 {}, ic2 {}, held {}; float lastK = 0, sm = 0;
 };
 
 // ---- clip ------------------------------------------------------------------------------------------------
@@ -757,6 +883,8 @@ static const std::vector<Entry>& registry()
         { "st:grain", "grain", "granular cloud from the live input", false, [] { return std::make_unique<GrainFx>(); } },
         { "st:multiband", "multiband", "three-band distortion", false, [] { return std::make_unique<MultibandFx>(); } },
         { "st:clip", "clip", "digital clipper, bits and rate", false, [] { return std::make_unique<ClipFx>(); } },
+        { "st:ott", "ott", "three-band upward and downward compression: the over-the-top sound (basses, risers, whole mixes)", false, [] { return std::make_unique<OttFx>(); } },
+        { "st:xmod", "xmod", "the key track's audio modulates this one sample by sample: ring, amplitude, phase, filter, fold, sample & hold", false, [] { return std::make_unique<XmodFx>(); } },
         { "st:noise", "noise bed", "tape hiss / noise floor with drift and crackle", false, [] { return std::make_unique<NoiseFx>(); } },
         { "st:encoder", "encoder", "ambisonic encoder: mono / stereo to order 1 - 7 (acn, sn3d)", false, [] { return std::make_unique<EncoderFx>(); } },
         { "st:decoder", "decoder", "ambisonic decoder to a ring, dome or sphere of speakers", false, [] { return std::make_unique<DecoderFx>(); } },

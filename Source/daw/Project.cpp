@@ -59,6 +59,20 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     if (t.group.load() > 0) e.setAttribute ("group", t.group.load());
     if (t.frozen) { e.setAttribute ("frozen", t.frozenFile.getFullPathName()); e.setAttribute ("frozenFrom", t.frozenFromBeat); }
     if (std::abs (t.phaseRate.load() - 1.0f) > 1.0e-6f) e.setAttribute ("phase", t.phaseRate.load());
+    if (t.groove)
+    {
+        auto* x = e.createNewChildElement ("groove"); x->setAttribute ("name", t.groove->name); x->setAttribute ("amount", t.grooveAmount.load());
+        juce::StringArray o, v; for (float f : t.groove->offset) o.add (juce::String (f, 4)); for (float f : t.groove->vel) v.add (juce::String (f, 4));
+        x->setAttribute ("offset", o.joinIntoString (" ")); x->setAttribute ("vel", v.joinIntoString (" "));
+    }
+    for (int i = 0; i < kPatterns; ++i) if (const auto& fa = (*t.follow)[(size_t) i]; fa.after > 0) { auto* x = e.createNewChildElement ("follow"); x->setAttribute ("p", i); x->setAttribute ("after", fa.after); x->setAttribute ("a", fa.a); x->setAttribute ("b", fa.b); x->setAttribute ("chance", fa.chanceA); }
+    for (auto& m : *t.midiFx)
+    {
+        auto* x = e.createNewChildElement ("midifx");
+        x->setAttribute ("kind", m.kind); x->setAttribute ("on", m.on ? 1 : 0); x->setAttribute ("div", m.div); x->setAttribute ("mode", m.mode); x->setAttribute ("oct", m.octaves); x->setAttribute ("scale", m.scale);
+        x->setAttribute ("range", m.range); x->setAttribute ("root", m.root); x->setAttribute ("gate", m.gate); x->setAttribute ("density", m.density); x->setAttribute ("vel", m.vel); x->setAttribute ("spread", m.spread); x->setAttribute ("chance", m.chance);
+        x->setAttribute ("iv", juce::String (m.intervals[0]) + " " + juce::String (m.intervals[1]) + " " + juce::String (m.intervals[2]) + " " + juce::String (m.intervals[3])); x->setAttribute ("niv", m.nIntervals); x->setAttribute ("seed", m.seed);
+    }
     if (t.scale) { auto* x = e.createNewChildElement ("scale"); x->setAttribute ("name", t.scale->name); x->setAttribute ("period", t.scale->period); x->setAttribute ("cents", t.scale->text()); }
     e.setAttribute ("solo", t.solo.load() ? 1 : 0); e.setAttribute ("armed", t.armed.load() ? 1 : 0); e.setAttribute ("chainOn", t.chainOn.load() ? 1 : 0);
     e.setAttribute ("width", t.width.load()); e.setAttribute ("toMaster", t.toMaster.load() ? 1 : 0); e.setAttribute ("out", t.outChannel.load()); e.setAttribute ("key", t.keyTrack.load());
@@ -119,6 +133,29 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     t.swingOffset.store ((float) e.getDoubleAttribute ("swing", 0.0)); t.shiftMs.store ((float) e.getDoubleAttribute ("shift", 0.0)); t.probMul.store ((float) e.getDoubleAttribute ("prob", 1.0));
     t.freeClock.store (e.getIntAttribute ("free", 0) != 0); t.stepMs.store ((float) e.getDoubleAttribute ("stepMs", 125.0));
     t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0))); t.group.store (e.getIntAttribute ("group", 0));
+    if (auto* x = e.getChildByName ("groove"))
+    {
+        auto g = std::make_shared<Groove>(); g->name = x->getStringAttribute ("name");
+        for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("offset"), " ", "")) if (tk.isNotEmpty()) g->offset.push_back (tk.getFloatValue());
+        for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("vel"), " ", "")) if (tk.isNotEmpty()) g->vel.push_back (tk.getFloatValue());
+        g->steps = std::max (1, (int) g->offset.size());
+        setGroove (t, g, (float) x->getDoubleAttribute ("amount", 1.0));
+    }
+    else setGroove (t, nullptr, 1.0f);
+    for (int i = 0; i < kPatterns; ++i) setFollow (t, i, {});
+    for (auto* x : e.getChildWithTagNameIterator ("follow")) setFollow (t, x->getIntAttribute ("p"), { x->getIntAttribute ("after"), x->getIntAttribute ("a", FOLLOW_NEXT), x->getIntAttribute ("b", FOLLOW_AGAIN), (float) x->getDoubleAttribute ("chance", 1.0) });
+    {
+        std::vector<MidiFx> fx;
+        for (auto* x : e.getChildWithTagNameIterator ("midifx"))
+        {
+            MidiFx m; m.kind = x->getIntAttribute ("kind"); m.on = x->getIntAttribute ("on", 1) != 0; m.div = x->getIntAttribute ("div", 4); m.mode = x->getIntAttribute ("mode"); m.octaves = x->getIntAttribute ("oct", 1); m.scale = x->getIntAttribute ("scale", 2);
+            m.range = x->getIntAttribute ("range", 12); m.root = x->getIntAttribute ("root"); m.gate = (float) x->getDoubleAttribute ("gate", 0.5); m.density = (float) x->getDoubleAttribute ("density", 0.5); m.vel = (float) x->getDoubleAttribute ("vel", 0.8);
+            m.spread = (float) x->getDoubleAttribute ("spread", 0.2); m.chance = (float) x->getDoubleAttribute ("chance", 0.8); m.nIntervals = x->getIntAttribute ("niv", 2); m.seed = x->getIntAttribute ("seed", 1);
+            auto iv = juce::StringArray::fromTokens (x->getStringAttribute ("iv"), " ", ""); for (int k = 0; k < 4 && k < iv.size(); ++k) m.intervals[(size_t) k] = iv[k].getIntValue();
+            fx.push_back (m);
+        }
+        setMidiFx (t, fx);
+    }
     if (const auto fz = e.getStringAttribute ("frozen"); fz.isNotEmpty()) { juce::String err; if (auto smp = loadSample (juce::File (fz), &err)) setFrozen (t, smp, juce::File (fz), e.getDoubleAttribute ("frozenFrom")); else problems.add (t.name + ": its frozen file is missing (" + juce::File (fz).getFileName() + "); it plays live"); }
     t.phaseRate.store (juce::jlimit (0.5f, 2.0f, (float) e.getDoubleAttribute ("phase", 1.0)));
     if (auto* x = e.getChildByName ("scale"))

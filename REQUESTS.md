@@ -283,3 +283,6 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > then test out all the features … and update the manual
 
 (Tempo map through the whole engine; midi + controllers recorded into note clips; controller lanes; warp markers; freeze; hosted sidechain; latency readouts and low latency; learnt controller buttons and mackie control; lufs / lra / true-peak meter and export to a loudness; track templates; missing files found and missing plug-ins kept. Tests for each.)
+
+> do it all, test, commit, push, update manual, commit, push, go
+(1.4.4: chopping (any slice each time, slice tools, start jitter), grooves (built-in, from a clip or pattern, amount, written into the steps), follow actions, midi effects (arpeggiator, chord, generator, chance), ott, xmod (audio-rate modulation from the key track), spectral freeze into a looping pad; tests; manual.)

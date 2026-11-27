@@ -431,6 +431,7 @@ public:
         m.addSeparator();
         if (! t.isMaster() && ! t.isReturn()) m.addItem (t.isFrozen() ? 7 : 6, t.isFrozen() ? "unfreeze (live again)" : "freeze (render its chain; no cpu)");
         m.addItem (8, "save as a track template...");
+        if (! t.isMaster() && ! t.isReturn()) m.addItem (9, "spectral freeze at the playhead (an endless pad on a new track)");
         {
             juce::PopupMenu tl; int k = 0; tplFiles.clear();
             for (const auto& f : Session::trackTemplatesDir().findChildFiles (juce::File::findFiles, false, "*.ftrack")) { tplFiles.add (f); tl.addItem (500 + k++, f.getFileNameWithoutExtension()); }
@@ -454,6 +455,7 @@ public:
             else if (r == 5) s.removeGroup (g);
             else if (r == 6) { juce::String err; ctx.status ("freezing " + t.name + "..."); if (s.freezeTrack (t, err)) ctx.status (t.name + " frozen: its file plays (unfreeze to change it)"); else ctx.status ("freeze: " + err); }
             else if (r == 7) { s.unfreezeTrack (t); ctx.status (t.name + " live again"); }
+            else if (r == 9) { juce::String err; if (auto* nt = s.spectralFreeze (t, s.currentBar(), 16.0, err)) { ctx.select (nt); ctx.status ("frozen spectrum of " + t.name + " at " + pos (s.currentBar()) + ": a looping pad on " + nt->name); } else ctx.status ("spectral freeze: " + err); }
             else if (r == 8) ask ("save as a track template", "a name", t.name, [this, &t] (juce::String n) { juce::String err; if (ctx.s.saveTrackTemplate (t, n.trim(), err)) ctx.status ("track template saved: " + n.trim()); else ctx.status (err); });
             else if (r >= 500 && r - 500 < tplFiles.size()) { juce::String err; if (auto* nt = s.addTrackFromTemplate (tplFiles[r - 500], err)) { ctx.select (nt); ctx.status ("new track: " + nt->name + (err.isNotEmpty() ? " (" + err + ")" : juce::String())); } else ctx.status (err); }
             else if (r >= 100) s.setTrackGroup (t, r - 100);
@@ -1871,6 +1873,14 @@ public:
         link (tAdditive, "additive", [this] { processMenu(); });
         tAdditive->setTooltip ("the pattern as a cell that grows note by note (1, 1 2, 1 2 3 …), shrinks, or both: the figures go into the next patterns and play as a chain");
         link (tType, "type", [this] { typeDialog(); });
+        link (tSlices, "slices", [this] { slicesMenu(); });
+        tSlices->setTooltip ("chop: the steps' sample slices in order, reversed, shuffled, wandering, any slice each time; the sampler's start moved a little on every step");
+        link (tGroove, "groove", [this] { grooveMenu(); });
+        tGroove->setTooltip ("a groove for this track: built-in swings and feels, or one taken from a clip (an audio loop's hits, a note clip's notes) or a pattern; how much; or written into the steps");
+        link (tFollow, "follow", [this] { followMenu(); });
+        tFollow->setTooltip ("follow actions (session): after this pattern has played n times, play the next, another, any, the first … (with a chance for a second choice)");
+        link (tMidiFx, "midi fx", [this] { midiFxMenu(); });
+        tMidiFx->setTooltip ("midi effects in front of the instrument: arpeggiator, chord, generator, chance");
         tType->setTooltip ("type the pattern: one word per step. a number is a note (a degree with a scale), x the root, . a rest, _ holds; ! accent, ~ soft, ? half chance, *3 ratchet, ' and , an octave up / down");
         tFreeze->setTooltip ("write what the evolving pattern has drifted to into the pattern");
         link (tCopy, "copy", [this] { if (auto* t = ctx.selected()) if (auto p = t->patternAt (t->pattern.load())) clip = *p; });
@@ -1912,7 +1922,7 @@ public:
         juce::StringArray conds; for (int i = 0; i < (int) Cond::Count; ++i) conds.add (condName ((Cond) i));
         row (sCond, new ValueRow ("condition", conds, 0));
         row (sSlide, new ValueRow ("slide", { "off", "on" }, 0)); sSlide->boolStyle = true;
-        row (sSlice, new ValueRow ("slice", -1.0f, 63.0f, -1.0f, [] (float v) { return v < 0 ? juce::String ("note") : juce::String (juce::roundToInt (v) + 1); }));
+        row (sSlice, new ValueRow ("slice", -2.0f, 63.0f, -1.0f, [] (float v) { return v < -1.5f ? juce::String ("any (random)") : v < 0 ? juce::String ("note") : juce::String (juce::roundToInt (v) + 1); }));
         { juce::StringArray ch; for (int i = 0; i < kChords; ++i) ch.add (chordName (i)); row (sChord, new ValueRow ("chord", ch, 0)); }
         row (sRCurve, new ValueRow ("ratchet curve", -1.0f, 1.0f, 0.0f, [] (float v) { return std::abs (v) < 0.02f ? juce::String ("even") : (v > 0 ? "speeds up " : "slows ") + juce::String (juce::roundToInt (std::abs (v) * 100)) + "%"; }));
         sRCurve->setLabelWidth (90);
@@ -1992,6 +2002,188 @@ public:
         repaint();
     }
     void tool (std::function<void (Pattern&)> fn) { auto* t = ctx.selected(); if (! t) return; ctx.s.editPattern (*t, t->pattern.load(), fn); refresh(); }
+    // ---- chopping ----------------------------------------------------------------------------------------------------
+    void slicesMenu()
+    {
+        auto* t = ctx.selected(); if (! t) return;
+        juce::PopupMenu m;
+        m.addItem (1, "in order (the steps that play: slice 1, 2, 3 ...)"); m.addItem (2, "reversed"); m.addItem (3, "shuffled (the same slices, another order)");
+        m.addItem (4, "wandering (each a slice or two from the last)"); m.addItem (5, "any slice, a new one each time (random)"); m.addItem (6, "back to notes (no slices)");
+        const bool sampler = t->instrument && t->instrument->paramIndexForId ("start") >= 0;
+        m.addSeparator(); m.addItem (7, "start jitter: the sampler's start a little different on every step (locks)", sampler); m.addItem (8, "no start locks", sampler);
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, t] (int r)
+        {
+            if (r <= 0) return;
+            const int nSl = [t] { if (t->instrument) if (auto* h = dynamic_cast<SampleHolder*> (t->instrument->processor())) return std::max (1, h->numSlices()); return 16; }();
+            if (r <= 6) tool ([this, r, nSl] (Pattern& p) { tools::slices (p, r, nSl, rng); });
+            else
+            {
+                const int dev = t->instrument->uid, prm = t->instrument->paramIndexForId ("start");
+                tool ([this, r, dev, prm] (Pattern& p)
+                {
+                    for (int k = 0; k < juce::jlimit (1, kMaxSteps, p.length); ++k)
+                    {
+                        auto& st = p.s[(size_t) k];
+                        for (auto& l : st.locks) if (l.device == dev && l.param == prm) l.param = -1;
+                        if (r == 7 && st.on) for (auto& l : st.locks) if (l.param < 0) { l.device = dev; l.param = prm; l.value = rng.uni() * 0.35f; break; }
+                    }
+                });
+            }
+        });
+    }
+    // ---- grooves -----------------------------------------------------------------------------------------------------
+    std::vector<GroovePtr> grooveList;
+    void grooveMenu()
+    {
+        auto* t = ctx.selected(); if (! t) return;
+        auto& s = ctx.s;
+        juce::PopupMenu m, built, saved, amt;
+        grooveList = Session::builtinGrooves(); const int nb = (int) grooveList.size();
+        for (int k = 0; k < nb; ++k) built.addItem (100 + k, grooveList[(size_t) k]->name, true, t->groove && t->groove->name == grooveList[(size_t) k]->name);
+        for (auto& g : s.savedGrooves()) grooveList.push_back (g);
+        for (int k = nb; k < (int) grooveList.size(); ++k) saved.addItem (100 + k, grooveList[(size_t) k]->name, true, t->groove && t->groove->name == grooveList[(size_t) k]->name);
+        m.addItem (1, "none", true, t->groove == nullptr);
+        m.addSubMenu ("built in", built); m.addSubMenu ("saved", saved, (int) grooveList.size() > nb);
+        m.addItem (2, "from the clip under the playhead (this track: an audio loop's hits, a note clip's notes)");
+        m.addItem (3, "from this pattern (its micro timing and accents)");
+        for (int a : { 25, 50, 75, 100, 125, 150 }) amt.addItem (300 + a, juce::String (a) + "%", true, std::abs (t->grooveAmount.load() * 100.0f - (float) a) < 0.5f);
+        m.addSubMenu ("amount", amt, t->groove != nullptr);
+        m.addItem (4, "write it into this pattern's steps", t->groove != nullptr); m.addItem (5, "save this groove...", t->groove != nullptr);
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, t] (int r)
+        {
+            auto& s = ctx.s; juce::String err;
+            if (r == 1) s.setGroove (*t, nullptr, 1.0f);
+            else if (r >= 100 && r < 300 && r - 100 < (int) grooveList.size()) s.setGroove (*t, grooveList[(size_t) (r - 100)], t->grooveAmount.load());
+            else if (r == 2)
+            {
+                const double b = s.currentBar(); ClipRef found;
+                for (auto& c : *t->aclips) if (b >= c.startBar && b < c.startBar + c.bars) found = { t->uid, c.id, true };
+                for (auto& c : *t->clips) if (c.notes && b >= c.startBar && b < c.startBar + c.bars) found = { t->uid, c.id, false };
+                if (found.track == 0) { ctx.status ("groove: no audio or note clip on " + t->name + " under the playhead"); return; }
+                if (auto g = s.grooveFromClip (found, err)) { s.setGroove (*t, g, 1.0f); ctx.status ("groove taken from the clip: " + juce::String (g->steps) + " sixteenths"); } else ctx.status ("groove: " + err);
+            }
+            else if (r == 3) { if (auto g = s.grooveFromPattern (*t, t->pattern.load())) s.setGroove (*t, g, 1.0f); }
+            else if (r >= 300) t->grooveAmount.store ((r - 300) / 100.0f), s.dirty = true;
+            else if (r == 4) { s.commitGroove (*t, t->pattern.load()); ctx.status ("the groove is in the steps now (micro timing and velocity)"); }
+            else if (r == 5) ask ("save the groove", "a name", t->groove->name, [this, t] (juce::String n) { Groove g = *t->groove; g.name = n.trim(); juce::String e; if (ctx.s.saveGroove (g, e)) ctx.status ("groove saved: " + g.name); else ctx.status (e); });
+            refresh();
+        });
+    }
+    // ---- follow actions ----------------------------------------------------------------------------------------------
+    void followMenu()
+    {
+        auto* t = ctx.selected(); if (! t) return;
+        const int pi = t->pattern.load(); const auto fa = (*t->follow)[(size_t) pi];
+        juce::PopupMenu m, after, a, b, ch;
+        for (int n : { 0, 1, 2, 3, 4, 6, 8, 12, 16, 32 }) after.addItem (100 + n, n == 0 ? juce::String ("off") : juce::String (n) + (n == 1 ? " time" : " times"), true, fa.after == n);
+        for (int k = 0; k < FOLLOW_COUNT; ++k) { a.addItem (200 + k, followName (k), true, fa.a == k); b.addItem (300 + k, followName (k), true, fa.b == k); }
+        for (int c : { 100, 90, 75, 66, 50, 33, 25, 10 }) ch.addItem (400 + c, juce::String (c) + "% the first, " + juce::String (100 - c) + "% the second", true, std::abs (fa.chanceA * 100.0f - (float) c) < 0.5f);
+        m.addSectionHeader ("pattern " + juce::String (pi + 1) + ": " + (fa.after > 0 ? "after " + juce::String (fa.after) + ", " + followName (fa.a) + (fa.chanceA < 0.999f ? " / " + juce::String (followName (fa.b)) : juce::String()) : juce::String ("no follow action")));
+        m.addSubMenu ("after it has played", after); m.addSubMenu ("then", a); m.addSubMenu ("or else", b); m.addSubMenu ("chance", ch);
+        m.addItem (1, "the same for every pattern of this track");
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, t, pi, fa] (int r)
+        {
+            auto f = fa;
+            if (r >= 100 && r < 200) f.after = r - 100; else if (r >= 200 && r < 300) f.a = r - 200; else if (r >= 300 && r < 400) f.b = r - 300; else if (r >= 400) f.chanceA = (r - 400) / 100.0f;
+            else if (r == 1) { for (int k = 0; k < kPatterns; ++k) ctx.s.setFollow (*t, k, fa); ctx.status ("every pattern of " + t->name + ": the same follow action"); return; }
+            else return;
+            if (f.after == 0 && r >= 200) f.after = 1;
+            ctx.s.setFollow (*t, pi, f); refresh();
+        });
+    }
+    // ---- midi effects ------------------------------------------------------------------------------------------------
+    void midiFxMenu()
+    {
+        auto* t = ctx.selected(); if (! t || t->isAudio()) { ctx.status ("midi effects go on instrument tracks"); return; }
+        const auto fx = *t->midiFx;
+        juce::PopupMenu m;
+        for (int i = 0; i < (int) fx.size(); ++i)
+        {
+            juce::PopupMenu sub; sub.addItem (1000 + i * 10, "edit..."); sub.addItem (1001 + i * 10, fx[(size_t) i].on ? "off" : "on"); sub.addItem (1002 + i * 10, "remove");
+            if (i > 0) sub.addItem (1003 + i * 10, "earlier");
+            m.addSubMenu (juce::String (i + 1) + ". " + midiFxName (fx[(size_t) i].kind) + (fx[(size_t) i].on ? "" : " (off)"), sub);
+        }
+        if (! fx.empty()) m.addSeparator();
+        for (int k = 0; k < MFX_COUNT; ++k) m.addItem (10 + k, "+ " + juce::String (midiFxName (k)), (int) fx.size() < kMidiFx);
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, t, fx] (int r)
+        {
+            auto v = fx;
+            if (r >= 10 && r < 10 + MFX_COUNT)
+            {
+                MidiFx f; f.kind = r - 10;
+                if (f.kind == MFX_GEN) { f.div = 4; f.density = 0.35f; f.gate = 0.8f; f.vel = 0.75f; f.spread = 0.4f; f.range = 12; }
+                if (f.kind == MFX_CHANCE) { f.vel = 0.3f; f.spread = 0.0f; }
+                f.seed = juce::Random::getSystemRandom().nextInt (100000);
+                v.push_back (f); ctx.s.setMidiFx (*t, v); editMidiFx (*t, (int) v.size() - 1); return;
+            }
+            if (r < 1000) return;
+            const int i = (r - 1000) / 10, a = (r - 1000) % 10; if (i >= (int) v.size()) return;
+            if (a == 0) { editMidiFx (*t, i); return; }
+            if (a == 1) v[(size_t) i].on = ! v[(size_t) i].on;
+            if (a == 2) v.erase (v.begin() + i);
+            if (a == 3 && i > 0) std::swap (v[(size_t) i], v[(size_t) i - 1]);
+            ctx.s.setMidiFx (*t, v); refresh();
+        });
+    }
+    void editMidiFx (Track& t, int index)
+    {
+        struct Ed : juce::Component
+        {
+            Ed (Session& s, Track& tr, int i) : session (s), track (tr), idx (i)
+            {
+                const auto f = (*tr.midiFx)[(size_t) i];
+                const auto divs = divisionNames();
+                if (f.kind == MFX_ARP)
+                {
+                    add ("div", new ValueRow ("rate", divs, f.div)); add ("mode", new ValueRow ("mode", { "up", "down", "up and down", "random", "as played" }, f.mode));
+                    add ("oct", new ValueRow ("octaves", 1.0f, 4.0f, (float) f.octaves, [] (float v) { return juce::String (juce::roundToInt (v)); }));
+                    add ("gate", new ValueRow ("gate", 0.05f, 1.0f, f.gate, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                    add ("vel", new ValueRow ("velocity", 0.05f, 1.0f, f.vel, [] (float v) { return juce::String (juce::roundToInt (v * 127)); }));
+                }
+                else if (f.kind == MFX_CHORD)
+                {
+                    for (int k = 0; k < 4; ++k) add ("iv" + juce::String (k), new ValueRow ("note " + juce::String (k + 2), -24.0f, 24.0f, (float) (k < f.nIntervals ? f.intervals[(size_t) k] : 0), [] (float v) { const int n = juce::roundToInt (v); return n == 0 ? juce::String ("-") : (n > 0 ? "+" : "") + juce::String (n) + " st"; }));
+                    add ("vel", new ValueRow ("their velocity", 0.05f, 1.0f, f.vel, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                }
+                else if (f.kind == MFX_GEN)
+                {
+                    add ("div", new ValueRow ("rate", divs, f.div)); add ("density", new ValueRow ("density", 0.0f, 1.0f, f.density, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                    add ("scale", new ValueRow ("scale", { "chromatic", "major", "minor", "pentatonic", "dorian", "phrygian", "the track's scale" }, f.scale));
+                    add ("range", new ValueRow ("range", 0.0f, 36.0f, (float) f.range, [] (float v) { return juce::String (juce::roundToInt (v)) + " st"; }));
+                    add ("root", new ValueRow ("root", -24.0f, 24.0f, (float) f.root, [] (float v) { return (v > 0 ? "+" : "") + juce::String (juce::roundToInt (v)) + " st"; }));
+                    add ("gate", new ValueRow ("length", 0.05f, 4.0f, f.gate, [] (float v) { return juce::String (v, 2) + " x rate"; }));
+                    add ("vel", new ValueRow ("velocity", 0.05f, 1.0f, f.vel, [] (float v) { return juce::String (juce::roundToInt (v * 127)); }));
+                    add ("spread", new ValueRow ("velocity spread", 0.0f, 1.0f, f.spread, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                }
+                else
+                {
+                    add ("chance", new ValueRow ("notes through", 0.0f, 1.0f, f.chance, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                    add ("vel", new ValueRow ("velocity spread", 0.0f, 1.0f, f.vel, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                    add ("spread", new ValueRow ("octave jumps", 0.0f, 1.0f, f.spread, [] (float v) { return juce::String (juce::roundToInt (v * 100)) + "%"; }));
+                }
+                for (auto& [k, r] : rows) r->onChange = [this] (float) { push(); };
+                setSize (300, 26 + (int) rows.size() * 20 + 6);
+            }
+            void add (const juce::String& key, ValueRow* r) { rows.push_back ({ key, r }); owned.add (r); addAndMakeVisible (r); }
+            float v (const juce::String& k) const { for (auto& [kk, r] : rows) if (kk == k) return r->get(); return 0; }
+            void push()
+            {
+                auto all = *track.midiFx; if (idx >= (int) all.size()) return;
+                auto& f = all[(size_t) idx];
+                if (f.kind == MFX_ARP) { f.div = (int) v ("div"); f.mode = (int) v ("mode"); f.octaves = juce::roundToInt (v ("oct")); f.gate = v ("gate"); f.vel = v ("vel"); }
+                else if (f.kind == MFX_CHORD) { int n = 0; for (int k = 0; k < 4; ++k) { const int iv = juce::roundToInt (v ("iv" + juce::String (k))); if (iv != 0) f.intervals[(size_t) n++] = iv; } f.nIntervals = n; f.vel = v ("vel"); }
+                else if (f.kind == MFX_GEN) { f.div = (int) v ("div"); f.density = v ("density"); f.scale = (int) v ("scale"); f.range = juce::roundToInt (v ("range")); f.root = juce::roundToInt (v ("root")); f.gate = v ("gate"); f.vel = v ("vel"); f.spread = v ("spread"); }
+                else { f.chance = v ("chance"); f.vel = v ("vel"); f.spread = v ("spread"); }
+                session.setMidiFx (track, all);
+            }
+            void paint (juce::Graphics& g) override { g.fillAll (studioTheme().ground); g.setColour (studioTheme().ink); g.setFont (uiFont (11.0f, true)); g.drawText (midiFxName ((*track.midiFx)[(size_t) std::min (idx, (int) track.midiFx->size() - 1)].kind), 8, 4, getWidth() - 16, 16, juce::Justification::centredLeft); }
+            void resized() override { int y = 24; for (auto& [k, r] : rows) { r->setBounds (8, y, getWidth() - 16, 18); y += 20; } }
+            Session& session; Track& track; int idx;
+            std::vector<std::pair<juce::String, ValueRow*>> rows; juce::OwnedArray<ValueRow> owned;
+        };
+        if (index < 0 || index >= (int) t.midiFx->size()) return;
+        juce::CallOutBox::launchAsynchronously (std::make_unique<Ed> (ctx.s, t, index), tMidiFx->getScreenBounds(), nullptr);
+    }
     /** additive / subtractive: the figures of the cell (the pattern shown) into the patterns after it, as a chain */
     void processMenu()
     {
@@ -2151,7 +2343,7 @@ public:
         int x = gx;
         for (auto* l : { tEuclid, tRotL, tRotR, tRev, tMutate, tHuman, tRandom, tMarkov, tRules, tDouble, tClear, tCopy, tPaste }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 196, lw, 18); x += lw + 2; }
         x = gx;
-        for (auto* l : { tRatios, tAccel, tEven, tStrict, tSieve, tSievePitch, tCloud, tFreeze, tAdditive, tType }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 214, lw, 18); x += lw + 2; }
+        for (auto* l : { tRatios, tAccel, tEven, tStrict, tSieve, tSievePitch, tCloud, tFreeze, tAdditive, tType, tSlices, tGroove, tFollow, tMidiFx }) { const int lw = (int) juce::GlyphArrangement::getStringWidth (uiFont (11.0f), l->text) + 16; l->setBounds (x, 214, lw, 18); x += lw + 2; }
         tAddLock->setBounds (gx + 540, 240, 60, 18);
         int sy = 240;
         ValueRow* steps[] = { sVel, sPitch, sProb, sRatchet, sMicro, sRCurve, sLen, sDur, sCond, sSlice, sChord, sSlide };
@@ -2214,7 +2406,7 @@ public:
                 if (st.ratchet > 1) info << "x" << st.ratchet << "\n";
                 if (st.cond != Cond::Always) info << condName (st.cond) << "\n";
                 if (st.slide) info << "slide\n";
-                if (st.slice >= 0) info << "s" << (st.slice + 1) << "\n";
+                if (st.slice >= 0) info << "s" << (st.slice + 1) << "\n"; else if (st.slice == -2) info << "s?\n";
                 if (st.chord > 0) info << chordName (st.chord) << "\n";
                 if (std::abs (st.dur - 1.0f) > 1.0e-4f) info << "t x" << juce::String (st.dur, 2) << "\n";
                 int locks = 0; for (auto& l : st.locks) if (l.param >= 0) ++locks;
@@ -2300,7 +2492,7 @@ public:
 private:
     juce::OwnedArray<ui::TextLink> links; juce::OwnedArray<ValueRow> rows; juce::OwnedArray<DevicePanel> panels;
     ui::TextLink *tEuclid, *tRotL, *tRotR, *tRev, *tMutate, *tHuman, *tRandom, *tMarkov, *tRules, *tDouble, *tClear, *tCopy, *tPaste, *tAddDevice, *tAddLock;
-    ui::TextLink *tRatios, *tAccel, *tEven, *tStrict, *tSieve, *tSievePitch, *tCloud, *tFreeze, *tAdditive, *tType;
+    ui::TextLink *tRatios, *tAccel, *tEven, *tStrict, *tSieve, *tSievePitch, *tCloud, *tFreeze, *tAdditive, *tType, *tSlices, *tGroove, *tFollow, *tMidiFx;
     juce::Component chain; juce::Viewport viewport;
     Pattern clip; Rng rng;
     enum Mode { None, Pending, Vertical, Paint, Micro, Lane } mode = None;

@@ -7,7 +7,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
-project(Faltung VERSION 1.4.3 LANGUAGES C CXX)
+project(Faltung VERSION 1.4.4 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -247,7 +247,7 @@ if(FALTUNG_BUILD_TESTS)
     target_include_directories(faltungTest PRIVATE Source)
     target_compile_definitions(faltungTest PRIVATE ${FAL_DEFS} JucePlugin_Name="faltung" JucePlugin_Build_Standalone=1
         JucePlugin_IsSynth=1 JucePlugin_WantsMidiInput=1 JucePlugin_ProducesMidiOutput=0 JucePlugin_IsMidiEffect=0
-        JucePlugin_ManufacturerCode=0x46726b70 JucePlugin_PluginCode=0x466b7431 JucePlugin_VersionString="1.4.3"
+        JucePlugin_ManufacturerCode=0x46726b70 JucePlugin_PluginCode=0x466b7431 JucePlugin_VersionString="1.4.4"
         JucePlugin_Manufacturer="faltung" JucePlugin_Desc="faltung" JucePlugin_VersionCode=0x10200 FALTUNG_TEST=1)
     target_link_libraries(faltungTest PRIVATE FaltungData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
 

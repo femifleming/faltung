@@ -65,6 +65,19 @@ struct Track
     std::atomic<bool> solo { false }, armed { false }, chainOn { false };
     std::atomic<float> evolve { 0.0f };      // 0 … 1: how readily the pattern drifts from what is written, a little on every pass
     std::atomic<int> chokeGroup { 0 };
+    // the groove it plays with (any steps' timing and weight pushed by it, how much), what each pattern does after it played,
+    // and the midi effects in front of its instrument
+    GroovePtr groove; std::atomic<float> grooveAmount { 1.0f };
+    std::shared_ptr<const std::array<FollowAction, kPatterns>> follow = std::make_shared<const std::array<FollowAction, kPatterns>>();
+    std::shared_ptr<const std::vector<MidiFx>> midiFx = std::make_shared<const std::vector<MidiFx>>();
+    struct MfxState
+    {
+        std::array<int, 32> held {}; int nHeld = 0; std::array<int, 32> heldOrder {}; int orderN = 0;
+        long long lastSlot = -1; int arpIndex = 0, arpDir = 1;
+        struct Off { int note; int left; }; std::array<Off, 64> offs {}; int nOffs = 0;
+        Rng rng;
+    };
+    std::array<MfxState, kMidiFx> mfx;
     TuningPtr scale;                         // the pitch lane's scale: steps' pitches are its degrees (null: semitones)
     std::atomic<float> phaseRate { 1.0f };
     float sentBend = 0.0f;                   // (audio thread) the pitch bend the instrument last got from the pitch lane   // this part a little faster or slower than the others: it drifts out of phase (and back)       // 0 none, 1 … 8: a hit on one track of a group cuts the others of that group
@@ -223,6 +236,21 @@ public:
     void recordWithCountIn();
     /** the notes played into armed instrument tracks while recording, written into their steps (message thread) */
     int collectRecordedNotes();
+    // ---- grooves, follow actions, midi effects (message thread) ---------------------------------------------------------
+    static std::vector<GroovePtr> builtinGrooves();
+    static juce::File groovesDir();
+    std::vector<GroovePtr> savedGrooves() const;
+    bool saveGroove (const Groove&, juce::String& error) const;
+    void setGroove (Track&, GroovePtr, float amount);
+    /** a groove from a clip (an audio clip's hits, a note clip's notes) or the track's pattern (its micro timing), over its first bars */
+    GroovePtr grooveFromClip (ClipRef, juce::String& error) const;
+    GroovePtr grooveFromPattern (const Track&, int pattern) const;
+    /** the groove written into the pattern's steps (micro timing, velocity), the track's groove then off */
+    void commitGroove (Track&, int pattern);
+    void setFollow (Track&, int pattern, FollowAction);
+    void setMidiFx (Track&, std::vector<MidiFx>);
+    /** a moment of a track frozen: its spectrum at the playhead held as an endless pad (a looping clip on a new audio track) */
+    Track* spectralFreeze (Track& src, double atBar, double seconds, juce::String& error);
     /** what was played into the arrangement, as its note clip (made at the first note, grown as the recording goes on) */
     void writeRecordedClip (Track&);
     std::atomic<float> microMs { 12.0f };
@@ -555,6 +583,7 @@ private:
     void resolveTrack (Track&, int index, double ppq0);
     void modulate (Track&, double ppq0, int n, double bpm);
     void sequence (Track&, double ppq0, double ppq1, double spb, double bpm, juce::MidiBuffer& out);
+    void midiEffects (Track&, double ppq0, int n, double spb, juce::MidiBuffer& io, bool playing);
     void renderTrack (Track&, int n, double ppq0, double bpm, const float* macros, bool anySolo, const Outs& outs, juce::MidiBuffer& midi, const HostInfo& h, bool playing);
     void playClips (Track&, int n, double ppq0, double bpm, bool playing);
     void automate (double ppq);

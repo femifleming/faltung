@@ -163,6 +163,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
             t.flip.fill (0); t.drift.fill (0.0f); t.evoPass = -1; t.prevFired = false;
             t.snapMixer = true;   // levels, pans and sends start where they are set, not on the way there from before the stop
             for (auto& m : t.modState) m = ModState();
+            for (auto& m : t.mfx) { m.nHeld = 0; m.orderN = 0; m.nOffs = 0; m.arpIndex = 0; }
         };
         for (auto& t : tracks) fresh (*t);
         for (auto& r : returns) fresh (*r);
@@ -403,6 +404,7 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
                 }
                 t.playStep.store (-1);
             }
+            if (t.kind == TrackKind::Instrument && ! t.midiFx->empty()) midiEffects (t, ppq0, n, spb, scratchMidi, playing);
         }
         else modulate (t, ppq0, n, bpm);
         if (t.chokeGroup.load (std::memory_order_relaxed) > 0)
@@ -504,6 +506,35 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
                 t.loopOffset = pass;
                 t.shownPattern.store (t.activePattern);
                 return;
+            }
+        }
+        // follow actions: a pattern that has played its number of times hands over (on its own boundary)
+        if (! t.silent && t.activePattern >= 0 && t.pendingPattern.load (std::memory_order_relaxed) == -1)
+        {
+            const auto& fa = (*t.follow)[(size_t) juce::jlimit (0, kPatterns - 1, t.activePattern)];
+            const PatternPtr cur = t.patterns[(size_t) t.activePattern];
+            if (fa.after > 0 && cur)
+            {
+                const double loopB = cur->span() * stepBeats, end = t.anchor + fa.after * loopB;
+                if (ppq0 >= end - 1.0e-6)
+                {
+                    const int act = t.rng.uni() < fa.chanceA ? fa.a : fa.b;
+                    auto used = [&] (int p) { return t.patterns[(size_t) p] && ! t.patterns[(size_t) p]->empty(); };
+                    int next = t.activePattern;
+                    auto step = [&] (int dir) { for (int k = 1; k <= kPatterns; ++k) { const int q = ((t.activePattern + dir * k) % kPatterns + kPatterns) % kPatterns; if (used (q)) return q; } return t.activePattern; };
+                    std::array<int, kPatterns> pool {}; int np = 0; for (int q = 0; q < kPatterns; ++q) if (used (q)) pool[(size_t) np++] = q;
+                    switch (act)
+                    {
+                        case FOLLOW_NEXT: next = step (1); break;
+                        case FOLLOW_PREV: next = step (-1); break;
+                        case FOLLOW_FIRST: next = np > 0 ? pool[0] : t.activePattern; break;
+                        case FOLLOW_ANY: next = np > 0 ? pool[(size_t) std::min (np - 1, (int) (t.rng.uni() * np))] : t.activePattern; break;
+                        case FOLLOW_OTHER: if (np > 1) { int q; do q = pool[(size_t) std::min (np - 1, (int) (t.rng.uni() * np))]; while (q == t.activePattern); next = q; } break;
+                        default: break;
+                    }
+                    if (act == FOLLOW_STOP) { t.silent = true; t.activePattern = -1; }
+                    else { t.activePattern = next; t.pattern.store (next); t.anchor = end; t.lastStepN = -1; t.prevFired = false; }
+                }
             }
         }
         t.seqAnchor = t.anchor;
@@ -795,7 +826,12 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
         const Step& st = *sp;
         if (! st.on) continue;
         const double own = (at[(size_t) si + 1] - at[(size_t) si]) * stepBeats;   // this step's own length in beats
-        const double base = t.seqAnchor + ((double) pass * span + at[(size_t) si]) * stepBeats + ((si & 1) ? (sw - 0.5) * 2.0 * own : 0.0) + (st.micro * micro + shift) * msToPpq;
+        // the groove: the sixteenth of its cycle this step falls on pushes it by its share of a step (and weighs it)
+        const auto* gr = t.groove.get(); const float ga = gr ? t.grooveAmount.load (std::memory_order_relaxed) : 0.0f;
+        const int gk = gr ? (int) ((long long) std::llround ((double) pass * span + at[(size_t) si]) % std::max (1, gr->steps)) : 0;
+        const double grooveShift = gr ? (double) gr->at (gk) * ga * stepBeats : 0.0;
+        const float grooveVel = gr ? 1.0f + (gr->velAt (gk) - 1.0f) * ga : 1.0f;
+        const double base = t.seqAnchor + ((double) pass * span + at[(size_t) si]) * stepBeats + ((si & 1) ? (sw - 0.5) * 2.0 * own : 0.0) + (st.micro * micro + shift) * msToPpq + grooveShift;
         if (base > ppq1 + own + 1.0 || base + own + 1.0 < ppq0) continue;
         const int rat = juce::jlimit (1, 8, st.ratchet);
         for (int r = 0; r < rat; ++r)
@@ -819,16 +855,24 @@ void Session::sequence (Track& t, double ppq0, double ppq1, double spb, double b
             const int smp = juce::jlimit (0, n - 1, (int) ((e - ppq0) * spb));
             // the pitch lane: a degree of the track's scale (a note and, between the keys, a pitch bend of ±2 semitones)
             int note = 0; double bend = 0.0;
-            if (st.slice >= 0) note = 36 + st.slice;
+            // the slice: its own, or (-2) any slice the pattern's steps use, a new one each time it plays (chopped stabs that never repeat the same way)
+            int slice = st.slice;
+            if (slice == -2)
+            {
+                std::array<int, kMaxSteps> used {}; int nu = 0;
+                for (int q = 0; q < len; ++q) if (pat.s[(size_t) q].on && pat.s[(size_t) q].slice >= 0) used[(size_t) nu++] = pat.s[(size_t) q].slice;
+                slice = nu > 0 ? used[(size_t) std::min (nu - 1, (int) (t.rng.uni() * nu))] : std::min (15, (int) (t.rng.uni() * 16.0f));
+            }
+            if (slice >= 0) note = 36 + slice;
             else if (t.scale) { const double semis = t.scale->centsOf (st.pitch) / 100.0; const int k = (int) std::floor (semis + 0.5); bend = semis - k; note = root + k; }
             else note = root + st.pitch;
             note = juce::jlimit (0, 127, note);
-            const float vel = juce::jlimit (0.02f, 1.0f, st.vel * (r == 0 ? 1.0f : 0.85f - 0.05f * r));
+            const float vel = juce::jlimit (0.02f, 1.0f, st.vel * grooveVel * (r == 0 ? 1.0f : 0.85f - 0.05f * r));
             double lenBeats = std::max (0.02, (double) st.len) * stepBeats;
             if (r < rat - 1) lenBeats = std::min (lenBeats, own / rat * 0.9);
             const int lenS = std::max (1, (int) (lenBeats * spb));
             // the note, and the notes stacked on it when the step plays a chord
-            const int* stack = nullptr; const int extra = st.slice >= 0 ? 0 : chordNotes (st.chord, stack);
+            const int* stack = nullptr; const int extra = slice >= 0 ? 0 : chordNotes (st.chord, stack);
             // (a bend once sent stays with the instrument: back to the centre when the steps are on the keys again)
             if ((t.scale && t.scale->microtonal()) || std::abs (t.sentBend) > 1.0e-6)
             {
@@ -1500,7 +1544,7 @@ bool Session::exportMidi (const juce::File& file, double fromBar, double toBar, 
     const double bpm = tempo(); const double spbs = 60.0 / bpm * sr;
     headBpm = bpm;
     std::vector<juce::MidiMessageSequence> seqs (tracks.size());
-    for (auto& t : tracks) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->lastStepN = -1; }
+    for (auto& t : tracks) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->lastStepN = -1; for (auto& m : t->mfx) { m.nHeld = 0; m.orderN = 0; m.nOffs = 0; m.arpIndex = 0; } }
     for (auto& t : tracks) if (mode.load() == (int) PlayMode::Session) { t->pendingPattern.store (t->pattern.load()); t->pendingAt.store (0.0); }
     double p = fromBar * 4.0; const double end = toBar * 4.0;
     while (p < end)
@@ -1515,6 +1559,7 @@ bool Session::exportMidi (const juce::File& file, double fromBar, double toBar, 
             resolveTrack (t, i, p);
             juce::MidiBuffer mb;
             sequence (t, p, ppq1, spbs, bpm, mb);
+            if (! t.midiFx->empty()) midiEffects (t, p, len, spbs, mb, true);   // (what the midi effects make is in the file too)
             for (const auto m : mb)
             {
                 auto msg = m.getMessage();
@@ -1666,5 +1711,325 @@ bool Session::freezeTrack (Track& src, juce::String& error)
     if (! smp) return false;
     setFrozen (src, smp, f, fromBeat);
     return true;
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+// ---- midi effects ------------------------------------------------------------------------------------------------------
+void Session::midiEffects (Track& t, double ppq0, int n, double spb, juce::MidiBuffer& io, bool playing)
+{
+    const auto& fxs = *t.midiFx;
+    juce::MidiBuffer out;
+    for (size_t fi = 0; fi < fxs.size() && fi < (size_t) kMidiFx; ++fi)
+    {
+        const MidiFx& fx = fxs[fi]; auto& st = t.mfx[fi];
+        if (! fx.on) continue;
+        out.clear();
+        // notes this effect scheduled to end (arp / generator), in this block
+        auto dueOffs = [&]
+        {
+            for (int k = 0; k < st.nOffs;)
+            {
+                auto& o = st.offs[(size_t) k];
+                if (o.left < n) { out.addEvent (juce::MidiMessage::noteOff (1, o.note), std::max (0, o.left)); o = st.offs[(size_t) --st.nOffs]; }
+                else { o.left -= n; ++k; }
+            }
+        };
+        auto later = [&] (int note, int at) { if (st.nOffs < (int) st.offs.size()) st.offs[(size_t) st.nOffs++] = { note, at }; };
+        const double divB = divisionBeats (fx.div);
+        switch (fx.kind)
+        {
+            case MFX_CHORD:
+                for (const auto m : io)
+                {
+                    const auto msg = m.getMessage(); out.addEvent (msg, m.samplePosition);
+                    if (! msg.isNoteOnOrOff()) continue;
+                    for (int k = 0; k < juce::jlimit (0, 4, fx.nIntervals); ++k)
+                    {
+                        const int nn = msg.getNoteNumber() + fx.intervals[(size_t) k]; if (nn < 0 || nn > 127 || fx.intervals[(size_t) k] == 0) continue;
+                        out.addEvent (msg.isNoteOn() ? juce::MidiMessage::noteOn (1, nn, juce::jlimit (0.02f, 1.0f, msg.getFloatVelocity() * fx.vel)) : juce::MidiMessage::noteOff (1, nn), m.samplePosition);
+                    }
+                }
+                break;
+            case MFX_CHANCE:
+                for (const auto m : io)
+                {
+                    const auto msg = m.getMessage();
+                    if (msg.isNoteOn())
+                    {
+                        if (st.rng.uni() >= fx.chance) { st.held[(size_t) (msg.getNoteNumber() & 31)] = -1; continue; }   // (its note off goes too)
+                        const int oct = fx.spread > 0 && st.rng.uni() < fx.spread * 0.5f ? (st.rng.uni() < 0.5f ? -12 : 12) : 0;
+                        const int nn = juce::jlimit (0, 127, msg.getNoteNumber() + oct); st.held[(size_t) (msg.getNoteNumber() & 31)] = nn;
+                        out.addEvent (juce::MidiMessage::noteOn (1, nn, juce::jlimit (0.02f, 1.0f, msg.getFloatVelocity() * (1.0f - fx.vel * 0.5f * st.rng.uni()))), m.samplePosition);
+                    }
+                    else if (msg.isNoteOff()) { const int h = st.held[(size_t) (msg.getNoteNumber() & 31)]; if (h >= 0) out.addEvent (juce::MidiMessage::noteOff (1, h), m.samplePosition); }
+                    else out.addEvent (msg, m.samplePosition);
+                }
+                break;
+            case MFX_ARP:
+            {
+                dueOffs();
+                // the notes held (from what comes in), each note on / off at its sample, the arp's notes on its grid
+                std::vector<std::pair<int, juce::MidiMessage>> ev; for (const auto m : io) ev.push_back ({ m.samplePosition, m.getMessage() });
+                size_t ei = 0;
+                const double p1 = ppq0 + n / spb;
+                long long slot = (long long) std::ceil (ppq0 / divB - 1.0e-9);
+                auto apply = [&] (int upTo)
+                {
+                    for (; ei < ev.size() && ev[ei].first <= upTo; ++ei)
+                    {
+                        const auto& msg = ev[ei].second;
+                        if (msg.isNoteOn()) { const int nn = msg.getNoteNumber(); bool have = false; for (int k = 0; k < st.nHeld; ++k) if (st.held[(size_t) k] == nn) have = true; if (! have && st.nHeld < 32) { st.held[(size_t) st.nHeld++] = nn; if (st.orderN < 32) st.heldOrder[(size_t) st.orderN++] = nn; } }
+                        else if (msg.isNoteOff())
+                        {
+                            const int nn = msg.getNoteNumber();
+                            for (int k = 0; k < st.nHeld; ++k) if (st.held[(size_t) k] == nn) { st.held[(size_t) k] = st.held[(size_t) --st.nHeld]; break; }
+                            for (int k = 0; k < st.orderN; ++k) if (st.heldOrder[(size_t) k] == nn) { for (int q = k; q + 1 < st.orderN; ++q) st.heldOrder[(size_t) q] = st.heldOrder[(size_t) q + 1]; --st.orderN; break; }
+                        }
+                        else out.addEvent (msg, ev[ei].first);
+                    }
+                };
+                for (; playing && (double) slot * divB < p1 - 1.0e-9; ++slot)
+                {
+                    const int at = juce::jlimit (0, n - 1, (int) std::floor (((double) slot * divB - ppq0) * spb + 1.0e-6));
+                    apply (at);
+                    if (st.nHeld == 0) { st.arpIndex = 0; continue; }
+                    std::array<int, 32> sorted {}; for (int k = 0; k < st.nHeld; ++k) sorted[(size_t) k] = st.held[(size_t) k];
+                    std::sort (sorted.begin(), sorted.begin() + st.nHeld);
+                    const int oct = juce::jlimit (1, 4, fx.octaves), total = st.nHeld * oct;
+                    auto noteAt = [&] (int i) { const int base = fx.mode == 4 ? st.heldOrder[(size_t) (i % std::max (1, st.orderN))] : sorted[(size_t) (i % st.nHeld)]; return base + 12 * (i / st.nHeld); };
+                    int idx;
+                    if (fx.mode == 3) idx = std::min (total - 1, (int) (st.rng.uni() * total));
+                    else if (fx.mode == 2)
+                    {
+                        const int cyc = std::max (1, 2 * total - 2); const int ph = st.arpIndex % cyc; idx = total <= 1 ? 0 : (ph < total ? ph : cyc - ph);
+                    }
+                    else idx = st.arpIndex % total;
+                    if (fx.mode == 1) idx = total - 1 - idx;
+                    ++st.arpIndex;
+                    const int nn = juce::jlimit (0, 127, noteAt (idx));
+                    out.addEvent (juce::MidiMessage::noteOn (1, nn, fx.vel), at);
+                    const int len = std::max (1, (int) (divB * juce::jlimit (0.05f, 1.0f, fx.gate) * spb));
+                    if (at + len < n) out.addEvent (juce::MidiMessage::noteOff (1, nn), at + len); else later (nn, at + len - n);
+                }
+                apply (n);
+                break;
+            }
+            case MFX_GEN:
+            {
+                dueOffs();
+                for (const auto m : io) out.addEvent (m.getMessage(), m.samplePosition);   // (what comes in plays too)
+                if (! playing) break;
+                static const int scales[6][8] = { { 0, 1, 2, 3, 4, 5, 6, 7 }, { 0, 2, 4, 5, 7, 9, 11, -1 }, { 0, 2, 3, 5, 7, 8, 10, -1 }, { 0, 3, 5, 7, 10, -1, -1, -1 }, { 0, 2, 3, 5, 7, 9, 10, -1 }, { 0, 1, 3, 5, 7, 8, 10, -1 } };
+                const double p1 = ppq0 + n / spb;
+                for (long long slot = (long long) std::ceil (ppq0 / divB - 1.0e-9); (double) slot * divB < p1 - 1.0e-9; ++slot)
+                {
+                    if (st.rng.uni() >= fx.density) continue;
+                    const int at = juce::jlimit (0, n - 1, (int) std::floor (((double) slot * divB - ppq0) * spb + 1.0e-6));
+                    int semis;
+                    if (fx.scale == 6 && t.scale) { const int deg = (int) (st.rng.uni() * (t.scale->size() * std::max (1, fx.range / 12 + 1))); semis = (int) std::lround (t.scale->centsOf (deg) / 100.0); }
+                    else if (fx.scale == 0) semis = (int) (st.rng.uni() * (fx.range + 1));
+                    else { const auto* sc = scales[juce::jlimit (0, 5, fx.scale)]; int cnt = 0; while (cnt < 8 && sc[cnt] >= 0) ++cnt; const int deg = (int) (st.rng.uni() * cnt * std::max (1, fx.range / 12 + 1)); semis = sc[deg % cnt] + 12 * (deg / cnt); if (semis > fx.range) semis -= 12 * ((semis - fx.range) / 12 + 1); }
+                    const int nn = juce::jlimit (0, 127, t.rootNote.load() + fx.root + semis);
+                    const float v = juce::jlimit (0.05f, 1.0f, fx.vel * (1.0f - fx.spread * st.rng.uni()));
+                    out.addEvent (juce::MidiMessage::noteOn (1, nn, v), at);
+                    const int len = std::max (1, (int) (divB * juce::jlimit (0.05f, 4.0f, fx.gate) * spb));
+                    if (at + len < n) out.addEvent (juce::MidiMessage::noteOff (1, nn), at + len); else later (nn, at + len - n);
+                }
+                break;
+            }
+            default: out = io; break;
+        }
+        io.swapWith (out);
+    }
+}
+
+// ---- grooves -----------------------------------------------------------------------------------------------------------
+std::vector<GroovePtr> Session::builtinGrooves()
+{
+    std::vector<GroovePtr> v;
+    auto mk = [&] (const juce::String& name, std::vector<float> off, std::vector<float> vel) { auto g = std::make_shared<Groove>(); g->name = name; g->steps = (int) off.size(); g->offset = off; g->vel = vel; v.push_back (g); };
+    for (int sw : { 54, 58, 62, 66, 71 })
+    {
+        // mpc swing: every second sixteenth late by (swing - 50) % of a pair
+        const float late = (sw - 50) / 50.0f;
+        std::vector<float> o (16, 0.0f), w (16, 1.0f); for (int k = 1; k < 16; k += 2) { o[(size_t) k] = late; w[(size_t) k] = 0.82f; }
+        mk ("mpc " + juce::String (sw) + "%", o, w);
+    }
+    mk ("triplet shuffle", { 0, 0.333f, 0, 0.333f, 0, 0.333f, 0, 0.333f, 0, 0.333f, 0, 0.333f, 0, 0.333f, 0, 0.333f }, { 1, 0.7f, 0.9f, 0.7f, 1, 0.7f, 0.9f, 0.7f, 1, 0.7f, 0.9f, 0.7f, 1, 0.7f, 0.9f, 0.7f });
+    mk ("drunk (late backbeat)", { 0, 0.12f, 0.04f, 0.18f, 0.1f, 0.14f, 0.02f, 0.2f, 0, 0.1f, 0.06f, 0.16f, 0.12f, 0.15f, 0.03f, 0.22f }, { 1, 0.7f, 0.85f, 0.65f, 1, 0.72f, 0.8f, 0.6f, 1, 0.7f, 0.85f, 0.68f, 1, 0.74f, 0.8f, 0.62f });
+    mk ("push (early offbeats)", { 0, -0.06f, -0.1f, -0.05f, 0, -0.06f, -0.1f, -0.05f, 0, -0.06f, -0.1f, -0.05f, 0, -0.06f, -0.1f, -0.05f }, { 1, 0.8f, 0.95f, 0.8f, 1, 0.8f, 0.95f, 0.8f, 1, 0.8f, 0.95f, 0.8f, 1, 0.8f, 0.95f, 0.8f });
+    mk ("rominimal skip", { 0, 0.08f, -0.03f, 0.16f, 0.02f, 0.1f, -0.04f, 0.24f, 0, 0.06f, -0.02f, 0.18f, 0.03f, 0.12f, -0.05f, 0.28f }, { 1, 0.66f, 0.9f, 0.58f, 0.96f, 0.7f, 0.86f, 0.54f, 1, 0.68f, 0.92f, 0.6f, 0.94f, 0.72f, 0.84f, 0.5f });
+    mk ("dilla (lazy, uneven)", { 0, 0.21f, 0.05f, 0.25f, -0.03f, 0.19f, 0.08f, 0.31f, 0.02f, 0.17f, 0.04f, 0.27f, -0.02f, 0.23f, 0.07f, 0.29f }, { 1, 0.62f, 0.88f, 0.55f, 0.97f, 0.66f, 0.83f, 0.52f, 1, 0.6f, 0.9f, 0.57f, 0.95f, 0.64f, 0.85f, 0.5f });
+    return v;
+}
+juce::File Session::groovesDir()
+{
+    auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (kDeep ? "faltung deep sndstudio" : "faltung sndstudio").getChildFile ("grooves");
+    d.createDirectory(); return d;
+}
+static juce::String grooveText (const std::vector<float>& v) { juce::StringArray a; for (float x : v) a.add (juce::String (x, 4)); return a.joinIntoString (" "); }
+static std::vector<float> grooveFloats (const juce::String& s) { std::vector<float> v; for (auto& t : juce::StringArray::fromTokens (s, " ", "")) if (t.isNotEmpty()) v.push_back (t.getFloatValue()); return v; }
+std::vector<GroovePtr> Session::savedGrooves() const
+{
+    std::vector<GroovePtr> v;
+    for (const auto& f : groovesDir().findChildFiles (juce::File::findFiles, false, "*.fgroove"))
+        if (auto x = juce::XmlDocument::parse (f)) { auto g = std::make_shared<Groove>(); g->name = x->getStringAttribute ("name", f.getFileNameWithoutExtension()); g->offset = grooveFloats (x->getStringAttribute ("offset")); g->vel = grooveFloats (x->getStringAttribute ("vel")); g->steps = std::max (1, (int) g->offset.size()); v.push_back (g); }
+    return v;
+}
+bool Session::saveGroove (const Groove& g, juce::String& error) const
+{
+    juce::XmlElement x ("groove"); x.setAttribute ("name", g.name); x.setAttribute ("offset", grooveText (g.offset)); x.setAttribute ("vel", grooveText (g.vel));
+    const auto f = groovesDir().getChildFile (juce::File::createLegalFileName (g.name) + ".fgroove");
+    if (! x.writeTo (f)) { error = "cannot write " + f.getFullPathName(); return false; }
+    return true;
+}
+void Session::setGroove (Track& t, GroovePtr g, float amount)
+{
+    { const juce::SpinLock::ScopedLockType sl (lock); t.groove = std::move (g); }
+    t.grooveAmount.store (amount); dirty = true;
+}
+GroovePtr Session::grooveFromPattern (const Track& t, int pattern) const
+{
+    auto p = t.patternAt (pattern); if (! p) return nullptr;
+    auto g = std::make_shared<Groove>(); g->name = t.name + " p" + juce::String (pattern + 1);
+    const int len = juce::jlimit (1, kMaxSteps, p->length); g->steps = len;
+    const double stepMs = stepBeatsOf (t, tempo()) * 60000.0 / tempo();
+    float top = 0.01f; for (int k = 0; k < len; ++k) if (p->s[(size_t) k].on) top = std::max (top, p->s[(size_t) k].vel);
+    for (int k = 0; k < len; ++k) { const auto& st = p->s[(size_t) k]; g->offset.push_back (st.on ? juce::jlimit (-0.5f, 0.5f, (float) (st.micro * microMs.load() / stepMs)) : 0.0f); g->vel.push_back (st.on ? st.vel / top : 1.0f); }
+    return g;
+}
+GroovePtr Session::grooveFromClip (ClipRef r, juce::String& error) const
+{
+    auto* t = const_cast<Session*> (this)->clipTrack (r); if (! t) { error = "no clip"; return nullptr; }
+    // the hits: an audio clip's transients (where they play), a note clip's notes, in sixteenths from the clip's start
+    std::vector<std::pair<double, float>> hits; double bars = 1;
+    if (r.audio)
+    {
+        for (auto& c : *t->aclips) if (c.id == r.id && c.sample)
+        {
+            bars = c.bars; const auto ct = clipTime (c, c.sample->rate);
+            const auto& d = c.sample->data;
+            for (int on : c.sample->onsets)
+            {
+                const double src = on / c.sample->rate - c.offset; if (src < 0) continue;
+                const double beat = ct.beatOf (ct.outAt (src)); if (beat < 0 || beat >= c.bars * 4.0) continue;
+                float pk = 0; for (int i = on; i < std::min (d.getNumSamples(), on + (int) (0.02 * c.sample->rate)); ++i) pk = std::max (pk, std::abs (d.getSample (0, i)));
+                hits.push_back ({ beat, pk });
+            }
+        }
+    }
+    else
+        for (auto& c : *t->clips) if (c.id == r.id && c.notes) { bars = c.bars; for (auto& nt : *c.notes) { const double b = nt.beat - c.offset; if (b >= 0 && b < c.bars * 4.0) hits.push_back ({ b, nt.vel }); } }
+    if (hits.empty()) { error = "no hits in the clip"; return nullptr; }
+    const int steps = juce::jlimit (4, 64, (int) std::lround (std::min (bars, 4.0) * 16.0));
+    auto g = std::make_shared<Groove>(); g->name = "groove from a clip"; g->steps = steps; g->offset.assign ((size_t) steps, 0.0f); g->vel.assign ((size_t) steps, 1.0f);
+    std::vector<float> best ((size_t) steps, 9.0f), lvl ((size_t) steps, 0.0f); float top = 1.0e-6f;
+    for (auto& [b, v] : hits) top = std::max (top, v);
+    for (auto& [b, v] : hits)
+    {
+        const double u = b / 0.25; const int k = (int) std::lround (u); const int kk = ((k % steps) + steps) % steps;
+        const float off = (float) (u - k);
+        if (std::abs (off) < std::abs (best[(size_t) kk])) { best[(size_t) kk] = off; lvl[(size_t) kk] = v / top; }
+    }
+    for (int k = 0; k < steps; ++k) if (best[(size_t) k] < 8.0f) { g->offset[(size_t) k] = juce::jlimit (-0.5f, 0.5f, best[(size_t) k]); g->vel[(size_t) k] = juce::jlimit (0.1f, 1.0f, lvl[(size_t) k]); }
+    return g;
+}
+void Session::commitGroove (Track& t, int pattern)
+{
+    auto g = t.groove; if (! g) return;
+    const float ga = t.grooveAmount.load();
+    const double stepMs = stepBeatsOf (t, tempo()) * 60000.0 / tempo();
+    // the micro range must reach the groove's furthest push: widened if not, every step's micro kept in milliseconds
+    double need = 0; for (int k = 0; k < g->steps; ++k) need = std::max (need, std::abs ((double) g->at (k) * ga * stepMs));
+    if (need > microMs.load() - 0.01)
+    {
+        const float old = std::max (1.0f, microMs.load()), wide = (float) std::ceil (need + 1.0);
+        for (auto& tr : tracks) for (int q = 0; q < kPatterns; ++q) if (tr->patternAt (q)) editPattern (*tr, q, [&] (Pattern& p) { for (auto& st : p.s) st.micro = juce::jlimit (-1.0f, 1.0f, st.micro * old / wide); });
+        microMs.store (wide);
+    }
+    const double mm = std::max (1.0f, microMs.load());
+    editPattern (t, pattern, [&] (Pattern& p)
+    {
+        double at = 0;
+        for (int k = 0; k < juce::jlimit (1, kMaxSteps, p.length); ++k)
+        {
+            auto& st = p.s[(size_t) k]; const int gk = (int) std::llround (at) % std::max (1, g->steps);
+            if (st.on) { st.micro = juce::jlimit (-1.0f, 1.0f, st.micro + (float) (g->at (gk) * ga * stepMs / mm)); st.vel = juce::jlimit (0.02f, 1.0f, st.vel * (1.0f + (g->velAt (gk) - 1.0f) * ga)); }
+            at += juce::jlimit (0.05f, 16.0f, st.dur);
+        }
+    });
+    setGroove (t, nullptr, 1.0f);
+}
+void Session::setFollow (Track& t, int pattern, FollowAction fa)
+{
+    auto v = std::make_shared<std::array<FollowAction, kPatterns>> (*t.follow); (*v)[(size_t) juce::jlimit (0, kPatterns - 1, pattern)] = fa;
+    { const juce::SpinLock::ScopedLockType sl (lock); t.follow = v; }
+    dirty = true;
+}
+void Session::setMidiFx (Track& t, std::vector<MidiFx> v)
+{
+    if ((int) v.size() > kMidiFx) v.resize ((size_t) kMidiFx);
+    auto p = std::make_shared<const std::vector<MidiFx>> (std::move (v));
+    { const juce::SpinLock::ScopedLockType sl (lock); t.midiFx = p; for (size_t i = 0; i < t.mfx.size(); ++i) { const auto seed = t.mfx[i].rng; t.mfx[i] = Track::MfxState(); t.mfx[i].rng = seed; t.mfx[i].rng.seed ((uint32_t) (t.uid * 131 + (int) i * 7 + (i < p->size() ? (*p)[i].seed : 1))); } }
+    dirty = true;
+}
+
+// ---- spectral freeze ---------------------------------------------------------------------------------------------------
+Track* Session::spectralFreeze (Track& src, double atBar, double seconds, juce::String& error)
+{
+    // the track at the playhead (a little before and after it), its spectrum from the middle, held
+    const double win = std::max (0.25, 0.4 * tempo() / 60.0 / 4.0);
+    const auto f = renderTrackFile (src, std::max (0.0, atBar - win * 0.5), std::max (0.0, atBar - win * 0.5) + win, error);
+    if (f == juce::File()) return nullptr;
+    auto smp = loadSample (f, &error); f.deleteFile();
+    if (! smp) return nullptr;
+    constexpr int order = 13, N = 1 << order, H = N / 4;
+    const int ch = std::min (2, smp->data.getNumChannels());
+    const int total = std::max (N * 2, (int) (seconds * sr));
+    const int len = (total / H) * H;
+    juce::AudioBuffer<float> outB (2, len); outB.clear();
+    juce::dsp::FFT fft (order);
+    std::vector<float> window ((size_t) N); for (int i = 0; i < N; ++i) window[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * i / N);
+    Rng rng; rng.seed (12345);
+    for (int c = 0; c < 2; ++c)
+    {
+        const int sc = std::min (c, ch - 1);
+        const auto* d = smp->data.getReadPointer (sc); const int ns = smp->data.getNumSamples();
+        std::vector<float> buf ((size_t) N * 2, 0.0f);
+        const int start = std::max (0, ns / 2 - N / 2);
+        for (int i = 0; i < N; ++i) buf[(size_t) i] = (start + i < ns ? d[start + i] : 0.0f) * window[(size_t) i];
+        fft.performRealOnlyForwardTransform (buf.data());
+        std::vector<float> mag ((size_t) N / 2 + 1), ph ((size_t) N / 2 + 1);
+        for (int k = 0; k <= N / 2; ++k) { mag[(size_t) k] = std::hypot (buf[(size_t) 2 * k], buf[(size_t) 2 * k + 1]); ph[(size_t) k] = rng.uni() * juce::MathConstants<float>::twoPi; }
+        // each frame: the same magnitudes, the phases moved on as a steady tone would (and a little drift so it breathes);
+        // overlap-added round the end so the result loops without a seam
+        std::vector<float> fr ((size_t) N * 2);
+        auto* o = outB.getWritePointer (c);
+        for (int pos = 0; pos < len; pos += H)
+        {
+            for (int k = 0; k <= N / 2; ++k)
+            {
+                ph[(size_t) k] += juce::MathConstants<float>::twoPi * (float) k * H / N + (rng.uni() - 0.5f) * 0.6f;
+                fr[(size_t) 2 * k] = mag[(size_t) k] * std::cos (ph[(size_t) k]); fr[(size_t) 2 * k + 1] = mag[(size_t) k] * std::sin (ph[(size_t) k]);
+            }
+            for (int k = N / 2 + 1; k < N; ++k) { fr[(size_t) 2 * k] = 0; fr[(size_t) 2 * k + 1] = 0; }
+            fft.performRealOnlyInverseTransform (fr.data());
+            for (int i = 0; i < N; ++i) o[(pos + i) % len] += fr[(size_t) i] * window[(size_t) i] / (1.5f);
+        }
+    }
+    const float pk = outB.getMagnitude (0, len);
+    if (pk < 1.0e-9f) { error = "the track is silent there"; return nullptr; }
+    outB.applyGain (0.5f / pk);
+    auto file = audioDir().getChildFile (juce::File::createLegalFileName (src.name) + " frozen spectrum " + juce::Time::getCurrentTime().formatted ("%H%M%S") + ".wav");
+    { juce::WavAudioFormat wav; std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (file), sr, 2, 24, {}, 0)); if (! w) { error = "cannot write"; return nullptr; } w->writeFromAudioSampleBuffer (outB, 0, len); }
+    auto* t = addTrack (src.name + " pad", indexOf (&src) + 1, TrackKind::Audio);
+    if (! t) { error = "no room for a track"; return nullptr; }
+    auto* c = addAudioClip (*t, file, atBar, &error);
+    if (! c) return nullptr;
+    const int id = c->id;
+    editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& x : v) if (x.id == id) { x.loop = true; x.bars = 8.0; x.fadeIn = 0.5; x.fadeOut = 1.0; x.name = "frozen " + src.name; } });
+    return t;
 }
 } // namespace fal::daw
