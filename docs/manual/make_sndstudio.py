@@ -48,7 +48,7 @@ add(f'''<section class="cover">{chevrons('#8ec3e6')}
     ('#ee8e6e', 'mix', 'strips, outputs, routes'), ('#f6c590', 'mod', 'modulators, macros, midi'), ('#cfe6f0', 'browse', 'devices, plug-ins, files')])) + '</div></section>')
 
 add('''<section class="page"><h2>contents</h2><ol class="toc">
-<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#window">the window: bigger and smaller</a></li>
+<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
 <li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out</a></li>
 <li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll</a></li><li><a href="#artists">to work like …</a></li></ol>
@@ -141,6 +141,21 @@ other tracks of the same kind.</p>
 <tr><td class="n">start · end</td><td>home · end</td><td>the playhead to bar 1 / the end of the project</td></tr></table>
 <p>Positions are written <i>bar.beat.sixteenth.tick</i>, counted from 1 like every daw, with 960 ticks a beat (240 a sixteenth); lengths count from 0 (<i>2.1.0.0</i> is two
 bars and a beat). The header shows where the playhead is in both, and the arrangement's toolbar shows where the mouse is. Every edit is one step of undo.</p>
+<h2 id="meter">time signatures</h2>
+''' + shot('sndstudio-meter') + '''
+<p>Any time signature, changing at any bar. Right-click the ruler at a bar (or edit → <i>time signature at the playhead's bar</i>) and type it:</p>
+<table class="params"><tr><th>type</th><th>is</th></tr>
+<tr><td class="n">7/8 · 5/4 · 13/16 · 3/2 · 11/32</td><td>any numerator over any denominator</td></tr>
+<tr><td class="n">2+2+3/8 · 3+3+2/8</td><td>grouped: the beats are counted the same, the groups' first beats are accented (a middle click, a stronger line)</td></tr>
+<tr><td class="n">3.5/4 · 2.75/4</td><td>a fractional numerator: the bar ends part way through a beat</td></tr>
+<tr><td class="n">4/3 · 5/6 · 7/12</td><td>irrational meters: the beat is a third, a sixth, a twelfth of a whole note</td></tr>
+<tr><td class="n">7/8 5/8 · 3/4 3/4 2/4</td><td>several in turn: a cycle that repeats bar by bar until the next change (dynamic meters: 7/8 5/8 7/8 5/8 …)</td></tr></table>
+<p>The change starts at that bar and lasts until the next one; an empty entry (or right-click → remove) takes it away. The signatures show on the ruler, the current one in the header.
+Everything counts in the meter: bar lines, the beat lines (the denominator's note), positions (<i>bar.beat.sixteenth.tick</i>, the beat being an eighth in 7/8),
+the grid (it starts again at every bar line, so a 1/4 grid in 7/8 ends on the bar), snapping to bars, the metronome (high on the bar, middle on a group, low on
+the other beats) and the count-in (whole bars of the meter it leads into), quantised launches (the next bar line), the song (its entries last bars of the meter),
+the export's bar numbers, and midi files (time signature events; a midi file only holds a whole numerator over a power of two, so 4/3 is written as the nearest it can).
+Hosted plug-ins are told the signature and where the bar started. The steps of a pattern stay sixteenths: give a pattern 14 steps for a bar of 7/8.</p>
 <h2 id="window">the window: bigger and smaller</h2>
 ''' + shot('sndstudio-ui-125') + '''
 <p>The window can be any size. <b>cmd+=</b> and <b>cmd+-</b> (the view menu) make everything bigger or smaller, from 50 % to 200 % (cmd+0: actual size); the size is

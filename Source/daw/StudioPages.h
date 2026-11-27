@@ -275,7 +275,9 @@ public:
     int rowAt (int py) const { return (int) std::floor ((py - lanesArea().getY() + scrollY) / (double) laneH); }
 
     /** the plain grid (no magnet), what keyboard moves use */
-    double snapBar (double b) const { return ctx.s.snap.load() ? timeline::snap (b * 4.0, gridBars() * 4.0) / 4.0 : std::max (0.0, b); }
+    const timeline::MeterMap& meter() const { return ctx.s.meterMap(); }
+    double snapBar (double b) const { return ctx.s.snap.load() ? timeline::snap (b * 4.0, gridBars() * 4.0, meter()) / 4.0 : std::max (0.0, b); }
+    juce::String pos (double bar) const { return timeline::formatPosition (bar * 4.0, meter()); }
     /** the grid plus the magnet: clip edges (other than the ones moving), markers, the loop, the playhead */
     double magnetBar (double b, bool free, const std::vector<ClipRef>& moving, bool* hit = nullptr) const
     {
@@ -290,7 +292,10 @@ public:
         for (auto& m : *ctx.s.markers) t.push_back (m.bar * 4.0);
         if (ctx.s.loopOn.load()) { t.push_back (ctx.s.loopStart.load() * 4.0); t.push_back (ctx.s.loopEnd.load() * 4.0); }
         t.push_back (ctx.s.currentBar() * 4.0);
-        return timeline::magnet (b * 4.0, gridBars() * 4.0, t, pxPerBeat(), 7.0, hit) / 4.0;
+        bool h = false;
+        const double r = timeline::magnet (b * 4.0, 0.0, t, pxPerBeat(), 7.0, &h);
+        if (hit) *hit = h;
+        return (h ? r : timeline::snap (b * 4.0, gridBars() * 4.0, meter())) / 4.0;
     }
 
     void zoomAt (double factor, double px)
@@ -365,58 +370,100 @@ public:
         if (k1 - k0 > 4000) return;
         for (long long k = std::max (0LL, k0); k <= k1; ++k) fn ((double) k * step, k);
     }
+    /** the bars (every step-th) whose lines fall between two positions, in units of 4 beats: fn (bar index, start) */
+    template <typename Fn> void eachBar (double b0, double b1, long long step, Fn fn) const
+    {
+        const auto& m = meter();
+        long long k = m.barAt (std::max (0.0, b0 * 4.0)); k = (k / step) * step;
+        for (int guard = 0; guard < 4000; ++guard, k += step) { const double st = m.barStart (k) / 4.0; if (st > b1) break; fn (k, st); }
+    }
+    /** every beat (the denominator's note) and every grid line, restarting at each bar: fn (position, kind 0 grid 1 beat 2 group) */
+    template <typename Fn> void eachLine (double b0, double b1, bool beats, double grid, Fn fn) const
+    {
+        const auto& m = meter();
+        eachBar (b0, b1, 1, [&] (long long k, double st)
+        {
+            const auto& sg = m.sigOf (k); const double e = m.barStart (k + 1) / 4.0, bl = sg.beatLen() / 4.0;
+            if (grid > 0) for (int i = 1; st + i * grid < e - 1.0e-9 && i < 4096; ++i) { const double q = st + i * grid; if (q >= b0 && q <= b1) fn (q, 0); }
+            if (beats) for (int i = 1; st + i * bl < e - 1.0e-9 && i < 256; ++i) { const double q = st + i * bl; if (q >= b0 && q <= b1) fn (q, sg.groupStart (i) ? 2 : 1); }
+        });
+    }
+    /** bars between lines (a power of two) so lines are at least px apart */
+    long long barStep (double px) const { const double avg = meter().sigAt (scrollBar * 4.0).beats() / 4.0 * pxPerBar; long long st = 1; while (st * avg < px && st < 4096) st *= 2; return st; }
     void paintRuler (juce::Graphics& g)
     {
         auto& s = ctx.s;
+        const auto& m = meter();
         const auto la = lanesArea();
         const double b0 = bar (left), b1 = bar (la.getRight());
         g.setColour (theme.ink.withAlpha (0.04f)); g.fillRect (left, top, la.getWidth() - left, ruler - top);
-        // ticks: bars, beats, the grid
-        const double gb = gridBars();
-        if (gb * pxPerBar >= 4) eachLine (b0, b1, gb, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.3f)); g.fillRect (x (b), ruler - 3, 1, 3); });
-        if (pxPerBeat() >= 5) eachLine (b0, b1, 0.25, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.45f)); g.fillRect (x (b), ruler - 6, 1, 6); });
-        double barStep = 1; while (barStep * pxPerBar < 5 && barStep < 4096) barStep *= 2;
-        eachLine (b0, b1, barStep, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.7f)); g.fillRect (x (b), ruler - 10, 1, 10); });
-        // labels: the finest level with room, in bars (bar multiples), beats, sixteenths, then ticks
-        double lv = 1; while (lv * pxPerBar < 44 && lv < 4096) lv *= 2;
-        if (pxPerBar >= 4 * 46) { lv = 0.25; if (pxPerBar / 16.0 >= 70) lv = 1.0 / 16.0; if (pxPerBar / 64.0 >= 84) lv = 1.0 / 64.0; if (pxPerBar / 256.0 >= 84) lv = 1.0 / 256.0; }
-        g.setFont (uiFont (9.5f));
-        eachLine (b0, b1, lv, [&] (double b, long long)
+        // ticks: the grid, the beats (stronger on a group's first), the bars
+        const double gb = gridBars(), beatPx = m.sigAt (scrollBar * 4.0).beatLen() / 4.0 * pxPerBar;
+        eachLine (b0, b1, beatPx >= 5, gb < 1.0 - 1.0e-9 && gb * pxPerBar >= 4 ? gb : 0.0, [&] (double q, int kind)
         {
-            const int px = x (b); if (px < left - 1) return;
-            auto txt = timeline::formatPosition (b * 4.0);
-            if (lv >= 1) txt = txt.upToFirstOccurrenceOf (".", false, false);
-            else if (lv >= 0.25) txt = txt.upToLastOccurrenceOf (".", false, false).upToLastOccurrenceOf (".", false, false);
-            else if (lv >= 1.0 / 16.0) txt = txt.upToLastOccurrenceOf (".", false, false);
-            g.setColour (theme.ink); g.drawText (txt, px + 3, top + 1, 90, 12, juce::Justification::centredLeft);
+            g.setColour (theme.ink.withAlpha (kind == 0 ? 0.3f : kind == 2 ? 0.6f : 0.45f)); const int h = kind == 0 ? 3 : kind == 2 ? 8 : 6; g.fillRect (x (q), ruler - h, 1, h);
         });
+        eachBar (b0, b1, barStep (5), [&] (long long, double st) { g.setColour (theme.ink.withAlpha (0.7f)); g.fillRect (x (st), ruler - 10, 1, 10); });
+        // labels: bars (every few when far out), then beats, sixteenths and ticks as there is room
+        const long long ls = barStep (44);
+        const double beatW = beatPx, sixW = pxPerBar / 16.0;
+        g.setFont (uiFont (9.5f));
+        std::vector<juce::Rectangle<int>> tags;   // the signatures' tags: no label under them
+        for (auto& c : m.getChanges())
+        {
+            const int px = x (m.barStart (c.bar) / 4.0), tx = std::max (left, px + 8 + 6 * (int) juce::String (c.bar + 1).length());
+            tags.push_back ({ tx - 2, top + 1, 14 + (int) (timeline::sigsText (c.sigs) + (c.sigs.size() > 1 ? " ..." : "")).length() * 6, 12 });
+        }
+        auto label = [&] (double q, int depth)
+        {
+            const int px = x (q); if (px < left - 1) return;
+            if (std::any_of (tags.begin(), tags.end(), [&] (const juce::Rectangle<int>& k) { return k.intersects (juce::Rectangle<int> (px + 2, top + 1, 14, 12)); })) return;
+            auto txt = pos (q);
+            auto parts = juce::StringArray::fromTokens (txt, ".", "");
+            parts.removeRange (depth, 4);
+            g.setColour (theme.ink); g.drawText (parts.joinIntoString ("."), px + 3, top + 1, 90, 12, juce::Justification::centredLeft);
+        };
+        eachBar (b0 - 1, b1, ls, [&] (long long, double st) { if (st >= b0 - 1.0e-9) label (st, 1); });
+        if (ls == 1 && beatW >= 46) eachLine (b0, b1, true, sixW >= 70 ? 0.0625 : 0.0, [&] (double q, int kind) { label (q, kind == 0 ? 3 : 2); });
+        if (ls == 1 && sixW >= 900) eachLine (b0, b1, false, 1.0 / 256.0, [&] (double q, int) { label (q, 4); });
+        // the time signatures, where they change
+        for (auto& c : m.getChanges())
+        {
+            const double st = m.barStart (c.bar) / 4.0; const int px = x (st);
+            if (px < left - 60 || px > la.getRight()) continue;
+            const auto txt = timeline::sigsText (c.sigs) + (c.sigs.size() > 1 ? " ..." : "");
+            // on the bar numbers' row, just after the number (markers and times use the row below)
+            const int w = 10 + (int) txt.length() * 6, tx = std::max (left, px + 8 + 6 * (int) juce::String (c.bar + 1).length());
+            g.setColour (theme.fill.withAlpha (0.9f)); g.fillRect (tx, top + 1, w, 12);
+            g.setColour (ui::inkFor (theme.fill)); g.setFont (uiFont (9.0f, true)); g.drawText (txt, tx + 4, top + 1, w - 4, 12, juce::Justification::centredLeft);
+        }
         // time, at round numbers of seconds
         const double t0 = s.secondsAt (b0 * 4.0), t1 = s.secondsAt (b1 * 4.0);
         const double pxPerSec = (t1 > t0 ? (b1 - b0) / (t1 - t0) : 0.5) * pxPerBar;
         static const double steps[] = { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600 };
         double ts = 600; for (double st : steps) if (st * pxPerSec >= 64) { ts = st; break; }
         g.setFont (uiFont (8.5f)); g.setColour (theme.ink.withAlpha (0.55f));
-        std::vector<juce::Rectangle<int>> taken;   // the markers' names: a time label never hides under one
-        for (auto& m : *s.markers) { const int px = x (m.bar); taken.push_back ({ px - 2, top + 14, std::min (110, 8 + (int) (m.name.length() * 6)) + 4, 11 }); }
+        std::vector<juce::Rectangle<int>> taken;   // markers' names and signatures: a time label never hides under one
+        for (auto& mk : *s.markers) { const int px = x (mk.bar); taken.push_back ({ px - 2, top + 14, std::min (110, 8 + (int) (mk.name.length() * 6)) + 4, 11 }); }
         for (double t = std::floor (t0 / ts) * ts; t <= t1 + ts; t += ts)
         {
             if (t < 0) continue;
             const int px = x (s.beatAt (t) / 4.0); if (px < left) continue;
-            g.fillRect (px, top + 26, 1, 4);
-            const auto label = timeline::formatTime (t, ts < 1.0);
-            const juce::Rectangle<int> r (px + 3, top + 14, (int) label.length() * 6 + 2, 11);
+            g.setColour (theme.ink.withAlpha (0.55f)); g.fillRect (px, top + 26, 1, 4);
+            const auto lbl = timeline::formatTime (t, ts < 1.0);
+            const juce::Rectangle<int> r (px + 3, top + 14, (int) lbl.length() * 6 + 2, 11);
             if (std::any_of (taken.begin(), taken.end(), [&] (const juce::Rectangle<int>& k) { return k.intersects (r); })) continue;
-            g.drawText (label, r.withWidth (90), juce::Justification::centredLeft);
+            g.drawText (lbl, r.withWidth (90), juce::Justification::centredLeft);
         }
         // the loop and the markers
         if (s.loopOn.load()) { g.setColour (theme.fill.withAlpha (0.7f)); g.fillRect (x (s.loopStart.load()), ruler - 4, std::max (2, x (s.loopEnd.load()) - x (s.loopStart.load())), 3); }
-        for (auto& m : *s.markers)
+        for (auto& mk : *s.markers)
         {
-            const int px = x (m.bar); if (px < left || px > la.getRight()) continue;
+            const int px = x (mk.bar); if (px < left || px > la.getRight()) continue;
             g.setColour (juce::Colour (0xffee8e6e)); g.fillRect (px, top, 1, ruler - top);
-            g.setFont (uiFont (9.0f)); const int w = std::min (110, 8 + (int) (m.name.length() * 6));
+            g.setFont (uiFont (9.0f)); const int w = std::min (110, 8 + (int) (mk.name.length() * 6));
             g.setColour (theme.ground.withAlpha (0.85f)); g.fillRect (px + 1, top + 14, w, 11);
-            g.setColour (juce::Colour (0xffee8e6e)); g.drawText (m.name, px + 3, top + 14, w - 2, 11, juce::Justification::centredLeft, true);
+            g.setColour (juce::Colour (0xffee8e6e)); g.drawText (mk.name, px + 3, top + 14, w - 2, 11, juce::Justification::centredLeft, true);
         }
     }
     void paint (juce::Graphics& g) override
@@ -430,7 +477,7 @@ public:
         snapLink.setLit (s.snap.load()); followLink.setLit (s.follow.load());
         gridLink.setText ("grid " + timeline::gridName (s.gridIndex.load(), pxPerBeat()));
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.8f));
-        if (hoverBar >= 0) g.drawText (timeline::formatPosition (hoverBar * 4.0) + "   " + timeline::formatTime (s.secondsAt (hoverBar * 4.0)), la.getRight() - 240, 3, 232, 16, juce::Justification::centredRight);
+        if (hoverBar >= 0) g.drawText (pos (hoverBar) + "   " + timeline::formatTime (s.secondsAt (hoverBar * 4.0)), la.getRight() - 240, 3, 232, 16, juce::Justification::centredRight);
         {
             juce::Graphics::ScopedSaveState rs (g); g.reduceClipRegion (left, top, la.getWidth() - left, ruler - top);
             paintRuler (g);
@@ -439,10 +486,9 @@ public:
         {
             juce::Graphics::ScopedSaveState gs (g); g.reduceClipRegion (left, la.getY(), la.getWidth() - left, la.getHeight());
             const double b0 = bar (left), b1 = bar (la.getRight()), gb = gridBars();
-            if (gb * pxPerBar >= 5 && gb < 0.25 - 1.0e-9) eachLine (b0, b1, gb, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.05f)); g.fillRect (x (b), la.getY(), 1, la.getHeight()); });
-            if (pxPerBeat() >= 6) eachLine (b0, b1, 0.25, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.09f)); g.fillRect (x (b), la.getY(), 1, la.getHeight()); });
-            double barStep = 1; while (barStep * pxPerBar < 5 && barStep < 4096) barStep *= 2;
-            eachLine (b0, b1, barStep, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.2f)); g.fillRect (x (b), la.getY(), 1, la.getHeight()); });
+            const double beatPx = meter().sigAt (scrollBar * 4.0).beatLen() / 4.0 * pxPerBar;
+            eachLine (b0, b1, beatPx >= 6, gb < 1.0 - 1.0e-9 && gb * pxPerBar >= 5 ? gb : 0.0, [&] (double q, int kind) { g.setColour (theme.ink.withAlpha (kind == 0 ? 0.05f : kind == 2 ? 0.14f : 0.09f)); g.fillRect (x (q), la.getY(), 1, la.getHeight()); });
+            eachBar (b0, b1, barStep (5), [&] (long long, double st) { g.setColour (theme.ink.withAlpha (0.2f)); g.fillRect (x (st), la.getY(), 1, la.getHeight()); });
             if (s.loopOn.load()) { g.setColour (theme.fill.withAlpha (0.06f)); g.fillRect (x (s.loopStart.load()), la.getY(), std::max (1, x (s.loopEnd.load()) - x (s.loopStart.load())), la.getHeight()); }
         }
         // lanes
@@ -568,7 +614,7 @@ public:
             g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (l->enabled ? "on" : "off", 8, y + 18, 40, 14, juce::Justification::centredLeft);
             juce::Graphics::ScopedSaveState ss (g);
             g.reduceClipRegion (left, y, aa.getWidth() - left, lh);
-            if (pxPerBeat() >= 6) eachLine (bar (left), bar (aa.getWidth()), 0.25, [&] (double b, long long) { g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (x (b), y, 1, lh - 2); });
+            if (pxPerBeat() >= 6) eachLine (bar (left), bar (aa.getWidth()), true, 0.0, [&] (double q, int) { g.setColour (theme.ink.withAlpha (0.06f)); g.fillRect (x (q), y, 1, lh - 2); });
             juce::Path p;
             const double bStart = scrollBar, bEnd = bar (aa.getWidth());
             for (int px = left; px < aa.getWidth(); px += 2)
@@ -634,7 +680,7 @@ public:
             g.drawText (juce::String (e.bars) + " bars", sa.getRight() - 70, y, 62, 18, juce::Justification::centredRight);
             b += e.bars;
         }
-        g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (juce::String (b) + " bars  " + juce::String (b * 4.0 * 60.0 / s.tempo() / 60.0, 1) + " min", sa.getX() + 8, sa.getBottom() - 40, sa.getWidth() - 16, 16, juce::Justification::centredLeft);
+        g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (juce::String (b) + " bars  " + juce::String (s.secondsAt (meter().barStart ((long long) b)) / 60.0, 1) + " min", sa.getX() + 8, sa.getBottom() - 40, sa.getWidth() - 16, 16, juce::Justification::centredLeft);
         g.drawText (ui::U ("click: scene · drag: bars · right-click: remove"), sa.getX() + 8, sa.getBottom() - 22, sa.getWidth() - 16, 16, juce::Justification::centredLeft, true);
     }
 
@@ -652,7 +698,7 @@ public:
     {
         if (board.empty()) { say ("nothing to paste"); return; }
         auto made = ctx.s.pasteClips (board, ctx.s.currentBar(), ctx.selected());
-        if (! made.empty()) { sel = made; say (juce::String (made.size()) + " clip(s) pasted at " + timeline::formatPosition (ctx.s.currentBar() * 4.0)); }
+        if (! made.empty()) { sel = made; say (juce::String (made.size()) + " clip(s) pasted at " + pos (ctx.s.currentBar())); }
         else say ("paste: no track of the right kind");
         repaint();
     }
@@ -664,7 +710,7 @@ public:
         auto targets = sel;
         if (targets.empty()) { if (auto* t = ctx.selected()) targets = ctx.s.clipsBetween (at, at, { t->uid }); }
         auto made = ctx.s.splitClips (targets, at);
-        say (made.empty() ? juce::String ("split: no clip under the playhead") : juce::String (made.size()) + " clip(s) split at " + timeline::formatPosition (at * 4.0));
+        say (made.empty() ? juce::String ("split: no clip under the playhead") : juce::String (made.size()) + " clip(s) split at " + pos (at));
         repaint();
     }
     void muteSel() { pruneSelection(); if (sel.empty()) return; bool anyOn = false; for (auto& r : sel) if (! ctx.s.clipMuted (r)) anyOn = true; ctx.s.setClipsMuted (sel, anyOn); say (anyOn ? "muted" : "unmuted"); repaint(); }
@@ -692,14 +738,14 @@ public:
     void stepGrid (bool forward, const juce::ModifierKeys& mods)
     {
         double d = gridBars();
+        if (d >= 1.0 - 1.0e-9 && ! sel.empty()) { double s0, l0; if (ctx.s.clipSpan (sel.front(), s0, l0)) d = meter().sigAt (s0 * 4.0).beats() / 4.0 * std::round (d); }   // (whole bars: the meter's)
         if (mods.isCommandDown()) d = 1.0 / (4.0 * timeline::kTicksPerBeat);          // one tick
         else if (mods.isAltDown()) d = 0.001 / (60.0 / ctx.s.tempo() * 4.0);           // one ms
         if (sel.empty() && ! mods.isAnyModifierKeyDown())
         {
             // the playhead to the next / previous grid line
-            const double cb = ctx.s.currentBar(), g = gridBars();
-            const double nb = forward ? (std::floor (cb / g + 1.0e-6) + 1) * g : (std::ceil (cb / g - 1.0e-6) - 1) * g;
-            ctx.s.locate (std::max (0.0, nb)); repaint(); return;
+            const double cb = ctx.s.currentBar() * 4.0, g = gridBars() * 4.0;
+            ctx.s.locate (std::max (0.0, (forward ? timeline::nextGridLine (cb, g, meter()) : timeline::prevGridLine (cb, g, meter())) / 4.0)); repaint(); return;
         }
         moveSel (forward ? d : -d);
     }
@@ -715,31 +761,33 @@ public:
     {
         ask ("insert time", "how long, from the playhead (bars.beats.sixteenths.ticks, or time)", "1", [this] (juce::String t)
         {
-            const double len = timeline::parse (t, true, [this] (double secs) { return ctx.s.beatAt (ctx.s.secondsAt (ctx.s.currentBar() * 4.0) + secs) - ctx.s.currentBar() * 4.0; }) / 4.0;
+            const double at = ctx.s.currentBar();
+            const double len = timeline::parse (t, true, [this, at] (double secs) { return ctx.s.beatAt (ctx.s.secondsAt (at * 4.0) + secs) - at * 4.0; }, meter(), at * 4.0) / 4.0;
             if (len <= 0) { say ("insert time: could not read \"" + t + "\""); return; }
-            ctx.s.insertTime (ctx.s.currentBar(), len); say (timeline::formatLength (len * 4.0) + " inserted at " + timeline::formatPosition (ctx.s.currentBar() * 4.0)); repaint();
+            ctx.s.insertTime (at, len); say (timeline::formatLength (at * 4.0, len * 4.0, meter()) + " inserted at " + pos (at)); repaint();
         });
     }
     void deleteLoopTime()
     {
         if (! ctx.s.loopOn.load()) { say ("delete time: set the loop around the bars to remove first"); return; }
         const double a = ctx.s.loopStart.load(), b = ctx.s.loopEnd.load();
-        ctx.s.deleteTime (a, b); sel.clear(); say ("bars " + timeline::formatPosition (a * 4.0) + " - " + timeline::formatPosition (b * 4.0) + " removed"); repaint();
+        ctx.s.deleteTime (a, b); sel.clear(); say ("bars " + pos (a) + " - " + pos (b) + " removed"); repaint();
     }
     /** type where a clip starts and how long it is (the rest of the selection moves with it) */
     void positionDialog (ClipRef r)
     {
         double s0, len; if (! ctx.s.clipSpan (r, s0, len)) return;
         auto* w = new juce::AlertWindow ("position", "bars.beats.sixteenths.ticks (960 ticks a beat), or time: 1:05.250", juce::MessageBoxIconType::NoIcon);
-        w->addTextEditor ("start", timeline::formatPosition (s0 * 4.0), "start");
-        w->addTextEditor ("length", timeline::formatLength (len * 4.0), "length");
+        w->addTextEditor ("start", pos (s0), "start");
+        w->addTextEditor ("length", timeline::formatLength (s0 * 4.0, len * 4.0, meter()), "length");
         w->addButton ("ok", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
         w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, r, s0, len] (int res)
         {
             if (res != 1) return;
             auto toBeats = [this] (double secs) { return ctx.s.beatAt (secs); };
-            const double ns = timeline::parse (w->getTextEditorContents ("start"), false, toBeats) / 4.0;
-            const double nl = timeline::parse (w->getTextEditorContents ("length"), true, [this, s0] (double secs) { return ctx.s.beatAt (ctx.s.secondsAt (s0 * 4.0) + secs) - s0 * 4.0; }) / 4.0;
+            const double ns = timeline::parse (w->getTextEditorContents ("start"), false, toBeats, meter()) / 4.0;
+            const double from = ns >= 0 ? ns : s0;
+            const double nl = timeline::parse (w->getTextEditorContents ("length"), true, [this, from] (double secs) { return ctx.s.beatAt (ctx.s.secondsAt (from * 4.0) + secs) - from * 4.0; }, meter(), from * 4.0) / 4.0;
             if (ns >= 0 && std::abs (ns - s0) > 1.0e-12) { auto moving = isSelected (r) ? sel : std::vector<ClipRef> { r }; ctx.s.moveClips (moving, ns - s0); }
             if (nl > 0 && std::abs (nl - len) > 1.0e-12) ctx.s.setClipLength (r, nl);
             if (ns < 0 || nl <= 0) say ("position: could not read what was typed");
@@ -853,6 +901,7 @@ public:
             if (mk >= 0 && e.mods.isPopupMenu()) { s.editMarkers ([mk] (std::vector<Marker>& m) { if (mk < (int) m.size()) m.erase (m.begin() + mk); }); repaint(); return; }
             if (mk >= 0 && e.getNumberOfClicks() > 1) { renameMarker (mk); return; }
             if (mk >= 0) { dragMode = DragMode::Marker; markerDrag = mk; return; }
+            if (e.mods.isPopupMenu()) { rulerMenu ((int) meter().barAt (bar (e.position.x) * 4.0)); return; }
             if (e.mods.isShiftDown()) { const double b = magnetBar (bar (e.position.x), e.mods.isCommandDown(), {}); s.editMarkers ([b] (std::vector<Marker>& m) { m.push_back ({ "marker " + juce::String (m.size() + 1), b }); }); repaint(); return; }
             dragMode = DragMode::Ruler; loopA = magnetBar (bar (e.position.x), e.mods.isCommandDown(), {});
             return;
@@ -896,7 +945,12 @@ public:
         if (h.t) ctx.select (h.t);
         if (! h.found)
         {
-            if (h.t && e.getNumberOfClicks() > 1 && ! h.t->isAudio()) { const double b = snapBar (bar (e.position.x)); const int p = h.t->pattern.load(); s.editClips (*h.t, [b, p] (std::vector<Clip>& v) { v.push_back ({ p, b, 4.0 }); }); repaint(); return; }
+            if (h.t && e.getNumberOfClicks() > 1 && ! h.t->isAudio())
+            {
+                const double b = snapBar (bar (e.position.x)); const int p = h.t->pattern.load();
+                const double len = (meter().barStart (meter().barAt (b * 4.0) + 4) - meter().barStart (meter().barAt (b * 4.0))) / 4.0;   // four bars of the meter
+                s.editClips (*h.t, [b, p, len] (std::vector<Clip>& v) { v.push_back ({ p, b, len }); }); repaint(); return;
+            }
             if (e.mods.isPopupMenu()) return;
             dragMode = DragMode::Band; bandA = bandB = e.getPosition(); bandAdd = e.mods.isShiftDown() || e.mods.isCommandDown(); bandBase = bandAdd ? sel : std::vector<ClipRef>();
             repaint(); return;
@@ -925,6 +979,41 @@ public:
         }
         origins.clear();
         for (auto& r : sel) { double a0, l0; if (s.clipSpan (r, a0, l0)) origins.push_back ({ r, a0 }); }
+    }
+    /** the ruler's menu: the time signature from this bar, a marker */
+    void rulerMenu (int barIndex)
+    {
+        juce::PopupMenu m;
+        const auto& mm = meter();
+        bool here = false; for (auto& c : mm.getChanges()) if (c.bar == barIndex && barIndex > 0) here = true;
+        m.addItem (1, "time signature from bar " + juce::String (barIndex + 1) + "...  (now " + mm.sigOf (barIndex).text() + ")");
+        if (here) m.addItem (2, "remove the change at bar " + juce::String (barIndex + 1));
+        m.addItem (3, "a marker at bar " + juce::String (barIndex + 1));
+        m.showMenuAsync (juce::PopupMenu::Options(), [this, barIndex] (int r)
+        {
+            if (r == 1) signatureDialog (barIndex);
+            else if (r == 2) { ctx.s.setMeterAt (barIndex, {}); say ("bar " + juce::String (barIndex + 1) + " goes on in the meter before it"); repaint(); }
+            else if (r == 3) { const double b = meter().barStart (barIndex) / 4.0; ctx.s.editMarkers ([b] (std::vector<Marker>& v) { v.push_back ({ "marker " + juce::String (v.size() + 1), b }); }); repaint(); }
+        });
+    }
+    /** a time signature, or a cycle of them, from a bar on (until the next change) */
+    void signatureDialog (int barIndex)
+    {
+        const auto& mm = meter();
+        juce::String now = mm.sigOf (barIndex).text();
+        for (auto& c : mm.getChanges()) if (c.bar == barIndex) now = timeline::sigsText (c.sigs);
+        ask ("time signature from bar " + juce::String (barIndex + 1),
+             "any signature: 7/8, 5/4, 13/16, 3/2; grouped: 2+2+3/8 (the groups accent the click); fractional: 3.5/4; irrational: 4/3, 5/6. "
+             "Several in turn make a cycle that repeats until the next change: 7/8 5/8, or 3/4 3/4 2/4. Empty: none here (the meter before goes on)", now,
+             [this, barIndex] (juce::String t)
+             {
+                 if (t.trim().isEmpty()) { ctx.s.setMeterAt (barIndex, {}); repaint(); return; }
+                 std::vector<timeline::Sig> sg;
+                 if (! timeline::parseSigs (t, sg)) { say ("time signature: could not read \"" + t + "\" (e.g. 7/8, 2+2+3/8, 7/8 5/8)"); return; }
+                 ctx.s.setMeterAt (barIndex, sg);
+                 say ("from bar " + juce::String (barIndex + 1) + ": " + timeline::sigsText (sg) + (sg.size() > 1 ? ", in turn" : ""));
+                 repaint();
+             });
     }
     void renameMarker (int mk)
     {

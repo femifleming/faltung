@@ -43,8 +43,11 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> Session::getPosition() const
 {
     PositionInfo p;
     p.setBpm (headBpm); p.setIsPlaying (headPlaying); p.setPpqPosition (headPpq);
-    p.setTimeSignature (TimeSignature { 4, 4 });
-    p.setPpqPositionOfLastBarStart (std::floor (headPpq / 4.0) * 4.0);
+    double barStart = 0; const auto bar = meter->barAt (headPpq, &barStart);
+    const auto& sig = meter->sigOf (bar);
+    p.setTimeSignature (TimeSignature { std::max (1, (int) std::lround (sig.num)), sig.den });
+    p.setBarCount (bar);
+    p.setPpqPositionOfLastBarStart (barStart);
     p.setTimeInSamples ((juce::int64) (headPpq * 60.0 / headBpm * sr));
     p.setTimeInSeconds (headPpq * 60.0 / headBpm);
     return p;
@@ -123,7 +126,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         // the count-in: the transport waits, the clicks count the bars in, what comes in is still heard
         const double bpm0 = tempo(), spbt = 60.0 / bpm0 * sr;
         renderSpan (n, internalPpq.load(), bpm0, outs, midi, false, h);
-        clicks (outs, n, (double) (countInTotal - ci) / spbt, spbt);
+        clicks (outs, n, countInFrom + (double) (countInTotal - ci) / spbt, spbt);   // (counted as the bars it leads into)
         if (ci - n <= 0) { countInLeft.store (0); running.store (true); }
         else countInLeft.store (ci - n);
         noteLoad (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0), n);
@@ -183,7 +186,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         while (done < n)
         {
             const double spb = 60.0 / bpm * sr;
-            double limit = std::floor (p / 4.0 + 1.0e-9) * 4.0 + 4.0;
+            double limit = meter->nextBarLine (p);
             if (loop && lEnd > lStart && p < lEnd - 1.0e-9) limit = std::min (limit, lEnd);
             // the arrangement: the blocks are also cut where clips start and end, so a clip anywhere (off the bar
             // line, split, trimmed, muted) starts and stops on its sample
@@ -229,14 +232,15 @@ void Session::clicks (const Outs& outs, int n, double beat0, double samplesPerBe
     float* L = first >= 0 && first < kOutChannels ? outs.ch[(size_t) first] : nullptr;
     float* R = first + 1 >= 0 && first + 1 < kOutChannels ? outs.ch[(size_t) first + 1] : nullptr;
     const int len = (int) (0.03 * sr);
-    double next = std::ceil (beat0 - 1.0e-9);
+    // a click on every beat of the meter (the denominator's note): high on the bar, middle on a group (2+2+3), low on the rest
+    int kind = 0;
+    double next = meter->nextBeat (beat0 - 1.0e-9, &kind);
     for (int i = 0; i < n; ++i)
     {
         if ((double) i >= (next - beat0) * samplesPerBeat - 1.0e-6)
         {
-            const long long b = (long long) std::llround (next);
-            clickAge = 0; clickPh = 0; clickHz = (b % 4 == 0) ? 1760.0f : 1320.0f;
-            next += 1.0;
+            clickAge = 0; clickPh = 0; clickHz = kind == 2 ? 1760.0f : kind == 1 ? 1540.0f : 1320.0f;
+            next = meter->nextBeat (next, &kind);
         }
         if (clickAge < 0) continue;
         const float env = std::exp (-(float) clickAge / (0.008f * (float) sr));
@@ -462,12 +466,12 @@ void Session::resolveTrack (Track& t, int index, double ppq0)
     }
     else if (m == PlayMode::Song)
     {
-        const double bar = ppq0 / 4.0;
-        double s = 0; int found = -1; double start = 0;
+        // the song's entries last whole bars of the meter, one after the other from bar 1 (start: in units of 4 beats)
+        long long s = 0; int found = -1; double start = 0;
         for (size_t e = 0; e < song->size(); ++e)
         {
             const auto& en = (*song)[e];
-            if (bar < s + en.bars - 1.0e-9) { found = (int) e; start = s; break; }
+            if (ppq0 < meter->barStart (s + en.bars) - 1.0e-9) { found = (int) e; start = meter->barStart (s) / 4.0; break; }
             s += en.bars;
         }
         if (found < 0 || (*song)[(size_t) found].scene < 0 || (*song)[(size_t) found].scene >= (int) scenes->size()) { t.silent = true; t.activePattern = -1; }
@@ -1167,7 +1171,7 @@ bool Session::renderStems (const juce::File& dir, double fromBar, double toBar, 
         automate (p);
         global->apply (nullptr, p);
         const double bpm = tempo(); const double spb = 60.0 / bpm * sr;
-        const double limit = std::floor (p / 4.0 + 1.0e-9) * 4.0 + 4.0;
+        const double limit = meter->nextBarLine (p);
         int len = juce::jlimit (1, bs, (int) std::ceil ((limit - p) * spb - 1.0e-6));
         std::fill (outMem.begin(), outMem.end(), 0.0f);
         headPpq = p;
@@ -1223,7 +1227,7 @@ bool Session::renderMaster (const juce::File& file, double fromBar, double toBar
         automate (p);
         global->apply (nullptr, p);
         const double bpm = tempo(); const double spb = 60.0 / bpm * sr;
-        const double limit = std::floor (p / 4.0 + 1.0e-9) * 4.0 + 4.0;
+        const double limit = meter->nextBarLine (p);
         int len = juce::jlimit (1, bs, (int) std::ceil ((limit - p) * spb - 1.0e-6));
         std::fill (outMem.begin(), outMem.end(), 0.0f);
         headPpq = p;
@@ -1288,7 +1292,7 @@ juce::File Session::renderTrackFile (Track& src, double fromBar, double toBar, j
         {
             automate (p); global->apply (nullptr, p);
             const double bpm = tempo(); const double spb = 60.0 / bpm * sr;
-            const double limit = std::floor (p / 4.0 + 1.0e-9) * 4.0 + 4.0;
+            const double limit = meter->nextBarLine (p);
             int len = juce::jlimit (1, bs, (int) std::ceil ((limit - p) * spb - 1.0e-6));
             std::fill (outMem.begin(), outMem.end(), 0.0f);
             headPpq = p;
@@ -1355,7 +1359,7 @@ bool Session::exportMidi (const juce::File& file, double fromBar, double toBar, 
     double p = fromBar * 4.0; const double end = toBar * 4.0;
     while (p < end)
     {
-        const double limit = std::min (end, std::floor (p / 4.0 + 1.0e-9) * 4.0 + 4.0);
+        const double limit = std::min (end, meter->nextBarLine (p));
         const int len = juce::jlimit (1, bs, (int) std::ceil ((limit - p) * spbs - 1.0e-6));
         const double ppq1 = p + len / spbs;
         for (int i = 0; i < (int) tracks.size(); ++i)
@@ -1381,7 +1385,22 @@ bool Session::exportMidi (const juce::File& file, double fromBar, double toBar, 
         for (int k = 0; k < tracks[(size_t) i]->nPending; ++k) { auto m = juce::MidiMessage::noteOff (1, tracks[(size_t) i]->pending[(size_t) k].note); m.setTimeStamp ((end - fromBar * 4.0) * tpq); s.addEvent (m); }
         tracks[(size_t) i]->nPending = 0;
         s.addEvent (juce::MidiMessage::textMetaEvent (3, tracks[(size_t) i]->name), 0.0);
-        if (i == 0) s.addEvent (juce::MidiMessage::tempoMetaEvent ((int) (60000000.0 / bpm)), 0.0);
+        if (i == 0)
+        {
+            s.addEvent (juce::MidiMessage::tempoMetaEvent ((int) (60000000.0 / bpm)), 0.0);
+            // the time signatures, bar by bar where they change (a midi file wants a power-of-two denominator and a
+            // whole numerator: others are written as the nearest it can hold)
+            juce::String last;
+            for (long long b = meter->barAt (fromBar * 4.0); meter->barStart (b) < end - 1.0e-9; ++b)
+            {
+                const auto& sg = meter->sigOf (b);
+                if (sg.text() == last) continue;
+                last = sg.text();
+                int den = 1; while (den * 2 <= sg.den && den < 64) den *= 2;
+                const double at = std::max (0.0, meter->barStart (b) - fromBar * 4.0);
+                s.addEvent (juce::MidiMessage::timeSignatureMetaEvent (std::max (1, (int) std::lround (sg.num * den / sg.den)), den), at * tpq);
+            }
+        }
         s.updateMatchedPairs(); s.sort();
         mf.addTrack (s);
     }

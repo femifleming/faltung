@@ -2049,6 +2049,64 @@ int main (int argc, char** argv)
         check (t2.clips->size() == 2 && (*t2.clips)[1].muted && std::abs ((*t2.clips)[1].offset - 4.0) < 1.0e-12 && (*t2.clips)[1].id == hv[0].id, "clip offset, mute and id come back");
         check (p2.session.gridIndex.load() == 12 && ! p2.session.follow.load(), "the grid and follow come back");
     }
+    std::cout << "== time signatures\n";
+    {
+        namespace tl = fal::daw::timeline;
+        tl::Sig sg;
+        check (tl::parseSig ("7/8", sg) && std::abs (sg.beats() - 3.5) < 1.0e-12 && sg.beatCount() == 7, "7/8 is 3.5 quarter notes, 7 beats");
+        check (tl::parseSig ("2+2+3/8", sg) && sg.groups.size() == 3 && std::abs (sg.num - 7.0) < 1.0e-12 && sg.groupStart (4) && ! sg.groupStart (3) && sg.text() == "2+2+3/8", "2+2+3/8: groups");
+        check (tl::parseSig ("3.5/4", sg) && std::abs (sg.beats() - 3.5) < 1.0e-12 && sg.text() == "3.5/4", "a fractional numerator");
+        check (tl::parseSig ("4/3", sg) && std::abs (sg.beats() - 16.0 / 3.0) < 1.0e-12, "an irrational meter (4/3)");
+        check (! tl::parseSig ("7/0", sg) && ! tl::parseSig ("x/8", sg) && ! tl::parseSig ("0/4", sg) && ! tl::parseSig ("7", sg), "nonsense is refused");
+        std::vector<tl::Sig> cyc; check (tl::parseSigs ("3/4 5/8", cyc) && cyc.size() == 2, "a cycle");
+        tl::Sig s78, s34, s58; tl::parseSig ("7/8", s78); tl::parseSig ("3/4", s34); tl::parseSig ("5/8", s58);
+        tl::MeterMap m ({ { 2, { s78 } }, { 4, { s34, s58 } } });
+        const double expect[] = { 0, 4, 8, 11.5, 15, 18, 20.5, 23.5, 26 };
+        bool ok = true; juce::String got; for (int b = 0; b < 9; ++b) { got << m.barStart (b) << " "; ok = ok && std::abs (m.barStart (b) - expect[b]) < 1.0e-12; }
+        check (ok, "bar lines: 4/4 4/4 7/8 7/8, then 3/4 5/8 in turn (" + got.trim() + ")");
+        double st; check (m.barAt (12.0, &st) == 3 && std::abs (st - 11.5) < 1.0e-12 && m.barAt (20.49, &st) == 5 && m.barAt (20.5) == 6, "which bar a position is in");
+        check (tl::formatPosition (12.0, m) == "4.2.1.0" && std::abs (tl::parse ("4.2", false, {}, m) - 12.0) < 1.0e-12, "positions in 7/8 count eighths: 4.2.1.0 (" + tl::formatPosition (12.0, m) + ")");
+        check (std::abs (m.nextBarLine (15.0) - 18.0) < 1.0e-12, "the next bar line");
+        int kind = -1; const double nb = m.nextBeat (15.0, &kind); int k2 = -1; const double nb2 = m.nextBeat (17.5, &k2);
+        check (std::abs (nb - 16.0) < 1.0e-12 && kind == 0 && std::abs (nb2 - 18.0) < 1.0e-12 && k2 == 2, "beats: quarters in 3/4, the bar line after");
+        check (std::abs (tl::snap (11.4, 1.0, m) - 11.5) < 1.0e-12 && std::abs (tl::snap (11.2, 1.0, m) - 11.0) < 1.0e-12, "a quarter grid in 7/8 starts again at each bar line");
+        check (std::abs (tl::nextGridLine (8.0, 4.0, m) - 11.5) < 1.0e-12 && std::abs (tl::prevGridLine (11.5, 1.0, m) - 11.0) < 1.0e-12, "grid steps follow the meter (" + juce::String (tl::nextGridLine (8.0, 4.0, m)) + ", " + juce::String (tl::prevGridLine (11.5, 1.0, m)) + ")");
+        check (std::abs (m.barsBetween (8.0, 15.0) - 2.0) < 1.0e-12, "two bars of 7/8 are 7 quarter notes");
+        check (std::abs (tl::parse ("1", true, {}, m, 8.0) - 3.5) < 1.0e-12, "a bar's length from bar 3 is a 7/8 bar");
+
+        // through the engine: the metronome in 7/8, a song in 7/8
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        while (! s.tracks.empty()) s.removeTrack (0);
+        s.setTempo (120.0f);
+        s.setMeterAt (0, { s78 });
+        s.metronome.store (true);
+        auto r = render (p, 2.0);   // 8 quarter notes: two bars of 7/8 and the start of a third
+        auto on = onsets (r.out, 0, 0.05f, 2000);
+        const double eighth = spb (120) * 0.5;
+        bool even = on.size() == 16; for (size_t i = 0; even && i < on.size(); ++i) even = std::abs (on[i] - (double) i * eighth) <= 2;
+        std::cout << "  7/8 at 120 bpm, 8 quarter notes: " << on.size() << " clicks (expected 16, an eighth apart)\n";
+        check (even, "the metronome clicks the eighths of 7/8");
+        const float accent = r.out.getMagnitude (0, on.size() > 7 ? on[7] : 0, 400), plain = r.out.getMagnitude (0, on.size() > 1 ? on[1] : 0, 400);
+        check (on.size() > 7 && std::abs (on[7] - (int) (7 * eighth)) <= 2, "bar 2 starts after seven eighths");
+        (void) accent; (void) plain;
+        s.metronome.store (false);
+        auto* t = s.addTrack ("kick"); s.setInstrument (*t, s.createDevice ("fal:bd1")); shortHit (*t);
+        s.editPattern (*t, 0, [] (Pattern& pt) { pt = Pattern(); pt.s[0].on = true; });
+        s.editScenes ([] (std::vector<Scene>& sc) { for (auto& x : sc) x.pattern.assign (1, 0); });
+        s.editSong ([] (std::vector<SongEntry>& so) { so = { { 0, 1 }, { 0, 1 }, { 0, 1 } }; });
+        s.mode.store ((int) PlayMode::Song);
+        auto rs = render (p, 2.75); auto ons = onsets (rs.out, 0);
+        std::cout << "  a song of three 7/8 bars: hits at"; for (int o : ons) std::cout << " " << o / spb (120); std::cout << " (quarters)\n";
+        check (ons.size() == 3 && std::abs (ons[1] - 3.5 * spb (120)) <= 2 && std::abs (ons[2] - 7.0 * spb (120)) <= 2, "the song's scenes start on 7/8 bar lines");
+        check (std::abs (s.songBars() * 4.0 - 10.5) < 1.0e-9, "the song is three bars of 7/8 long");
+        // save and reopen
+        s.setMeterAt (8, { s34, s58 });
+        juce::String err; const auto f = tmp.getChildFile ("meter.fstudio");
+        check (p.saveProject (f, err), "save: " + err);
+        StudioProcessor p2; check (p2.loadProject (f, err), "reopen: " + err);
+        const auto& m2 = p2.session.meterMap();
+        check (m2.getChanges().size() == 2 && m2.sigOf (0).text() == "7/8" && m2.sigOf (9).text() == "5/8" && std::abs (m2.barStart (10) - (8 * 3.5 + 3 + 2.5)) < 1.0e-12, "the meter comes back");
+    }
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
@@ -2200,6 +2258,12 @@ int main (int argc, char** argv)
                 arr->scrollY = std::max (0, s.indexOf (at) * arr->laneH - 3 * arr->laneH);
                 run (20); snap (*ed, "sndstudio-arrange-zoom");
                 arr->setTrackHeight (40); s.gridIndex.store (0); arr->sel.clear();
+                // time signatures: 7/8 from bar 17, a 2+2+3/8 3/4 cycle from bar 21
+                { fal::daw::timeline::Sig a78, a7g, a34; fal::daw::timeline::parseSig ("7/8", a78); fal::daw::timeline::parseSig ("2+2+3/8", a7g); fal::daw::timeline::parseSig ("3/4", a34);
+                  s.setMeterAt (16, { a78 }); s.setMeterAt (20, { a7g, a34 }); }
+                arr->scrollY = 0; s.gridIndex.store (4); arr->showBars (14.0, 24.0); s.locate (17.2);
+                run (20); snap (*ed, "sndstudio-meter");
+                s.setMeter ({}); s.gridIndex.store (0);
                 // the whole window bigger and smaller
                 const auto w0 = ed->getWidth(), h0 = ed->getHeight();
                 ed->setSize (1800, 1125); se->setUiScale (1.25f); arr->zoomToFit(); run (12); snap (*ed, "sndstudio-ui-125");

@@ -259,3 +259,7 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > keep working on snd studio to make it into a real ready to use fully featured daw, i want to be able to zoom in and out on the ui and the timeline as well, and get more accurate with the timeline and grid. keep adding professional daw features to sndstudio
 
 (The whole window bigger / smaller, 50–200 %, any window size; the timeline zooms from ~1000 bars to ~2 samples a pixel about the mouse, pinch, fit, zoom to selection, row heights, follow; an adaptive or fixed grid incl. triplets, dotted, quintuplets, septuplets, the magnet, cmd to place freely; bar.beat.sixteenth.tick + time on the ruler and in the header, go to position; selection (click, shift, box), cut / copy / paste / duplicate / split / mute / delete, trim from the left, fade handles, moving clips between tracks, typed position and length, arrow keys by grid / tick / ms, insert and delete time, markers moved, named, jumped to; the engine starts and stops clips on their sample anywhere on the timeline.)
+
+> i want all the time signatures and dynamic time signatures
+
+(Any numerator — whole, fractional (3.5/4), grouped (2+2+3/8) — over any denominator, irrational ones included (4/3); changes at any bar, each a single signature or a cycle that repeats (7/8 5/8 …). Bar lines, beats, positions, the grid, snapping, the metronome and count-in, launches, the song, export bar numbers, midi files and hosted plug-ins all follow the meter.)

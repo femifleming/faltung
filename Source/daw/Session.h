@@ -6,6 +6,7 @@
 // modulator and arrangement edits replace immutable snapshots (shared_ptr) under the same lock.
 #include "Device.h"
 #include "Tuning.h"
+#include "Timeline.h"
 #include "../dsp/Core.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -163,6 +164,8 @@ public:
     std::shared_ptr<const std::vector<Scene>> scenes;
     std::shared_ptr<const std::vector<SongEntry>> song;
     std::shared_ptr<const std::vector<Marker>> markers;
+    std::shared_ptr<const timeline::MeterMap> meter;   // the time signatures (4/4 until changed)
+    double countInFrom = 0;                            // the count-in clicks as the bars it leads into
     std::shared_ptr<const std::vector<LanePtr>> lanes;
     std::shared_ptr<const std::vector<MidiMap>> midiMaps;
     std::shared_ptr<const std::vector<KeyMap>> keyMaps;
@@ -302,6 +305,11 @@ public:
     void editScenes (const std::function<void (std::vector<Scene>&)>&);
     void editSong (const std::function<void (std::vector<SongEntry>&)>&);
     void editMarkers (const std::function<void (std::vector<Marker>&)>&);
+    /** the time signatures: changes at bars, each one signature or a cycle of them */
+    void setMeter (std::vector<timeline::MeterChange>);
+    const timeline::MeterMap& meterMap() const { return *meter; }
+    /** a signature (or a cycle) from a bar on (counted from 0); empty: remove the change there */
+    void setMeterAt (int bar, std::vector<timeline::Sig>);
     void editMidiMaps (const std::function<void (std::vector<MidiMap>&)>&);
     void editKeyMaps (const std::function<void (std::vector<KeyMap>&)>&);
     /** a computer key went down or up (message thread): learn, or play the mapped controls. True when the key was used */

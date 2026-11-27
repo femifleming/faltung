@@ -121,7 +121,7 @@ public:
         m.addItem (1, "open...  (" + cmd + "+o)"); m.addItem (2, "save  (" + cmd + "+s)"); m.addItem (3, "save as...  (" + cmd + "+shift+s)"); m.addItem (6, "open the autosave"); m.addSeparator();
         m.addItem (7, "export audio (mix, stems, selected tracks, a time selection, multichannel)...  (" + cmd + "+e)"); m.addItem (5, "export midi..."); m.addSeparator();
         double a, b; s.renderRange (a, b);
-        const juce::String range = s.loopOn.load() ? "the loop, bars " + juce::String (a + 1, 0) + " - " + juce::String (b, 0) : juce::String (b - a, 0) + " bars";
+        const juce::String range = s.loopOn.load() ? "the loop, " + timeline::formatPosition (a * 4.0, s.meterMap()) + " - " + timeline::formatPosition (b * 4.0, s.meterMap()) : juce::String (s.meterMap().barsBetween (a * 4.0, b * 4.0), 0) + " bars";
         m.addItem (30, "render the project into a new audio track (" + range + ")");
         m.addItem (31, "the same, before the master chain");
         if (auto* t2 = selected()) if (! t2->isMaster()) { m.addItem (32, "bounce " + t2->name + " into a new audio track"); m.addItem (33, "bounce " + t2->name + " into a sampler (sliced)"); }
@@ -146,6 +146,7 @@ public:
         m.addItem (58, "insert time at the playhead...  (" + cmd + "+shift+i)");
         m.addItem (59, "delete the looped time  (" + cmd + "+shift+backspace)", s.loopOn.load());
         m.addItem (61, "go to position...  (" + cmd + "+g)");
+        m.addItem (62, "time signature at the playhead's bar...  (now " + s.meterMap().sigAt (s.currentBar() * 4.0).text() + ")");
         return m;
     }
     juce::PopupMenu viewMenu()
@@ -171,17 +172,17 @@ public:
     void goToDialog()
     {
         auto* w = new juce::AlertWindow ("go to", "bars.beats.sixteenths.ticks (17.2.3.120), or time (1:05.250, 90s)", juce::MessageBoxIconType::NoIcon);
-        w->addTextEditor ("v", timeline::formatPosition (s.currentBar() * 4.0));
+        w->addTextEditor ("v", timeline::formatPosition (s.currentBar() * 4.0, s.meterMap()));
         w->addButton ("go", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
         w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int r)
         {
             if (r != 1) return;
             const auto txt = w->getTextEditorContents ("v");
-            const double b = timeline::parse (txt, false, [this] (double secs) { return s.beatAt (secs); });
+            const double b = timeline::parse (txt, false, [this] (double secs) { return s.beatAt (secs); }, s.meterMap());
             if (b < 0) { say ("go to: could not read \"" + txt + "\""); return; }
             s.locate (b / 4.0);
             if (auto* ap = arrange()) if (b / 4.0 < ap->scrollBar || b / 4.0 > ap->scrollBar + ap->visibleBars()) ap->scrollBar = std::max (0.0, b / 4.0 - ap->visibleBars() * 0.25);
-            say ("at " + timeline::formatPosition (b) + "  " + timeline::formatTime (s.secondsAt (b)));
+            say ("at " + timeline::formatPosition (b, s.meterMap()) + "  " + timeline::formatTime (s.secondsAt (b)));
         }), true);
     }
     std::function<void (int)> uiZoom;   // +1 bigger, -1 smaller, 0 actual size
@@ -201,7 +202,7 @@ public:
         {
             auto* ap = arrange();
             if (! ap) return;
-            if (id <= 61 && page != 1 && id != 61) setPage (1);
+            if (id <= 62 && page != 1 && id != 61) setPage (1);
             switch (id)
             {
                 case 50: ap->copySel(); break;              case 51: ap->cutSel(); break;
@@ -210,6 +211,7 @@ public:
                 case 56: ap->deleteSel(); break;            case 57: ap->muteSel(); break;
                 case 58: ap->insertBars(); break;           case 59: ap->deleteLoopTime(); break;
                 case 60: ap->loopSelection(); break;        case 61: goToDialog(); break;
+                case 62: ap->signatureDialog ((int) s.meterMap().barAt (s.currentBar() * 4.0 + 1.0e-9)); break;
                 case 70: case 71: case 72: if (uiZoom) uiZoom (id == 70 ? 1 : id == 71 ? -1 : 0); break;
                 case 73: setPage (1); ap->zoomKey (true); break;  case 74: setPage (1); ap->zoomKey (false); break;
                 case 75: setPage (1); ap->zoomToFit(); break;     case 76: setPage (1); ap->zoomToSelection(); break;
@@ -261,7 +263,9 @@ public:
         w->addTextEditor ("tracks", juce::String (juce::jmax (0, sel) + 1), "track numbers (for the stems of chosen tracks), e.g. 1 3 4");
         double a = 0, b = 0; s.renderRange (a, b);
         const double pb = s.projectBars();
-        w->addComboBox ("range", { "the whole project (bars 1 - " + juce::String (pb + 1, 0) + ")", "the loop / time selection (bars " + juce::String (s.loopStart.load() + 1, 2) + " - " + juce::String (s.loopEnd.load() + 1, 2) + ")", "the bars typed below" }, "range");
+        const auto& mm = s.meterMap();
+        auto P = [&mm] (double units) { return timeline::formatPosition (units * 4.0, mm); };
+        w->addComboBox ("range", { "the whole project (" + P (0) + " - " + P (pb) + ")", "the loop / time selection (" + P (s.loopStart.load()) + " - " + P (s.loopEnd.load()) + ")", "the bars typed below" }, "range");
         w->getComboBoxComponent ("range")->setSelectedItemIndex (s.loopOn.load() ? 1 : 0);
         w->addTextEditor ("bars", "1 9", "from bar, to bar (the end is not included)");
         w->addComboBox ("format", { "wav", "aiff", "flac" }, "file");
@@ -287,7 +291,7 @@ public:
             double a = 0, b = s.projectBars();
             const int range = w->getComboBoxComponent ("range")->getSelectedItemIndex();
             if (range == 1) { a = s.loopStart.load(); b = s.loopEnd.load(); }
-            else if (range == 2) { auto t = juce::StringArray::fromTokens (w->getTextEditorContents ("bars"), " ,-", ""); t.removeEmptyStrings(); a = std::max (0.0, t[0].getDoubleValue() - 1.0); b = std::max (a + 0.25, t[1].getDoubleValue() - 1.0); }
+            else if (range == 2) { auto t = juce::StringArray::fromTokens (w->getTextEditorContents ("bars"), " ,-", ""); t.removeEmptyStrings(); const auto& mm = s.meterMap(); a = mm.barStart (std::max (0LL, (long long) t[0].getIntValue() - 1)) / 4.0; b = std::max (a + 0.25, mm.barStart (std::max (0LL, (long long) t[1].getIntValue() - 1)) / 4.0); }   // (bars of the meter)
             if (what == 3)
                 for (auto& n : juce::StringArray::fromTokens (w->getTextEditorContents ("tracks"), " ,", ""))
                     if (const int k = n.getIntValue() - 1; k >= 0 && k < (int) s.tracks.size()) o.only.push_back (s.tracks[(size_t) k]->uid);
@@ -311,7 +315,7 @@ public:
     {
         double a, b; s.renderRange (a, b); juce::String err;
         auto* made = s.renderProjectToTrack (a, b, preMaster, err);
-        if (made) { select (made); say ("project rendered (bars " + juce::String (a + 1, 0) + " - " + juce::String (b, 0) + ") into " + made->name); } else say (err.isNotEmpty() ? err : juce::String ("nothing rendered"));
+        if (made) { select (made); say ("project rendered (" + timeline::formatPosition (a * 4.0, s.meterMap()) + " - " + timeline::formatPosition (b * 4.0, s.meterMap()) + ") into " + made->name); } else say (err.isNotEmpty() ? err : juce::String ("nothing rendered"));
         return made;
     }
     /** capture a jam: click to start recording the master into a new audio track, click again to stop */
@@ -443,7 +447,7 @@ public:
         // position
         const double bar = s.currentBar();
         g.setFont (uiFont (11.0f, true)); g.setColour (s.playPpq.load() >= 0 ? juce::Colours::white : theme.ink);
-        g.drawText (timeline::formatPosition (bar * 4.0) + "   " + timeline::formatTime (s.secondsAt (bar * 4.0)) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm", positionRect(), juce::Justification::centredLeft);
+        g.drawText (timeline::formatPosition (bar * 4.0, s.meterMap()) + "   " + timeline::formatTime (s.secondsAt (bar * 4.0)) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm   " + s.meterMap().sigAt (bar * 4.0).text(), positionRect(), juce::Justification::centredLeft);
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.7f));
         juce::String info = juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
         info << ui::U ("  ·  latency ") << juce::String (s.totalLatency() * 1000.0 / s.sampleRate(), 1) << " ms" ;

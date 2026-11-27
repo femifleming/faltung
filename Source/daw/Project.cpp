@@ -225,6 +225,7 @@ std::unique_ptr<juce::XmlElement> Session::save() const
     }
     for (auto& s : *song) { auto* x = e->createNewChildElement ("song"); x->setAttribute ("scene", s.scene); x->setAttribute ("bars", s.bars); }
     for (auto& m : *markers) { auto* x = e->createNewChildElement ("marker"); x->setAttribute ("name", m.name); x->setAttribute ("bar", m.bar); }
+    if (! meter->plain()) for (auto& m : meter->getChanges()) { auto* x = e->createNewChildElement ("meter"); x->setAttribute ("bar", m.bar); x->setAttribute ("sigs", timeline::sigsText (m.sigs)); }
     for (auto& l : *lanes)
     {
         auto* x = e->createNewChildElement ("lane"); x->setAttribute ("target", l->target.toString()); x->setAttribute ("on", l->enabled ? 1 : 0);
@@ -253,6 +254,7 @@ void Session::clear()
     editScenes ([] (std::vector<Scene>& s) { s.assign ((size_t) kScenes, Scene()); for (int i = 0; i < kScenes; ++i) s[(size_t) i].name = juce::String (i + 1); });
     editSong ([] (std::vector<SongEntry>& s) { s.clear(); });
     editMarkers ([] (std::vector<Marker>& m) { m.clear(); });
+    setMeter ({});
     editMidiMaps ([] (std::vector<MidiMap>& m) { m.clear(); });
     editKeyMaps ([] (std::vector<KeyMap>& m) { m.clear(); });
     stopPreview(); keyLearning.store (0); learning.store (false);
@@ -324,6 +326,11 @@ bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
     });
     editSong ([&] (std::vector<SongEntry>& s) { for (auto* x : e.getChildWithTagNameIterator ("song")) s.push_back ({ x->getIntAttribute ("scene"), x->getIntAttribute ("bars", 8) }); });
     editMarkers ([&] (std::vector<Marker>& m) { for (auto* x : e.getChildWithTagNameIterator ("marker")) m.push_back ({ x->getStringAttribute ("name"), x->getDoubleAttribute ("bar") }); });
+    {
+        std::vector<timeline::MeterChange> mc;
+        for (auto* x : e.getChildWithTagNameIterator ("meter")) { std::vector<timeline::Sig> sg; if (timeline::parseSigs (x->getStringAttribute ("sigs"), sg)) mc.push_back ({ x->getIntAttribute ("bar"), sg }); }
+        setMeter (mc);
+    }
     for (auto* x : e.getChildWithTagNameIterator ("lane"))
     {
         const Target t = Target::fromString (x->getStringAttribute ("target"));

@@ -58,3 +58,10 @@ survives undo). In the engine a pattern clip's anchor is `start - offset`; a tra
 The editor lays the pages out at the window's size divided by the ui scale (0.5–2, kept in the app's settings), never
 below 1200 × 720: a window too small for the scale draws at the largest scale that fits. The header moves master,
 punch and capture to its second row below 1430 wide.
+
+## time signatures (Timeline.h: Sig, MeterChange, MeterMap)
+The meter map (`Session::meter`, a copy-on-write snapshot the audio thread reads under the lock) holds changes at bars,
+each a signature or a cycle of them; signatures have any numerator (whole, fractional, or grouped 2+2+3) over any
+denominator. Positions underneath stay in quarter notes and the arrangement's values in units of four; the map says
+where bars and beats fall. The engine cuts blocks at the map's bar lines; song entries, quantised launches, the
+count-in and the metronome count in its bars and beats; the play head reports the signature and the bar's start.

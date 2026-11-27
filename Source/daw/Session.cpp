@@ -103,6 +103,7 @@ Session::Session()
     scenes = std::make_shared<const std::vector<Scene>> (std::move (sc));
     song = std::make_shared<const std::vector<SongEntry>>();
     markers = std::make_shared<const std::vector<Marker>>();
+    meter = std::make_shared<const timeline::MeterMap>();
     lanes = std::make_shared<const std::vector<LanePtr>>();
     midiMaps = std::make_shared<const std::vector<MidiMap>>();
     keyMaps = std::make_shared<const std::vector<KeyMap>>();
@@ -761,6 +762,19 @@ void Session::editSong (const std::function<void (std::vector<SongEntry>&)>& fn)
     { const juce::SpinLock::ScopedLockType sl (lock); song = v; }
     dirty = true;
 }
+void Session::setMeter (std::vector<timeline::MeterChange> c)
+{
+    auto m = std::make_shared<const timeline::MeterMap> (std::move (c));
+    { const juce::SpinLock::ScopedLockType sl (lock); meter = m; }
+    dirty = true;
+}
+void Session::setMeterAt (int bar, std::vector<timeline::Sig> sigs)
+{
+    auto c = meter->getChanges();
+    c.erase (std::remove_if (c.begin(), c.end(), [bar] (const timeline::MeterChange& m) { return m.bar == bar; }), c.end());
+    if (! sigs.empty()) c.push_back ({ std::max (0, bar), sigs });
+    setMeter (c);
+}
 void Session::editMarkers (const std::function<void (std::vector<Marker>&)>& fn)
 {
     auto v = std::make_shared<std::vector<Marker>> (*markers); fn (*v);
@@ -1051,7 +1065,10 @@ void Session::recordWithCountIn()
     if (running.load()) return;
     const int bars = juce::jlimit (0, 4, countInBars.load());
     if (bars == 0) { play(); return; }
-    countInTotal = (juce::int64) std::llround (bars * 4.0 * 60.0 / tempo() * sr);
+    // whole bars of the meter the recording starts in, counted in as those bars
+    double s0 = 0; const auto b0 = meter->barAt (internalPpq.load(), &s0);
+    countInFrom = s0;
+    countInTotal = (juce::int64) std::llround ((meter->barStart (b0 + bars) - s0) * 60.0 / tempo() * sr);
     countInLeft.store (countInTotal);
 }
 int Session::collectRecordedNotes()
@@ -1107,14 +1124,14 @@ void Session::launch (Track& t, int p)
         return;
     }
     const int q = launchQuant.load();
-    const double at = q <= 0 ? now : std::ceil ((now + 1.0e-6) / (4.0 * q)) * 4.0 * q;
+    const double at = q <= 0 ? now : meter->barStart ((meter->barAt (now + 1.0e-6) / q + 1) * q);   // the next bar line (every q bars) of the meter
     t.pendingPattern.store (p); t.pendingAt.store (at); t.pattern.store (p);
 }
 void Session::stopTrack (Track& t)
 {
     const double now = playPpq.load();
     const int q = launchQuant.load();
-    const double at = (now < 0 || q <= 0) ? std::max (0.0, now) : std::ceil ((now + 1.0e-6) / (4.0 * q)) * 4.0 * q;
+    const double at = (now < 0 || q <= 0) ? std::max (0.0, now) : meter->barStart ((meter->barAt (now + 1.0e-6) / q + 1) * q);
     t.pendingPattern.store (-2); t.pendingAt.store (at);
 }
 void Session::launchScene (int s)
@@ -1129,7 +1146,7 @@ void Session::launchScene (int s)
     }
     currentScene.store (s);
 }
-double Session::songBars() const { double b = 0; for (auto& e : *song) b += e.bars; return b; }
+double Session::songBars() const { long long b = 0; for (auto& e : *song) b += e.bars; return meter->barStart (b) / 4.0; }   // (in units of 4 beats: its bars are the meter's)
 double Session::arrangementBars() const
 {
     double b = 0;
