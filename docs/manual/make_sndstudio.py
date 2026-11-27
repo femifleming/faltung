@@ -7,7 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 MAIN = open(os.path.join(HERE, 'make.py')).read()
 FONTS = '../../Resources/fonts'   # (relative: the html sits in docs/manual)
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 e = html.escape
 g = globals()
 exec(MAIN[MAIN.index('def ptable'):MAIN.index('def shot')], g)
