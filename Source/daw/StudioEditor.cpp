@@ -83,7 +83,7 @@ public:
         setWantsKeyboardFocus (true);
         setPage (0);
         rebuildAll();
-        proc.onProjectReplaced = [this] { windows.clear(); select (nullptr); rebuildAll(); };
+        proc.onProjectReplaced = [this] { windows.clear(); select (nullptr); rebuildAll(); s.freeRetired(); };
     }
     ~StudioView() override { proc.onProjectReplaced = nullptr; windows.clear(); }
 
@@ -349,19 +349,19 @@ public:
     void removeDevice (Track& t, Device& d)
     {
         closeWindow (&d);
-        auto gone = s.removeDevice (t, d.uid);
-        gone.reset();
+        s.retire (s.removeDevice (t, d.uid));   // (freed in tick, once the pages have let go of it)
         structure = -1;
     }
 
     // ---- structure watch: rebuild the pages when tracks / devices / selection change ----------------
     long long structureKey() const
     {
-        long long k = (long long) s.epoch.load() * 1000000007LL + (long long) s.tracks.size() * 1000003 + (long long) s.returns.size() * 7919 + selUid * 31;
-        for (auto& t : s.tracks) k = k * 31 + t->uid * 7 + t->numDevices() + (t->isAudio() ? 1 : 0);
-        for (auto& r : s.returns) k = k * 31 + r->numDevices();
-        k = k * 31 + s.master->numDevices();
-        return k;
+        using U = unsigned long long;   // (a hash: unsigned, so it wraps instead of overflowing)
+        U k = (U) s.retirements.load() * 998244353ULL + (U) s.epoch.load() * 1000000007ULL + (U) s.tracks.size() * 1000003ULL + (U) s.returns.size() * 7919ULL + (U) (long long) selUid * 31ULL;
+        for (auto& t : s.tracks) k = k * 31ULL + (U) (long long) t->uid * 7ULL + (U) t->numDevices() + (t->isAudio() ? 1ULL : 0ULL);
+        for (auto& r : s.returns) k = k * 31ULL + (U) r->numDevices();
+        k = k * 31ULL + (U) s.master->numDevices();
+        return (long long) (k >> 1);
     }
     void rebuildAll()
     {
@@ -388,6 +388,7 @@ public:
         if (structureKey() != structure) rebuildAll();
         // drop windows of devices that vanished
         windows.erase (std::remove_if (windows.begin(), windows.end(), [this] (auto& w) { bool alive = false; auto chk = [&] (Track& t) { t.forEachDevice ([&] (Device& d) { if (&d == w->device) alive = true; }); }; for (auto& t : s.tracks) chk (*t); for (auto& r : s.returns) chk (*r); chk (*s.master); return ! alive; }), windows.end());
+        if (! s.retiredDevices.empty() || ! s.retiredTracks.empty()) s.freeRetired();   // (the pages and windows above let go of them)
         pages[page]->tick();
         if (autoDevice != 0)
         {

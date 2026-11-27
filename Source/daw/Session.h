@@ -263,7 +263,15 @@ public:
     std::unique_ptr<Device> createHosted (const juce::PluginDescription&, juce::String* error = nullptr);
     void setInstrument (Track&, std::unique_ptr<Device>);
     Device* addInsert (Track&, std::unique_ptr<Device>, int at = -1);
-    std::unique_ptr<Device> removeDevice (Track&, int devUid);   // the caller frees it after closing its window
+    std::unique_ptr<Device> removeDevice (Track&, int devUid);   // the caller retires it (or frees it, with no editor open)
+    /** devices and tracks taken out of the project are kept here until the editor has let go of them (its pages
+        rebuilt, their windows closed): freeing them at once left sliders attached to freed parameters */
+    void retire (std::unique_ptr<Device> d) { if (d) { retiredDevices.push_back (std::move (d)); retirements.fetch_add (1); } }
+    void retire (std::unique_ptr<Track> t) { if (t) { retiredTracks.push_back (std::move (t)); retirements.fetch_add (1); } }
+    void freeRetired() { retiredDevices.clear(); retiredTracks.clear(); }
+    std::atomic<int> retirements { 0 };
+    std::vector<std::unique_ptr<Device>> retiredDevices;
+    std::vector<std::unique_ptr<Track>> retiredTracks;
     void moveInsert (Track&, int from, int to);
     void setWidth (Track&, int width);
     void negotiate (Track&);                     // device widths along the chain

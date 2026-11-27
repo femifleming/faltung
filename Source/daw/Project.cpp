@@ -243,7 +243,7 @@ void Session::clear()
     while (! tracks.empty()) removeTrack ((int) tracks.size() - 1);
     while (! returns.empty()) removeReturn ((int) returns.size() - 1);
     for (int r = 0; r < 2; ++r) addReturn();
-    while (! master->inserts.empty()) removeDevice (*master, master->inserts.back()->uid);
+    while (! master->inserts.empty()) retire (removeDevice (*master, master->inserts.back()->uid));
     // the globals and the master's strip stay the same objects (the header's controls are bound to them): only their values start over
     for (auto* d : { master->mixer.get(), global.get() })
         for (int i = 0; i < d->numParams(); ++i) { d->setBase (i, d->defaultValue (i)); d->macro[(size_t) i].index.store (-1); d->macro[(size_t) i].lo.store (0.0f); d->macro[(size_t) i].hi.store (1.0f); }

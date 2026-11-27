@@ -281,6 +281,7 @@ void Session::removeTrack (int index)
     if (selectedTrack.load() >= (int) tracks.size()) selectedTrack.store (std::max (0, (int) tracks.size() - 1));
     rebuildLatency();
     dirty = true;
+    retire (std::move (gone));
 }
 
 void Session::moveTrack (int from, int to)
@@ -319,6 +320,7 @@ void Session::removeReturn (int index)
         returns.erase (returns.begin() + index);
         for (size_t r = 0; r < returns.size(); ++r) returns[r]->uid = -1 - (int) r;
     }
+    retire (std::move (gone));
     rebuildLatency();
     dirty = true;
 }
@@ -442,7 +444,7 @@ void Session::setInstrument (Track& t, std::unique_ptr<Device> d)
         t.instrument = std::move (d);
     }
     if (old && t.name.startsWith ("track") && t.instrument) t.name = uniqueTrackName (t.instrument->name.upToFirstOccurrenceOf (" ", false, false));
-    old.reset();
+    retire (std::move (old));
     negotiate (t);
     rebuildLatency();
     dirty = true;

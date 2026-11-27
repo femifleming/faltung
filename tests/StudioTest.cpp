@@ -1,6 +1,7 @@
 // sndstudioTest — renders sndstudio projects offline and checks the engine feature by feature.
 //   sndstudioTest [--screenshots dir] [--wav dir] [--vst3 "path/faltung dl4.vst3"]
 #include "daw/StudioProcessor.h"
+#include <cstdio>
 #include "daw/StudioEditor.h"
 #include "daw/StudioPages.h"
 #include "daw/devices/StudioDevices.h"
@@ -120,6 +121,7 @@ int main (int argc, char** argv)
 {
     // the child side of a plug-in scan (Session::scanPlugins starts this program again with these arguments)
     if (argc >= 5 && juce::String (argv[1]) == "--scan-plugin") return fal::daw::Session::scanOneFile (argv[2], argv[3], juce::File (juce::String (argv[4])));
+    std::cout << std::unitbuf; std::setvbuf (stdout, nullptr, _IONBF, 0);   // (a crash in CI shows the line it happened after)
     juce::ScopedJuceInitialiser_GUI gui;
     juce::File shotDir, wavDir, vst3;
     for (int i = 1; i < argc; ++i)
