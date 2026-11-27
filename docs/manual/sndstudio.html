@@ -48,7 +48,7 @@ ul, ol { padding-left: 14pt; } li { margin: 2pt 0; }
 <div class="ct"><h1>sndstudio</h1><p class="sub">the faltung studio: tracks, scenes, song, sends, modulators, 128 outputs</p>
 <p class="ver">manual · version 1.4.0 · november 2026</p></div>
 <div class="tl"><div><span class="chip" style="background:#8ec3e6"></span><span>01</span><b>session</b><span>the scene grid</span></div><div><span class="chip" style="background:#6e80c8"></span><span>02</span><b>arrange</b><span>timeline, clips, automation</span></div><div><span class="chip" style="background:#5e8f6a"></span><span>03</span><b>seq</b><span>steps, locks, devices</span></div><div><span class="chip" style="background:#ee8e6e"></span><span>04</span><b>mix</b><span>strips, outputs, routes</span></div><div><span class="chip" style="background:#f6c590"></span><span>05</span><b>mod</b><span>modulators, macros, midi</span></div><div><span class="chip" style="background:#cfe6f0"></span><span>06</span><b>browse</b><span>devices, plug-ins, files</span></div></div></section><section class="page"><h2>contents</h2><ol class="toc">
-<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li><li><a href="#noteclips">note clips: free notes</a></li><li><a href="#clipgain">crossfades and gain lines</a></li><li><a href="#groups">groups: folders and vcas</a></li><li><a href="#tempo">tempo changes and ramps</a></li><li><a href="#midirec">recording midi; controller lanes</a></li><li><a href="#warp">warp markers</a></li><li><a href="#freeze">freezing a track</a></li><li><a href="#sidechain">sidechain into plug-ins</a></li><li><a href="#latency">latency, low latency</a></li><li><a href="#controllers">controllers, mackie control</a></li><li><a href="#loudness">loudness (lufs, true peak)</a></li><li><a href="#tracktemplates">track templates</a></li><li><a href="#missing">missing files</a></li>
+<li><a href="#intro">what it is</a></li><li><a href="#start">first ten minutes</a></li><li><a href="#session">session</a></li><li><a href="#arrange">arrange: timeline, clips, automation, song</a></li><li><a href="#timeline">the timeline: zoom, grid, editing</a></li><li><a href="#meter">time signatures</a></li><li><a href="#window">the window: bigger and smaller</a></li><li><a href="#noteclips">note clips: free notes</a></li><li><a href="#clipgain">crossfades and gain lines</a></li><li><a href="#groups">groups: folders and vcas</a></li><li><a href="#tempo">tempo changes and ramps</a></li><li><a href="#midirec">recording midi; controller lanes</a></li><li><a href="#warp">warp markers</a></li><li><a href="#freeze">freezing a track</a></li><li><a href="#sidechain">sidechain into plug-ins</a></li><li><a href="#latency">latency, low latency</a></li><li><a href="#controllers">controllers, mackie control</a></li><li><a href="#loudness">loudness (lufs, true peak)</a></li><li><a href="#tracktemplates">track templates</a></li><li><a href="#missing">missing files</a></li><li><a href="#chop">chopping: slices and starts</a></li><li><a href="#grooves">grooves</a></li><li><a href="#followactions">follow actions</a></li><li><a href="#midifx">midi effects</a></li><li><a href="#dubstep">bass tools: ott, wobble, glide</a></li><li><a href="#xmod">xmod (audio-rate modulation)</a></li><li><a href="#specfreeze">spectral freeze</a></li>
 <li><a href="#seq">seq: steps, locks, tools, devices</a></li><li><a href="#mix">mix: strips, outputs, widths, routes</a></li><li><a href="#mod">mod: modulators, macros, midi</a></li>
 <li><a href="#browse">browse: devices, plug-ins, files, templates</a></li><li><a href="#devices">the studio devices</a></li><li><a href="#modes">produce and multi-out</a></li>
 <li><a href="#spatial">spatial audio and ambisonics</a></li><li><a href="#audio">audio settings and recording</a></li><li><a href="#export">export and resampling</a></li><li><a href="#keys">keys</a></li><li><a href="#tech">technical notes</a></li><li><a href="#timing">on the grid and off it: sync and free</a></li><li><a href="#tools2">more of the sequencer</a></li><li><a href="#devices2">more studio devices; capture, bounce, render</a></li><li><a href="#templates">templates</a></li><li><a href="#reference">every device, every parameter</a></li><li><a href="#blackhole">from the standalone into Ableton (BlackHole)</a></li><li><a href="#install">installing</a></li><li><a href="#daw">a new kind of daw: what it does for production</a></li><li><a href="#notes">notes without a piano roll (steps)</a></li><li><a href="#artists">to work like …</a></li></ol>
@@ -269,7 +269,60 @@ name → <b>save as a track template...</b>. <b>new track from a template</b> (t
 <h2 id="missing">missing files</h2>
 <p>A project opened where its audio is somewhere else, or a plug-in isn't installed: <b>file → find missing files...</b> says what is missing. <i>look in a folder...</i>:
 choose a folder (a drive, the music folder, a backup) and every folder in it is looked through for the files by name; what is found is loaded, and saved with its new place.
-A plug-in that isn't installed is kept in the project exactly as it was (its settings too) and saved back that way, so on a computer that has it, it is there again.</p></section><section class="page"><h2 id="seq">seq</h2>
+A plug-in that isn't installed is kept in the project exactly as it was (its settings too) and saved back that way, so on a computer that has it, it is there again.</p></section><section class="page"><h2 id="chop">chopping: slices and starts</h2>
+<p>For cut-up vocals, percussion loops and stabs that never quite repeat: put a sample in the <b>sampler</b> (mode <i>slices</i>) and give the steps slices. <b>seq → slices</b>:</p>
+<table class="params"><tr><th>item</th><th>does</th></tr>
+<tr><td class="n">in order · reversed</td><td>the steps that play get slice 1, 2, 3 … (or from the last back)</td></tr>
+<tr><td class="n">shuffled</td><td>the same slices in another order</td></tr>
+<tr><td class="n">wandering</td><td>each step a slice or two away from the one before: a loop that drifts through itself</td></tr>
+<tr><td class="n">any slice, each time</td><td>the step's slice is <i>any (random)</i>: every time it plays it picks one of the slices the pattern's other steps use (or of all, if none do)</td></tr>
+<tr><td class="n">start jitter</td><td>a lock of the sampler's start on every step, a little different each (up to a third into the slice or sample); <i>no start locks</i> takes them away</td></tr></table>
+<p>A step's slice is also in the step panel (<i>slice</i>: note, 1 … 64, or any). Locks of the sampler's start, end, pitch, filter and envelope work on every step as on any device, with slides between them.</p>
+
+<h2 id="grooves">grooves</h2>
+<p>A groove is a feel: how far each sixteenth of a bar is pushed or pulled, and how hard it is. <b>seq → groove</b> gives the selected track one; it shapes every pattern of the track as it plays, without changing the steps:</p>
+<table class="params"><tr><th>item</th><th>does</th></tr>
+<tr><td class="n">built in</td><td>mpc swing at 54, 58, 62, 66 and 71 %; triplet shuffle; drunk (a late, uneven backbeat); push (early offbeats); rominimal skip; dilla (lazy and uneven)</td></tr>
+<tr><td class="n">from the clip under the playhead</td><td>the hits of an audio loop on this track (where they play), or a note clip's notes: their place against the sixteenths and their weight, over up to four bars. Borrow the feel of a record</td></tr>
+<tr><td class="n">from this pattern</td><td>its micro timing and accents, to put on other tracks</td></tr>
+<tr><td class="n">amount</td><td>25 % to 150 %</td></tr>
+<tr><td class="n">write it into the steps</td><td>into the pattern's micro timing and velocities (the micro range is widened if the groove needs it, every other step keeping its timing); the groove is then off</td></tr>
+<tr><td class="n">save this groove</td><td>a <code>.fgroove</code> file in <code>Documents/faltung sndstudio/grooves</code>, then under <i>saved</i></td></tr></table>
+<p>It adds to the swing, the steps' own micro timing and the track's shift. A groove is saved with its track (and in track templates).</p></section><section class="page"><h2 id="followactions">follow actions</h2>
+<p>In the session, a pattern can hand over to another by itself after it has played a number of times: long, changing parts from a few patterns without arranging them.
+<b>seq → follow</b>, for the pattern shown:</p>
+<table class="params"><tr><th>item</th><th>does</th></tr>
+<tr><td class="n">after it has played</td><td>1 … 32 times (off: it loops)</td></tr>
+<tr><td class="n">then · or else · chance</td><td>the action, a second one, and how often the first is taken (100 % … 10 %)</td></tr>
+<tr><td class="n">actions</td><td><i>again</i>, <i>next</i> and <i>previous</i> (the next pattern with steps in it), <i>first</i>, <i>any</i>, <i>another</i> (never itself), <i>stop</i></td></tr>
+<tr><td class="n">the same for every pattern</td><td>this pattern's follow action on all of the track's patterns</td></tr></table>
+<p>The change happens exactly where the pattern ends. Launching a pattern by hand starts it again from there. Follow actions are for the session; the song and the arrangement play what they say.</p>
+
+<h2 id="midifx">midi effects</h2>
+<p>In front of an instrument (the suite's, the studio's or a hosted one) the track can have up to four midi effects, in order: <b>seq → midi fx</b> → <i>+ arpeggiator</i> … ; each one's menu edits it, switches it off, moves it earlier or removes it.</p>
+<table class="params"><tr><th>effect</th><th>does</th></tr>
+<tr><td class="n">arpeggiator</td><td>the notes held (by steps, note clips or a keyboard) played one at a time: rate (any division, triplets and dotted too), up, down, up and down, random, as played; 1 - 4 octaves; gate; velocity</td></tr>
+<tr><td class="n">chord</td><td>every note becomes a chord: up to three more notes (± 24 semitones each) and their velocity</td></tr>
+<tr><td class="n">generator</td><td>makes notes by itself while playing: rate, density (the chance of a note on each beat of the rate), scale (chromatic, major, minor, pentatonic, dorian, phrygian, or the track's own, scala files too), range, root, length and velocity spread. The notes coming in still play</td></tr>
+<tr><td class="n">chance</td><td>how many notes get through, velocity spread, octave jumps</td></tr></table>
+<p>What the effects play is in the midi export too. They are saved with the track.</p></section><section class="page"><h2 id="dubstep">bass tools: ott, wobble, glide</h2>
+<p><b>ott</b> (a studio device): three bands (split where you set them), each compressed down above one level and pushed up below another, as hard as <i>depth</i> says,
+with <i>time</i> for how fast; upward and downward amounts, in and out gain, and each band's level. Quiet detail comes up, loud parts come down: a bass, a riser, a
+pad or a whole mix becomes dense and bright. In the test a sine 44 db quieter than another came out about 17 db apart.</p>
+<p>The rest of a modern bass is already in the studio: <b>wb1</b> has its wobble (cutoff, vowel, fm, drive, pitch and comb on a synced rate), a mod envelope on pitch
+(a pitch drop on each note), glide and its own ott. Lock the wobble's rate on steps for the classic speed changes (1/8, 1/8 t, 1/16 …); modulator lfos have triplet
+and dotted rates and <i>retrigger</i> (from each note). Resample and chop: bounce the bass into a sampler (it is sliced on its hits), then put the slices on steps.</p>
+
+<h2 id="xmod">xmod: one track modulating another, at audio rate</h2>
+<p><b>xmod</b> (a studio device) takes the track's <b>key</b> (any track, or the master: the strip's <i>key</i>) and uses its sound, sample by sample, to change this track:
+<i>ring</i> (multiplied: metallic, bell-like), <i>amplitude</i>, <i>phase</i> (a short delay moved by the key: through-zero flanging, fm-like), <i>filter</i> (a low-pass whose cutoff moves
+±4 octaves with the key, at audio rate), <i>fold</i> (the key drives a wavefolder), <i>sample &amp; hold</i> (this track sampled each time the key rises through zero).
+Amount, smoothing of the key, delay, cutoff and resonance, key gain and mix.</p>
+
+<h2 id="specfreeze">spectral freeze</h2>
+<p>Right-click a track's name → <b>spectral freeze at the playhead</b>: the track's sound at the playhead (its whole chain, rendered) is held as an endless pad: its spectrum,
+moving gently, written into a 16-second file that loops without a seam, on a new audio track under it, at the playhead, eight bars long (drag it longer: it loops). A chord, a
+vocal syllable, a hit's ring: frozen into a drone.</p></section><section class="page"><h2 id="seq">seq</h2>
 <img class="shot" src="img/sndstudio-2.png" alt="sndstudio-2">
 <h3>the track</h3>
 <table class="params"><tr><th>control</th><th>what it does</th></tr>
