@@ -172,6 +172,45 @@ void Session::setClipsMuted (const std::vector<ClipRef>& refs, bool muted)
     }
 }
 
+std::vector<ClipRef> Session::takesOf (const ClipRef& r) const
+{
+    std::vector<ClipRef> v;
+    auto* t = clipTrack (r);
+    if (! t || ! r.audio) return v;
+    const AudioClip* me = nullptr; for (auto& c : *t->aclips) if (c.id == r.id) me = &c;
+    if (! me || me->takeGroup == 0) return v;
+    std::vector<std::pair<int, int>> order;
+    for (auto& c : *t->aclips)
+        if (c.takeGroup == me->takeGroup && c.startBar < me->startBar + me->bars - kEps && c.startBar + c.bars > me->startBar + kEps) order.push_back ({ c.take, c.id });
+    std::sort (order.begin(), order.end());
+    for (auto& [k, id] : order) v.push_back ({ t->uid, id, true });
+    return v;
+}
+void Session::chooseTake (const ClipRef& r)
+{
+    auto takes = takesOf (r);
+    if (takes.empty()) return;
+    auto* t = clipTrack (r);
+    std::set<int> others; for (auto& x : takes) if (x.id != r.id) others.insert (x.id);
+    editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) { if (c.id == r.id) c.muted = false; else if (others.count (c.id)) c.muted = true; } });
+}
+void Session::setClipName (const ClipRef& r, const juce::String& name)
+{
+    auto* t = clipTrack (r); if (! t) return;
+    if (r.audio) editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == r.id) c.name = name; });
+    else editClips (*t, [&] (std::vector<Clip>& v) { for (auto& c : v) if (c.id == r.id) c.name = name; });
+}
+void Session::setClipColour (const std::vector<ClipRef>& refs, juce::uint32 colour)
+{
+    for (auto& t : tracks)
+    {
+        std::set<int> pat, aud;
+        for (auto& r : refs) if (r.track == t->uid) (r.audio ? aud : pat).insert (r.id);
+        if (! pat.empty()) editClips (*t, [&] (std::vector<Clip>& v) { for (auto& c : v) if (pat.count (c.id)) c.colour = colour; });
+        if (! aud.empty()) editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (aud.count (c.id)) c.colour = colour; });
+    }
+}
+
 Session::ClipBoard Session::copyClips (const std::vector<ClipRef>& refs) const
 {
     ClipBoard b; b.startBar = 1.0e12; b.endBar = 0;

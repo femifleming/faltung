@@ -214,7 +214,19 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
             if (metronome.load (std::memory_order_relaxed)) clicks (o, len, p, spb);
             p += len / spb; done += len;
             if (std::abs (p - limit) < 1.0e-6) p = limit;   // land exactly on the bar line
-            if (loop && lEnd > lStart && p >= lEnd - 1.0e-6) { p = lStart; for (auto& t : tracks) t->lastStepN = -1; }
+            if (loop && lEnd > lStart && p >= lEnd - 1.0e-6)
+            {
+                p = lStart; for (auto& t : tracks) t->lastStepN = -1;
+                // recording over the loop: a pass ends here (a take each time round)
+                if (recording.load (std::memory_order_relaxed))
+                    for (auto& t : tracks)
+                        if (t->recWriter && t->recWritten > 0)
+                        {
+                            const int k = t->recWrapCount.load (std::memory_order_relaxed);
+                            if (k < (int) t->recWraps.size()) { t->recWraps[(size_t) k] = t->recWritten; t->recWrapCount.store (k + 1, std::memory_order_release); }
+                            t->recActive.store (true);   // (punch: in again for the next pass)
+                        }
+            }
         }
         internalPpq.store (p);
     }
@@ -404,6 +416,7 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
             {
                 t.recActive.store (true);
                 t.recStartPpq = ppq0 - (t.inputSource.load() == -2 ? h.inputLatency / spb : 0.0);
+                t.recLatency = t.inputSource.load() == -2 ? (double) h.inputLatency : 0.0;
             }
             if (! t.recActive.load()) continue;
             if (pu && ppq0 >= lE - 1.0e-9) { t.recActive.store (false); continue; }

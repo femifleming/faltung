@@ -105,6 +105,8 @@ struct Track
     juce::AudioFormatWriter::ThreadedWriter* recWriter = nullptr;
     std::atomic<bool> recActive { false };
     double recStartPpq = 0; juce::int64 recWritten = 0, recDropped = 0; int recChannels = 2; juce::File recFile; int recClipId = 0;
+    // takes: where in the file each pass of the loop ended (written by the audio thread at the wrap), the input's latency
+    std::array<juce::int64, 512> recWraps {}; std::atomic<int> recWrapCount { 0 }; double recLatency = 0;
 
     Track();
     bool isReturn() const { return uid < 0; }
@@ -346,6 +348,13 @@ public:
     std::vector<ClipRef> duplicateClips (const std::vector<ClipRef>&);
     void deleteClips (const std::vector<ClipRef>&);
     void setClipsMuted (const std::vector<ClipRef>&, bool muted);
+    /** a take plays: the takes of its group that overlap it go quiet (comping: split the takes, choose one a part) */
+    void chooseTake (const ClipRef&);
+    /** the takes stacked with a clip (its group, overlapping it), take order */
+    std::vector<ClipRef> takesOf (const ClipRef&) const;
+    /** clips' names and colours (0: the track's) */
+    void setClipName (const ClipRef&, const juce::String&);
+    void setClipColour (const std::vector<ClipRef>&, juce::uint32);
     struct ClipBoard
     {
         struct Item { int track = 0, row = 0; bool audio = false; Clip clip; AudioClip aclip; };
@@ -452,7 +461,7 @@ private:
     juce::MidiBuffer scratchMidi, emptyMidi;
     std::vector<Target> gestures; mutable juce::CriticalSection gestureLock; double lastRecorded = 0;
     std::atomic<bool> panicFlag { false }, relocate { false };
-    int nextUid = 1, nextClipId = 1, nextModId = 1;
+    int nextUid = 1, nextClipId = 1, nextModId = 1, nextTakeGroup = 1;
     bool prepared = false, wasPlaying = false; double expectedPpq = 0;
     std::map<juce::String, std::weak_ptr<const Sample>> sampleCache;
     juce::AudioFormatManager audioFormats;

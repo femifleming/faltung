@@ -269,3 +269,8 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 > when its all tested and done push to github under faltung squite qnd make homebrew cask of it.
 
 (umleitung — the Loopback / Audio Hijack / eqMac-style app — in umleitung/, its own requests in umleitung/REQUESTS.md; built and packaged by CI as umleitung-macOS.zip on every release; cask umleitung.)
+
+> continue sndstudipo
+> complete sndstudio completely / work on both at once, complete all tasks
+
+(Takes: recording over the loop keeps every pass, choose / comp them; automation points selected, moved, copied, scaled together; clip names and colours.)

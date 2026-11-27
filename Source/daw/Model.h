@@ -106,6 +106,8 @@ struct Clip
     int pattern = 0; double startBar = 0, bars = 4;
     double offset = 0;               // beats into the pattern where the clip starts (a clip split or trimmed from the left)
     bool muted = false;
+    juce::String name;               // shown on the clip (empty: the pattern's number)
+    juce::uint32 colour = 0;         // 0: the track's
     int id = 0;                      // stable while the project is open (selection, undo)
 };
 /** a clip on the timeline, by track and id */
@@ -190,6 +192,9 @@ struct AudioClip
     double fadeIn = 0, fadeOut = 0;  // seconds
     bool reverse = false, loop = false;
     bool muted = false;
+    juce::String name;               // shown on the clip (empty: the file's name)
+    juce::uint32 colour = 0;         // 0: the track's
+    int takeGroup = 0, take = 0;     // takes recorded over a loop: one group, numbered from 1 (the one not muted plays)
     float pitch = 0.0f;              // semitones (+ cents as fraction)
     int mode = 0;                    // 0 repitch (speed = pitch), 1 stretch (length free, pitch kept), 2 warp (fits the bars at the project tempo)
     double stretch = 1.0;            // mode 1: output seconds / source seconds

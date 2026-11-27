@@ -979,7 +979,7 @@ void Session::startRecording()
         std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), sr, (unsigned) ch, 32, {}, 0));
         if (! w) continue;
         auto tw = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (w.release(), *writerThread, 1 << 18);
-        t->recFile = f; t->recChannels = ch; t->recWritten = 0; t->recDropped = 0; t->recClipId = nextClipId++;
+        t->recFile = f; t->recChannels = ch; t->recWritten = 0; t->recDropped = 0; t->recClipId = nextClipId++; t->recWrapCount.store (0);
         {
             const juce::SpinLock::ScopedLockType sl (lock);
             t->recWriter = tw.get(); t->recActive.store (false);
@@ -1016,7 +1016,28 @@ void Session::finishRecordings()
             if (startPpq >= 0) c.startBar = startPpq / 4.0;
             else { c.startBar = 0; c.offset = -startPpq * 60.0 / tempo(); }
             c.bars = ((double) t->recWritten / sr - c.offset) / (60.0 / tempo() * 4.0);
-            editAudioClips (*t, [&] (std::vector<AudioClip>& v) { v.push_back (c); });
+            const int wraps = t->recWrapCount.load (std::memory_order_acquire);
+            if (wraps == 0) editAudioClips (*t, [&] (std::vector<AudioClip>& v) { v.push_back (c); });
+            else
+            {
+                // over the loop: one take a pass, all from the one file, stacked on the loop; the last one plays
+                const double barSecs = 4.0 * 60.0 / tempo(), lS = loopStart.load(), lE = loopEnd.load();
+                const int group = nextTakeGroup++;
+                std::vector<AudioClip> takes;
+                for (int k = 0; k <= wraps; ++k)
+                {
+                    const juce::int64 from = k == 0 ? 0 : t->recWraps[(size_t) k - 1], to = k < wraps ? t->recWraps[(size_t) k] : t->recWritten;
+                    if (to - from < (juce::int64) (0.05 * sr)) continue;   // (a sliver at the end: not a take)
+                    AudioClip tk = c; tk.id = 0; tk.takeGroup = group; tk.take = (int) takes.size() + 1;
+                    if (k == 0) { tk.bars = std::min ((double) (to - from) / sr - c.offset, (lE - c.startBar) * barSecs) / barSecs; }
+                    else { tk.startBar = lS; tk.offset = (double) (from + (juce::int64) t->recLatency) / sr; tk.bars = std::min ((double) (to - from) / sr, (lE - lS) * barSecs) / barSecs; }
+                    if (tk.bars <= 0) continue;
+                    takes.push_back (tk);
+                }
+                for (size_t k = 0; k < takes.size(); ++k) takes[k].muted = k + 1 < takes.size();
+                if (! takes.empty()) takes.front().id = t->recClipId;
+                editAudioClips (*t, [&] (std::vector<AudioClip>& v) { v.insert (v.end(), takes.begin(), takes.end()); });
+            }
         }
         t->recFile = juce::File(); t->recWritten = 0;
     }
@@ -1190,7 +1211,7 @@ void Session::recomputeIds()
     {
         u = std::max (u, t.uid + 1);
         t.forEachDevice ([&] (Device& d) { u = std::max (u, d.uid + 1); });
-        for (auto& c : *t.aclips) cl = std::max (cl, c.id + 1);
+        for (auto& c : *t.aclips) { cl = std::max (cl, c.id + 1); nextTakeGroup = std::max (nextTakeGroup, c.takeGroup + 1); }
         for (auto& c : *t.clips) cl = std::max (cl, c.id + 1);
         for (auto& m : *t.mods) mo = std::max (mo, m.id + 1);
     };

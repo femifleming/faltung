@@ -2107,6 +2107,102 @@ int main (int argc, char** argv)
         const auto& m2 = p2.session.meterMap();
         check (m2.getChanges().size() == 2 && m2.sigOf (0).text() == "7/8" && m2.sigOf (9).text() == "5/8" && std::abs (m2.barStart (10) - (8 * 3.5 + 3 + 2.5)) < 1.0e-12, "the meter comes back");
     }
+    std::cout << "== takes: recording over the loop, choosing, comping; clip names and colours\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        s.removeTrack (0); s.setTempo (120.0f);
+        s.projectFile = tmp.getChildFile ("takes.fstudio"); s.projectName = "takes";
+        auto* at = s.addTrack ("vox", -1, TrackKind::Audio);
+        at->armed.store (true); at->inputSource.store (-2); at->inputChannel.store (1); at->inputCount.store (2); at->monitor.store ((int) Monitor::Off);
+        p.standaloneInputLatency = 0;
+        s.loopOn.store (true); s.loopStart.store (0.0); s.loopEnd.store (1.0);
+        const int bar = (int) (4.0 * spb (120));
+        s.startRecording();
+        // the input says which pass it is: 0.1 the first time round, 0.2, 0.3
+        render (p, 3.0, {}, 2, [bar] (juce::AudioBuffer<float>& b, int pos) { for (int i = 0; i < b.getNumSamples(); ++i) { const float v = 0.1f * (float) (1 + (pos + i) / bar); b.setSample (0, i, v); b.setSample (1, i, v); } });
+        s.stopRecording();
+        std::cout << "  three passes of a one-bar loop: " << at->aclips->size() << " clips\n";
+        check (at->aclips->size() == 3, "a take a pass");
+        if (at->aclips->size() == 3)
+        {
+            std::vector<AudioClip> tk (at->aclips->begin(), at->aclips->end());
+            std::sort (tk.begin(), tk.end(), [] (auto& a, auto& b) { return a.take < b.take; });
+            bool shape = true;
+            for (int k = 0; k < 3; ++k) shape = shape && tk[(size_t) k].takeGroup == tk[0].takeGroup && tk[(size_t) k].take == k + 1 && std::abs (tk[(size_t) k].startBar) < 1.0e-9 && std::abs (tk[(size_t) k].bars - 1.0) < 0.01 && tk[(size_t) k].muted == (k < 2);
+            check (shape, "three takes, one group, each the loop's bar long, the last one playing");
+            auto rec = readWav (juce::File (tk[0].path));
+            bool right = true; for (int k = 0; k < 3; ++k) { const int at0 = (int) std::lround (tk[(size_t) k].offset * kSr) + 1000; right = right && at0 < rec.getNumSamples() && std::abs (rec.getSample (0, at0) - 0.1f * (k + 1)) < 1.0e-6f; }
+            check (right, "each take starts where its pass is in the file");
+            // playback: the last take; then take 1 chosen; then comped (take 1, then take 2 from half way)
+            at->armed.store (false);
+            auto level = [&] (double atBar) { auto r = render (p, 1.0); return r.out.getSample (0, (int) (atBar * bar)); };
+            check (std::abs (level (0.25) - 0.3f) < 1.0e-3f, "the last take plays");
+            const ClipRef t1 { at->uid, tk[0].id, true };
+            check (s.takesOf (t1).size() == 3, "its takes: three");
+            s.chooseTake (t1);
+            check (std::abs (level (0.25) - 0.1f) < 1.0e-3f, "take 1 chosen: take 1 plays");
+            s.splitClips (s.allClips(), 0.5);
+            ClipRef secondHalfOf2 {};
+            for (auto& c : *at->aclips) if (c.take == 2 && c.startBar > 0.4) secondHalfOf2 = { at->uid, c.id, true };
+            s.chooseTake (secondHalfOf2);
+            const float a = level (0.25), b = level (0.75);
+            std::cout << "  comped: the first half " << a << ", the second " << b << "\n";
+            check (std::abs (a - 0.1f) < 1.0e-3f && std::abs (b - 0.2f) < 1.0e-3f, "comping: take 1 then take 2 (split, and a take chosen for the second part)");
+            // names and colours, saved and reopened
+            s.setClipName (t1, "verse");
+            s.setClipColour ({ t1 }, 0xff8ec3e6);
+            juce::String err; check (p.saveProject (s.projectFile, err), "save: " + err);
+            StudioProcessor p2; check (p2.loadProject (s.projectFile, err), "reopen: " + err);
+            bool kept = false; int groups = 0;
+            for (auto& c : *p2.session.tracks[0]->aclips) { if (c.name == "verse" && c.colour == 0xff8ec3e6) kept = true; if (c.takeGroup) ++groups; }
+            check (kept && groups == (int) at->aclips->size(), "names, colours and takes come back");
+        }
+    }
+    std::cout << "== automation points: selected, moved together, copied, pasted, scaled, removed\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        auto& t = *s.tracks[0];
+        const Target lt = s.targetFor (t, *t.mixer, MP_LEVEL);
+        s.editLane (lt, [] (AutoLane& l) { l.pts = { { 0.0, 0.5f, 0.0f }, { 4.0, 0.2f, 0.0f }, { 8.0, 0.8f, 0.0f }, { 12.0, 0.4f, 0.0f } }; });
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get());
+        ed->setSize (1440, 900); se->selectTrack (&t); se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        arr->showBars (0.0, 4.0); s.gridIndex.store (3); s.snap.store (true);
+        const auto now = juce::Time::getCurrentTime(); auto src = juce::Desktop::getInstance().getMainMouseSource();
+        auto ev = [&] (juce::Point<float> q, juce::ModifierKeys m, juce::Point<float> down, bool dragged) { return juce::MouseEvent (src, q, m, 0, 0, 0, 0, 0, arr, arr, now, down, now, 1, dragged); };
+        int row = 0; { const auto tg = arr->laneTargets(); for (int i = 0; i < (int) tg.size(); ++i) if (tg[(size_t) i] == lt) row = i; }
+        const float y0 = (float) (arr->autoArea().getY() + 26 + row * 52);
+        auto yOf = [&] (float v) { return y0 + 46.0f - v * 42.0f; };
+        // cmd-drag a box around the two middle points
+        const juce::Point<float> a ((float) arr->xd (0.9), y0 + 2.0f), b ((float) arr->xd (2.1), y0 + 48.0f);
+        arr->mouseDown (ev (a, juce::ModifierKeys::commandModifier | juce::ModifierKeys::leftButtonModifier, a, false));
+        for (int k = 1; k <= 5; ++k) arr->mouseDrag (ev (a + (b - a) * (k / 5.0f), juce::ModifierKeys::commandModifier | juce::ModifierKeys::leftButtonModifier, a, true));
+        arr->mouseUp (ev (b, juce::ModifierKeys(), a, true));
+        check (arr->selPts.size() == 2 && arr->selLane == lt, "a box (cmd-drag) selects the points in it (" + juce::String (arr->selPts.size()) + ")");
+        // drag one of them a bar later and up: both move
+        const juce::Point<float> d0 ((float) arr->xd (1.0), yOf (0.2f)), d1 ((float) arr->xd (2.0), yOf (0.2f) - 4.2f);
+        arr->mouseDown (ev (d0, juce::ModifierKeys::leftButtonModifier, d0, false));
+        for (int k = 1; k <= 8; ++k) arr->mouseDrag (ev (d0 + (d1 - d0) * (k / 8.0f), juce::ModifierKeys::leftButtonModifier, d0, true));
+        arr->mouseUp (ev (d1, juce::ModifierKeys(), d0, true));
+        auto l = s.lane (lt);
+        juce::String got; for (auto& pt : l->pts) got << pt.beat << ":" << juce::String (pt.value, 2) << " ";
+        std::cout << "  after moving the pair a bar later and up: " << got << "\n";
+        check (l->pts.size() == 4 && std::abs (l->pts[1].beat - 8.0) < 1.0e-9 && std::abs (l->pts[2].beat - 12.0) < 1.0e-9 && std::abs (l->pts[1].value - 0.3f) < 0.02f && std::abs (l->pts[2].value - 0.9f) < 0.02f,
+               "the selected points moved together, on the grid, the same way in value");
+        // copy, paste at the playhead
+        s.locate (5.0); se->key (juce::KeyPress ('c', juce::ModifierKeys::commandModifier, 'c')); se->key (juce::KeyPress ('v', juce::ModifierKeys::commandModifier, 'v'));
+        l = s.lane (lt);
+        bool pasted = false; for (auto& pt : l->pts) if (std::abs (pt.beat - 20.0) < 1.0e-9) pasted = true;
+        check (l->pts.size() == 6 && pasted, "cmd+c, cmd+v: the points again at the playhead (bar 6)");
+        // scale, invert, delete (the pasted pair is selected now)
+        arr->editSelectedPoints ([] (std::vector<AutoPoint>& pts, const std::vector<int>& k) { for (int i : k) pts[(size_t) i].value *= 0.5f; });
+        l = s.lane (lt); float sum = 0; for (int k : arr->selPts) sum += l->pts[(size_t) k].value;
+        check (std::abs (sum - 0.6f) < 0.03f, "scaled to half");
+        se->key (juce::KeyPress (juce::KeyPress::backspaceKey));
+        check (s.lane (lt)->pts.size() == 4 && arr->selPts.empty(), "delete: the selected points are gone, nothing else");
+    }
+
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
@@ -2256,8 +2352,10 @@ int main (int argc, char** argv)
                 s.editMarkers ([] (std::vector<Marker>& m) { m.push_back ({ "vocal in", 16.0 }); });
                 s.gridIndex.store (12); arr->showBars (15.6, 18.4); arr->setTrackHeight (72); s.locate (16.75);
                 arr->scrollY = std::max (0, s.indexOf (at) * arr->laneH - 3 * arr->laneH);
+                if (at->aclips->size() > 1) { const ClipRef r { at->uid, (*at->aclips)[1].id, true }; s.setClipName (r, "verse (take 2)"); s.setClipColour ({ r }, 0xff8d9bd6); }
+                arr->selLane = s.targetFor (*at, *at->mixer, MP_LEVEL); arr->selPts = { 1, 2 };
                 run (20); snap (*ed, "sndstudio-arrange-zoom");
-                arr->setTrackHeight (40); s.gridIndex.store (0); arr->sel.clear();
+                arr->setTrackHeight (40); s.gridIndex.store (0); arr->sel.clear(); arr->selPts.clear();
                 // time signatures: 7/8 from bar 17, a 2+2+3/8 3/4 cycle from bar 21
                 { fal::daw::timeline::Sig a78, a7g, a34; fal::daw::timeline::parseSig ("7/8", a78); fal::daw::timeline::parseSig ("2+2+3/8", a7g); fal::daw::timeline::parseSig ("3/4", a34);
                   s.setMeterAt (16, { a78 }); s.setMeterAt (20, { a7g, a34 }); }

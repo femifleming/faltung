@@ -73,7 +73,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         x->setAttribute ("i", i); x->setAttribute ("length", p->length);
         for (int s = 0; s < kMaxSteps; ++s) if (p->s[(size_t) s].on || p->s[(size_t) s].micro != 0.0f || std::abs (p->s[(size_t) s].dur - 1.0f) > 1.0e-6f) saveStep (*x, s, p->s[(size_t) s]);
     }
-    for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); }
+    for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); if (c.name.isNotEmpty()) x->setAttribute ("name", c.name); if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour)); }
     for (auto& c : *t.aclips)
     {
         auto* x = e.createNewChildElement ("aclip");
@@ -84,6 +84,9 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         x->setAttribute ("fin", c.fadeIn); x->setAttribute ("fout", c.fadeOut); x->setAttribute ("rev", c.reverse ? 1 : 0); x->setAttribute ("loop", c.loop ? 1 : 0);
         x->setAttribute ("pitch", c.pitch); x->setAttribute ("mode", c.mode); x->setAttribute ("stretch", c.stretch);
         if (c.muted) x->setAttribute ("muted", 1);
+        if (c.name.isNotEmpty()) x->setAttribute ("name", c.name);
+        if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
+        if (c.takeGroup) { x->setAttribute ("takes", c.takeGroup); x->setAttribute ("take", c.take); }
     }
     if (! t.chain->empty()) { juce::StringArray a; for (int p : *t.chain) a.add (juce::String (p)); e.createNewChildElement ("chain")->addTextElement (a.joinIntoString (" ")); }
     for (auto& r : *t.routes) { auto* x = e.createNewChildElement ("route"); x->setAttribute ("dst", r.dst); x->setAttribute ("ch", r.channels); x->setAttribute ("so", r.srcOffset); x->setAttribute ("do", r.dstOffset); x->setAttribute ("gain", r.gain); if (r.feedback) x->setAttribute ("fb", 1); }
@@ -156,6 +159,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     {
         Clip c; c.pattern = x->getIntAttribute ("pattern"); c.startBar = x->getDoubleAttribute ("start"); c.bars = x->getDoubleAttribute ("bars", 4.0);
         c.offset = x->getDoubleAttribute ("offset"); c.muted = x->getIntAttribute ("muted") != 0; c.id = x->getIntAttribute ("id", 0);
+        c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
         nextClipId = std::max (nextClipId, c.id + 1);
         clips.push_back (c);
     }
@@ -174,6 +178,9 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         c.startBar = x->getDoubleAttribute ("start"); c.bars = x->getDoubleAttribute ("bars", 1.0); c.offset = x->getDoubleAttribute ("offset"); c.gain = (float) x->getDoubleAttribute ("gain", 1.0);
         c.fadeIn = x->getDoubleAttribute ("fin"); c.fadeOut = x->getDoubleAttribute ("fout"); c.reverse = x->getIntAttribute ("rev") != 0; c.loop = x->getIntAttribute ("loop") != 0;
         c.pitch = (float) x->getDoubleAttribute ("pitch"); c.mode = x->getIntAttribute ("mode"); c.stretch = x->getDoubleAttribute ("stretch", 1.0); c.muted = x->getIntAttribute ("muted") != 0;
+        c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
+        c.takeGroup = x->getIntAttribute ("takes"); c.take = x->getIntAttribute ("take");
+        nextTakeGroup = std::max (nextTakeGroup, c.takeGroup + 1);
         nextClipId = std::max (nextClipId, c.id + 1);
         aclips.push_back (c);
     }
@@ -263,7 +270,7 @@ void Session::clear()
     multiOut.store (false); masterBypass.store (false); snap.store (true); gridIndex.store (0); follow.store (true); punch.store (false); metronome.store (false); countInBars.store (1);
     selectedTrack.store (0); currentScene.store (-1); internalPpq.store (0.0);
     projectName = "untitled"; projectFile = juce::File();
-    nextUid = 1; nextClipId = 1; nextModId = 1;
+    nextUid = 1; nextClipId = 1; nextModId = 1; nextTakeGroup = 1;
     rebuildLatency();
     dirty = false;
 }

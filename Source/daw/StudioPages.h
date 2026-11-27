@@ -514,21 +514,32 @@ public:
                 auto r = juce::Rectangle<float> ((float) xd (c.startBar), (float) y + 3.0f, (float) (c.bars * pxPerBar) - 1.0f, (float) laneH - 7.0f);
                 r = r.getIntersection (juce::Rectangle<float> ((float) left - 4.0f, (float) y, (float) la.getWidth() + 8.0f, (float) laneH));
                 const bool live = ! c.muted && s.mode.load() == (int) PlayMode::Arrange && t.shownPattern.load() == c.pattern && s.currentBar() >= c.startBar && s.currentBar() < c.startBar + c.bars && s.playPpq.load() >= 0;
-                g.setColour (trackColour (t).withAlpha (c.muted ? 0.18f : live ? 1.0f : 0.6f));
+                const auto cc = c.colour ? juce::Colour (c.colour) : trackColour (t);
+                g.setColour (cc.withAlpha (c.muted ? 0.18f : live ? 1.0f : 0.6f));
                 if (theme.mirror) g.fillRect (r); else g.fillPath (ui::skewRect (r, 0.15f));
                 if (isSelected ({ t.uid, c.id, false })) { g.setColour (juce::Colours::white); g.drawRect (r, 2.0f); }
-                g.setColour (ui::inkFor (trackColour (t)).withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (10.0f));
-                juce::String label = "p" + juce::String (c.pattern + 1); if (c.offset > 1.0e-9) label << " +" << timeline::formatLength (c.offset).fromFirstOccurrenceOf (".", false, false); if (c.muted) label << " (muted)";
+                g.setColour (ui::inkFor (cc).withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (10.0f));
+                juce::String label = c.name.isNotEmpty() ? c.name + "  p" + juce::String (c.pattern + 1) : "p" + juce::String (c.pattern + 1); if (c.offset > 1.0e-9) label << " +" << timeline::formatLength (c.offset).fromFirstOccurrenceOf (".", false, false); if (c.muted) label << " (muted)";
                 g.drawText (label, r.reduced (4.0f, 0.0f).withHeight (std::min (r.getHeight(), 16.0f)), juce::Justification::centredLeft, true);
             }
             for (auto& c : *t.aclips)
             {
                 if (c.startBar + c.bars < vis0 || c.startBar > vis1) continue;
+                // a quiet take under the one that plays: only its badge shows (alt+up / down, or the clip's menu)
+                int takeN = 0, takeK = 0;
+                if (c.takeGroup)
+                {
+                    bool covered = false;
+                    for (auto& o : *t.aclips) if (o.takeGroup == c.takeGroup && &o != &c && o.startBar < c.startBar + c.bars - 1.0e-9 && o.startBar + o.bars > c.startBar + 1.0e-9) { ++takeN; if (! o.muted && c.muted) covered = true; }
+                    ++takeN; takeK = c.take;
+                    if (covered) continue;
+                }
                 auto full = juce::Rectangle<float> ((float) xd (c.startBar), (float) y + 3.0f, (float) (c.bars * pxPerBar) - 1.0f, (float) laneH - 6.0f);
                 auto r = full.getIntersection (juce::Rectangle<float> ((float) left - 4.0f, (float) y, (float) la.getWidth() + 8.0f, (float) laneH));
-                g.setColour (trackColour (t).withAlpha (c.muted ? 0.12f : 0.35f)); g.fillRect (r);
+                const auto cc = c.colour ? juce::Colour (c.colour) : trackColour (t);
+                g.setColour (cc.withAlpha (c.muted ? 0.12f : 0.35f)); g.fillRect (r);
                 if (! c.muted) drawWave (g, c, full, r, ui::inkFor (theme.ground));
-                g.setColour (isSelected ({ t.uid, c.id, true }) ? juce::Colours::white : trackColour (t)); g.drawRect (r, isSelected ({ t.uid, c.id, true }) ? 2.0f : 1.0f);
+                g.setColour (isSelected ({ t.uid, c.id, true }) ? juce::Colours::white : cc); g.drawRect (r, isSelected ({ t.uid, c.id, true }) ? 2.0f : 1.0f);
                 // the fades, and their handles at the top corners
                 const double secPerBar = 4.0 * 60.0 / s.tempo();
                 const float fi = (float) (c.fadeIn / secPerBar * pxPerBar), fo = (float) (c.fadeOut / secPerBar * pxPerBar);
@@ -537,7 +548,8 @@ public:
                 if (fo > 1) g.drawLine (full.getRight() - fo, full.getY(), full.getRight(), full.getBottom(), 1.0f);
                 if (laneH >= 30) { g.fillRect (full.getX() + fi - 2.0f, full.getY(), 4.0f, 4.0f); g.fillRect (full.getRight() - fo - 2.0f, full.getY(), 4.0f, 4.0f); }
                 g.setColour (theme.ink.withAlpha (c.muted ? 0.5f : 1.0f)); g.setFont (uiFont (9.0f));
-                juce::String label = juce::File (c.path).getFileNameWithoutExtension();
+                juce::String label = c.name.isNotEmpty() ? c.name : juce::File (c.path).getFileNameWithoutExtension();
+                if (takeN > 1) label << "  take " << takeK << " of " << takeN;
                 if (std::abs (c.gain - 1.0f) > 1.0e-4f) label << "  " << juce::String (juce::Decibels::gainToDecibels (c.gain), 1) << " db";
                 if (c.muted) label << " (muted)";
                 g.drawText (label, r.reduced (5.0f, 0.0f).withHeight (12.0f).translated (0.0f, 4.0f), juce::Justification::centredLeft, true);
@@ -630,10 +642,14 @@ public:
                 const double b = pt.beat / 4.0;
                 if (b < bStart || b > bEnd) continue;
                 const float px = (float) xd (b), yy = (float) y + (float) (lh - 6) - pt.value * (float) (lh - 10);
+                const int ki = (int) (&pt - &l->pts[0]);
+                const bool sp = selLane == targets[(size_t) i] && std::find (selPts.begin(), selPts.end(), ki) != selPts.end();
                 g.setColour (juce::Colours::white); g.fillEllipse (px - 3.0f, yy - 3.0f, 6.0f, 6.0f);
+                if (sp) { g.setColour (juce::Colour (0xffee8e6e)); g.drawEllipse (px - 6.0f, yy - 6.0f, 12.0f, 12.0f, 2.0f); }
             }
         }
-        if (targets.empty()) { g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (ui::U ("automation: right-click any control → automate it on the timeline, or + lane · click: a point · shift-drag: draw freehand · alt-drag a point: its curve"), left + 8, aa.getY() + 6, aa.getWidth() - left - 16, 16, juce::Justification::centredLeft, true); }
+        if (dragMode == DragMode::PointBand) { const auto r = juce::Rectangle<int> (bandA, bandB); g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRect (r); g.setColour (juce::Colours::white.withAlpha (0.7f)); g.drawRect (r, 1); }
+        if (targets.empty()) { g.setColour (theme.ink.withAlpha (0.6f)); g.drawText (ui::U ("automation: right-click any control → automate it on the timeline, or + lane · click: a point · shift-drag: draw freehand · alt-drag a point: its curve · cmd-click / cmd-drag: select points (drag them together, right-click for more)"), left + 8, aa.getY() + 6, aa.getWidth() - left - 16, 16, juce::Justification::centredLeft, true); }
     }
     void laneMenu()
     {
@@ -691,11 +707,12 @@ public:
 
     // ---- editing (the edit menu and the keys) ---------------------------------------------------------------
     Session::ClipBoard board;
-    void copySel() { pruneSelection(); if (! sel.empty()) { board = ctx.s.copyClips (sel); say (juce::String (board.items.size()) + " clip(s) copied"); } }
-    void cutSel() { copySel(); deleteSel(); }
-    void deleteSel() { pruneSelection(); if (sel.empty()) return; ctx.s.deleteClips (sel); say (juce::String (sel.size()) + " clip(s) removed"); sel.clear(); repaint(); }
+    void copySel() { if (pointsSelected()) { copyPoints(); return; } pruneSelection(); if (! sel.empty()) { board = ctx.s.copyClips (sel); say (juce::String (board.items.size()) + " clip(s) copied"); } }
+    void cutSel() { if (pointsSelected()) { copyPoints(); deletePoints(); return; } copySel(); deleteSel(); }
+    void deleteSel() { if (pointsSelected()) { deletePoints(); return; } pruneSelection(); if (sel.empty()) return; ctx.s.deleteClips (sel); say (juce::String (sel.size()) + " clip(s) removed"); sel.clear(); repaint(); }
     void pasteAtPlayhead()
     {
+        if (! pointBoard.empty() && ctx.s.lane (selLane) && (board.empty() || pointsSelected() || sel.empty())) { pastePoints(); return; }
         if (board.empty()) { say ("nothing to paste"); return; }
         auto made = ctx.s.pasteClips (board, ctx.s.currentBar(), ctx.selected());
         if (! made.empty()) { sel = made; say (juce::String (made.size()) + " clip(s) pasted at " + pos (ctx.s.currentBar())); }
@@ -817,12 +834,80 @@ public:
         if (kc == juce::KeyPress::homeKey) { ctx.s.locate (0.0); scrollBar = 0; repaint(); return true; }
         if (kc == juce::KeyPress::endKey) { ctx.s.locate (ctx.s.projectBars()); return true; }
         if (kc == juce::KeyPress::deleteKey || kc == juce::KeyPress::backspaceKey) { deleteSel(); return true; }
-        if (kc == juce::KeyPress::escapeKey) { sel.clear(); repaint(); return true; }
+        if (kc == juce::KeyPress::escapeKey) { sel.clear(); selPts.clear(); repaint(); return true; }
+        // alt+up / alt+down: the take before / after (of the selected clip's takes)
+        if (mods.isAltDown() && (kc == juce::KeyPress::upKey || kc == juce::KeyPress::downKey) && ! sel.empty())
+        {
+            auto takes = ctx.s.takesOf (sel.front());
+            if (takes.size() > 1)
+            {
+                int cur = 0; for (int k = 0; k < (int) takes.size(); ++k) if (! ctx.s.clipMuted (takes[(size_t) k])) cur = k;
+                const int nk = juce::jlimit (0, (int) takes.size() - 1, cur + (kc == juce::KeyPress::upKey ? -1 : 1));
+                ctx.s.chooseTake (takes[(size_t) nk]); sel = { takes[(size_t) nk] }; say ("take " + juce::String (nk + 1) + " of " + juce::String (takes.size())); repaint();
+            }
+            return true;
+        }
         return false;
     }
 
     // ---- mouse --------------------------------------------------------------------------------------
-    enum class DragMode { None, Ruler, Loop, Marker, Song, LanePoint, Freehand, Move, TrimStart, TrimEnd, FadeIn, FadeOut, Band, Scroll };
+    enum class DragMode { None, Ruler, Loop, Marker, Song, LanePoint, Freehand, Move, TrimStart, TrimEnd, FadeIn, FadeOut, Band, Scroll, PointBand, PointsMove };
+    // the automation points selected (in one lane), and what a drag of them started from
+    Target selLane; std::vector<int> selPts; std::vector<AutoPoint> ptOrig; std::vector<bool> ptFlag; int ptBandRow = 0;
+    std::vector<AutoPoint> pointBoard;   // copied points (beats from the first)
+    bool pointsSelected() const { return ! selPts.empty() && ctx.s.lane (selLane) != nullptr; }
+    void editSelectedPoints (std::function<void (std::vector<AutoPoint>&, const std::vector<int>&)> fn)
+    {
+        auto sel = selPts;
+        ctx.s.editLane (selLane, [&] (AutoLane& l) { std::vector<int> ok; for (int k : sel) if (k < (int) l.pts.size()) ok.push_back (k); fn (l.pts, ok); });
+        repaint();
+    }
+    void deletePoints()
+    {
+        std::vector<int> sel = selPts; std::sort (sel.rbegin(), sel.rend());
+        editSelectedPoints ([sel] (std::vector<AutoPoint>& pts, const std::vector<int>&) { for (int k : sel) if (k < (int) pts.size()) pts.erase (pts.begin() + k); });
+        say (juce::String (sel.size()) + " point(s) removed"); selPts.clear();
+    }
+    void copyPoints()
+    {
+        pointBoard.clear(); auto l = ctx.s.lane (selLane); if (! l) return;
+        std::vector<int> sel = selPts; std::sort (sel.begin(), sel.end());
+        double first = 1.0e12; for (int k : sel) if (k < (int) l->pts.size()) first = std::min (first, l->pts[(size_t) k].beat);
+        for (int k : sel) if (k < (int) l->pts.size()) { auto pt = l->pts[(size_t) k]; pt.beat -= first; pointBoard.push_back (pt); }
+        say (juce::String (pointBoard.size()) + " point(s) copied");
+    }
+    /** the copied points into the selected lane (or the lane they came from) at the playhead, replacing what was there */
+    void pastePoints()
+    {
+        if (pointBoard.empty() || ! ctx.s.lane (selLane)) return;
+        const double at = ctx.s.currentBar() * 4.0, len = pointBoard.back().beat;
+        auto board = pointBoard;
+        ctx.s.editLane (selLane, [&] (AutoLane& l)
+        {
+            l.pts.erase (std::remove_if (l.pts.begin(), l.pts.end(), [&] (const AutoPoint& p) { return p.beat >= at - 1.0e-9 && p.beat <= at + len + 1.0e-9; }), l.pts.end());
+            for (auto pt : board) { pt.beat += at; l.pts.push_back (pt); }
+        });
+        auto l = ctx.s.lane (selLane); selPts.clear();
+        for (int k = 0; l && k < (int) l->pts.size(); ++k) if (l->pts[(size_t) k].beat >= at - 1.0e-9 && l->pts[(size_t) k].beat <= at + len + 1.0e-9) selPts.push_back (k);
+        say (juce::String (board.size()) + " point(s) pasted at " + pos (at / 4.0)); repaint();
+    }
+    void pointsMenu()
+    {
+        juce::PopupMenu m;
+        m.addItem (1, "remove " + juce::String (selPts.size()) + " point(s)  (delete)");
+        m.addItem (2, "copy  (cmd+c)"); m.addItem (3, "set the value..."); m.addItem (4, "scale the values (%)..."); m.addItem (5, "move the values up / down (%)...");
+        m.addItem (6, "flatten (all to their average)"); m.addItem (7, "invert (top to bottom)"); m.addItem (8, "straight lines between them (no curves)");
+        m.showMenuAsync (juce::PopupMenu::Options(), [this] (int r)
+        {
+            if (r == 1) deletePoints(); else if (r == 2) copyPoints();
+            else if (r == 3) ask ("set the value", "0 - 100 %", "50", [this] (juce::String t) { const float v = juce::jlimit (0.0f, 1.0f, t.getFloatValue() / 100.0f); editSelectedPoints ([v] (std::vector<AutoPoint>& p, const std::vector<int>& k) { for (int i : k) p[(size_t) i].value = v; }); });
+            else if (r == 4) ask ("scale the values", "percent of each value (around 0)", "50", [this] (juce::String t) { const float f = t.getFloatValue() / 100.0f; editSelectedPoints ([f] (std::vector<AutoPoint>& p, const std::vector<int>& k) { for (int i : k) p[(size_t) i].value = juce::jlimit (0.0f, 1.0f, p[(size_t) i].value * f); }); });
+            else if (r == 5) ask ("move the values", "percentage points, + up or - down", "10", [this] (juce::String t) { const float d = t.getFloatValue() / 100.0f; editSelectedPoints ([d] (std::vector<AutoPoint>& p, const std::vector<int>& k) { for (int i : k) p[(size_t) i].value = juce::jlimit (0.0f, 1.0f, p[(size_t) i].value + d); }); });
+            else if (r == 6) editSelectedPoints ([] (std::vector<AutoPoint>& p, const std::vector<int>& k) { float a = 0; for (int i : k) a += p[(size_t) i].value; a /= (float) std::max<size_t> (1, k.size()); for (int i : k) p[(size_t) i].value = a; });
+            else if (r == 7) editSelectedPoints ([] (std::vector<AutoPoint>& p, const std::vector<int>& k) { for (int i : k) p[(size_t) i].value = 1.0f - p[(size_t) i].value; });
+            else if (r == 8) editSelectedPoints ([] (std::vector<AutoPoint>& p, const std::vector<int>& k) { for (int i : k) p[(size_t) i].curve = 0.0f; });
+        });
+    }
     struct Hit { Track* t = nullptr; ClipRef ref; bool found = false; enum Part { Body, Start, End, FadeIn, FadeOut } part = Body; };
     Hit hitClip (juce::Point<int> p) const
     {
@@ -840,8 +925,11 @@ public:
             const double zone = std::min (6.0, w * 0.25);
             if (p.x - x0 <= zone) h.part = Hit::Start; else if (x1 - p.x <= zone) h.part = Hit::End;
         };
+        // (stacked takes: the one that plays is the one under the mouse)
+        const AudioClip* hitA = nullptr;
+        for (auto& c : *h.t->aclips) if (b >= c.startBar && b < c.startBar + c.bars && (! hitA || (hitA->muted && ! c.muted))) hitA = &c;
         for (auto& c : *h.t->aclips)
-            if (b >= c.startBar && b < c.startBar + c.bars)
+            if (&c == hitA)
             {
                 h.ref = { h.t->uid, c.id, true }; h.found = true; edges (c.startBar, c.bars);
                 const double secPerBar = 4.0 * 60.0 / ctx.s.tempo();
@@ -927,7 +1015,25 @@ public:
             auto l = s.lane (laneTarget);
             int near = -1; double bestPx = 6.0;
             for (int k = 0; l && k < (int) l->pts.size(); ++k) { const double d = std::abs (l->pts[(size_t) k].beat - beat) * pxPerBeat(); if (d < bestPx) { near = k; bestPx = d; } }
-            if (e.mods.isPopupMenu() || e.getNumberOfClicks() > 1) { if (near >= 0) s.editLane (laneTarget, [near] (AutoLane& ll) { ll.pts.erase (ll.pts.begin() + near); }); repaint(); return; }
+            const bool inSel = near >= 0 && selLane == laneTarget && std::find (selPts.begin(), selPts.end(), near) != selPts.end();
+            if (e.mods.isPopupMenu() && inSel) { pointsMenu(); return; }
+            if (e.mods.isPopupMenu() || e.getNumberOfClicks() > 1) { if (near >= 0) s.editLane (laneTarget, [near] (AutoLane& ll) { ll.pts.erase (ll.pts.begin() + near); }); selPts.clear(); repaint(); return; }
+            // cmd: points into / out of the selection, or a box around them
+            if (e.mods.isCommandDown())
+            {
+                if (selLane != laneTarget) { selPts.clear(); selLane = laneTarget; }
+                if (near >= 0) { if (inSel) selPts.erase (std::remove (selPts.begin(), selPts.end(), near), selPts.end()); else selPts.push_back (near); }
+                else { dragMode = DragMode::PointBand; bandA = bandB = e.getPosition(); ptBandRow = dragLane; }
+                repaint(); return;
+            }
+            // a selected point: the selection moves together
+            if (inSel && ! e.mods.isAltDown())
+            {
+                dragMode = DragMode::PointsMove; dragPoint = near;
+                if (auto ll = s.lane (laneTarget)) { ptOrig = ll->pts; ptFlag.assign (ptOrig.size(), false); for (int k : selPts) if (k < (int) ptFlag.size()) ptFlag[(size_t) k] = true; }
+                repaint(); return;
+            }
+            selPts.clear();
             dragMode = DragMode::LanePoint;
             if (near >= 0) { dragPoint = near; curveDrag = e.mods.isAltDown(); }
             else { const double nb = magnetBar (beat / 4.0, e.mods.isCommandDown(), {}) * 4.0; s.editLane (laneTarget, [nb, v] (AutoLane& ll) { ll.pts.push_back ({ nb, v, 0.0f }); }); l = s.lane (laneTarget); dragPoint = -1; for (int k = 0; k < (int) l->pts.size(); ++k) if (std::abs (l->pts[(size_t) k].beat - nb) < 1.0e-9) dragPoint = k; curveDrag = false; }
@@ -1080,6 +1186,33 @@ public:
                 repaint(); return;
             }
             case DragMode::Band: { bandB = e.getPosition(); applyBand(); repaint(); return; }
+            case DragMode::PointBand:
+            {
+                bandB = e.getPosition();
+                const int y = autoArea().getY() + 26 + ptBandRow * 52;
+                const auto r = juce::Rectangle<int> (bandA, bandB);
+                const double b0 = bar ((float) r.getX()) * 4.0, b1 = bar ((float) r.getRight()) * 4.0;
+                const float v1 = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - r.getY()) / 42.0f), v0 = juce::jlimit (0.0f, 1.0f, (float) (y + 46 - r.getBottom()) / 42.0f);
+                selPts.clear();
+                if (auto ll = s.lane (laneTarget)) for (int k = 0; k < (int) ll->pts.size(); ++k) { const auto& pt = ll->pts[(size_t) k]; if (pt.beat >= b0 && pt.beat <= b1 && pt.value >= v0 - 0.02f && pt.value <= v1 + 0.02f) selPts.push_back (k); }
+                repaint(); return;
+            }
+            case DragMode::PointsMove:
+            {
+                if (ptOrig.empty() || dragPoint < 0 || dragPoint >= (int) ptOrig.size()) return;
+                // the point under the mouse lands on the grid (or the magnet); the others keep their distance in time and value
+                const double anchor = ptOrig[(size_t) dragPoint].beat;
+                double nb = magnetBar ((anchor / 4.0) + (bar (e.position.x) - downBar), free, {}) * 4.0;
+                double db = nb - anchor; for (size_t k = 0; k < ptOrig.size(); ++k) if (ptFlag[k]) db = std::max (db, -ptOrig[k].beat);
+                const float dv = -(float) e.getDistanceFromDragStartY() / 42.0f;
+                std::vector<std::pair<AutoPoint, bool>> v;
+                for (size_t k = 0; k < ptOrig.size(); ++k) { auto pt = ptOrig[k]; if (ptFlag[k]) { pt.beat += db; pt.value = juce::jlimit (0.0f, 1.0f, pt.value + dv); } v.push_back ({ pt, ptFlag[k] }); }
+                std::stable_sort (v.begin(), v.end(), [] (auto& a, auto& b) { return a.first.beat < b.first.beat; });
+                std::vector<AutoPoint> pts; selPts.clear();
+                for (size_t k = 0; k < v.size(); ++k) { pts.push_back (v[k].first); if (v[k].second) selPts.push_back ((int) k); }
+                s.editLane (laneTarget, [&pts] (AutoLane& l) { l.pts = pts; });
+                repaint(); return;
+            }
             case DragMode::TrimEnd:
             {
                 double end = magnetBar (anchorStart + anchorLen + (bar (e.position.x) - downBar), free, { anchor });
@@ -1213,6 +1346,20 @@ public:
         m.addItem (7, "duplicate  (cmd+d)");
         m.addItem (8, muted ? "unmute" : "mute", true, muted);
         m.addItem (9, "loop these clips");
+        m.addItem (10, "rename...");
+        {
+            juce::PopupMenu col; static const juce::uint32 cols[] = { 0xffee8e6e, 0xfff6c590, 0xffc9b53b, 0xff9cc788, 0xff76a582, 0xff8ec3e6, 0xff6e80c8, 0xff8d9bd6, 0xffcfe6f0, 0xffdfe9ed, 0xffb88a26, 0xff2f4a52 };
+            col.addItem (200, "the track's colour");
+            for (int k = 0; k < 12; ++k) { juce::Image sw (juce::Image::ARGB, 16, 12, true); juce::Graphics (sw).fillAll (juce::Colour (cols[k])); col.addItem (201 + k, "colour " + juce::String (k + 1), true, false, sw); }
+            m.addSubMenu ("colour", col);
+        }
+        const auto takes = ctx.s.takesOf (h.ref);
+        if (takes.size() > 1)
+        {
+            juce::PopupMenu tk;
+            for (int k = 0; k < (int) takes.size(); ++k) tk.addItem (300 + k, "take " + juce::String (k + 1), true, ! ctx.s.clipMuted (takes[(size_t) k]));
+            m.addSubMenu ("takes (alt+up / down)", tk);
+        }
         if (h.ref.audio) m.addItem (3, "reverse");
         else { juce::PopupMenu sub; for (int k = 0; k < kPatterns; ++k) sub.addItem (100 + k, "pattern " + juce::String (k + 1)); m.addSubMenu ("pattern", sub); }
         m.addSeparator(); m.addItem (4, "remove  (delete)");
@@ -1230,6 +1377,19 @@ public:
             else if (r == 7) duplicateSel();
             else if (r == 8) muteSel();
             else if (r == 9) loopSelection();
+            else if (r == 10)
+            {
+                juce::String now; if (h.ref.audio) { for (auto& c : *t->aclips) if (c.id == id) now = c.name; } else for (auto& c : *t->clips) if (c.id == id) now = c.name;
+                const auto ref = h.ref;
+                ask ("rename the clip", "a name (empty: the file's or the pattern's)", now, [this, ref] (juce::String n) { ctx.s.setClipName (ref, n.trim()); repaint(); });
+            }
+            else if (r >= 200 && r < 213)
+            {
+                static const juce::uint32 cols[] = { 0xffee8e6e, 0xfff6c590, 0xffc9b53b, 0xff9cc788, 0xff76a582, 0xff8ec3e6, 0xff6e80c8, 0xff8d9bd6, 0xffcfe6f0, 0xffdfe9ed, 0xffb88a26, 0xff2f4a52 };
+                auto targets = isSelected (h.ref) ? sel : std::vector<ClipRef> { h.ref };
+                ctx.s.setClipColour (targets, r == 200 ? 0u : cols[r - 201]);
+            }
+            else if (r >= 300) { const auto tks = ctx.s.takesOf (h.ref); if (r - 300 < (int) tks.size()) { ctx.s.chooseTake (tks[(size_t) (r - 300)]); sel = { tks[(size_t) (r - 300)] }; } }
             else if (r >= 100) s.editClips (*t, [id, r] (std::vector<Clip>& v) { for (auto& c : v) if (c.id == id) c.pattern = r - 100; });
             repaint();
         });
