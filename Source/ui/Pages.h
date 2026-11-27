@@ -1,7 +1,7 @@
 #pragma once
 // umleitung — the other pages: the system eq (like eqMac), virtual devices (like Loopback), meters, recordings,
 // plug-ins, settings.
-#include "Widgets.h"
+#include "EqWidgets.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
 namespace um::ui
@@ -17,18 +17,24 @@ public:
     void refresh() override { build(); }
     static const std::vector<std::pair<juce::String, std::array<float, 10>>>& presets();
     void applyPreset (const std::array<float, 10>& g);
+    enum Mode { Basic = 0, Ten, ThirtyOne, Parametric, Correction, Speakers, NumModes };
+    juce::ValueTree stage (const char* role);
 private:
     void build();
-    juce::ValueTree blockOf (BlockType);
+    void importCorrection (const juce::String& text, const juce::String& from);
     juce::ValueTree session;
-    TextLink onLink, savePreset, presetLink, flat;
-    std::unique_ptr<ValueChoice> device, mode;
-    std::unique_ptr<ValueSlider> volume, balance, bass, mid, treble, preamp;
-    std::unique_ptr<ValueToggle> perDevice;
-    std::unique_ptr<GraphicEqEditor> graphic;
-    std::unique_ptr<CurveEditor> curve;
-    Spectrum spectrum; MeterBridge levels;
+    TextLink onLink, savePreset, presetLink, flat, importLink, pasteLink, clearLink;
+    std::unique_ptr<ValueChoice> device, mode, phase, scale;
+    std::unique_ptr<ValueToggle> perDevice, stageOn, protect;
+    std::unique_ptr<PreciseSlider> volume, balance, preamp, bass, mid, treble, corrGain;
+    std::unique_ptr<FaderBank> faders;
+    std::unique_ptr<BandTable> table;
+    std::unique_ptr<SpeakerTable> speakers;
+    std::unique_ptr<ResponsePlot> plot;
+    juce::Viewport tableView;
+    MeterBridge levels;
     juce::String lastOutput;
+    int currentMode = 1;
 };
 
 // ---- virtual devices --------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 #include "Pages.h"
+#include "../engine/Correction.h"
 
 namespace um::ui
 {
@@ -26,11 +27,11 @@ const std::vector<std::pair<juce::String, std::array<float, 10>>>& EqPage::prese
     return p;
 }
 
-EqPage::EqPage (Ctx& c) : PageBase (c, SystemEq), onLink ("off", theme), savePreset ("save as a preset...", theme), presetLink ("presets", theme), flat ("flat", theme), spectrum (theme), levels (theme)
+EqPage::EqPage (Ctx& c) : PageBase (c, SystemEq), onLink ("off", theme), savePreset ("save as a preset...", theme), presetLink ("presets", theme), flat ("flat", theme),
+    importLink ("import a filter file...", theme), pasteLink ("paste filters...", theme), clearLink ("clear", theme), levels (theme)
 {
-    for (auto* l : { &onLink, &savePreset, &presetLink, &flat }) addAndMakeVisible (l);
-    addAndMakeVisible (spectrum); addAndMakeVisible (levels);
-    spectrum.setInterceptsMouseClicks (false, false); levels.compact = true; spectrum.scale = false;
+    for (auto* l : { &onLink, &savePreset, &presetLink, &flat, &importLink, &pasteLink, &clearLink }) addAndMakeVisible (l);
+    addAndMakeVisible (levels); levels.compact = true; addChildComponent (tableView); tableView.setScrollBarsShown (true, false);
     onLink.onClick = [this] { session.setProperty (ids::on, ! (bool) session[ids::on], nullptr); };
     flat.onClick = [this] { applyPreset (presets()[0].second); };
     presetLink.onClick = [this]
@@ -42,120 +43,207 @@ EqPage::EqPage (Ctx& c) : PageBase (c, SystemEq), onLink ("off", theme), savePre
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetLink), [this, user] (int r)
         {
             if (r >= 1 && r <= (int) presets().size()) applyPreset (presets()[(size_t) r - 1].second);
-            else if (r >= 100 && user.isValid()) { auto p = user.getChild (r - 100); auto eq = blockOf (BlockType::Eq); eq.setProperty (ids::bands, p[ids::bands], nullptr); build(); }
+            else if (r >= 100 && user.isValid())
+            {
+                // a saved preset is every stage as it was
+                auto p = user.getChild (r - 100);
+                for (auto st : p) if (auto b = stage (st[ids::role].toString().toRawUTF8()); b.isValid()) for (int i = 0; i < st.getNumProperties(); ++i) { auto nm = st.getPropertyName (i); if (nm != ids::role) b.setProperty (nm, st[nm], nullptr); }
+                if (! p.getNumChildren()) stage ("graphic").setProperty (ids::bands, p[ids::bands], nullptr);
+                build();
+            }
         });
     };
     savePreset.onClick = [this]
     {
-        auto* w = new juce::AlertWindow ("save the eq as a preset", {}, juce::MessageBoxIconType::NoIcon);
-        w->addTextEditor ("n", "my preset"); w->addButton ("save", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0);
+        auto* w = new juce::AlertWindow ("save the eq as a preset", "every stage is kept: graphic, parametric, correction, speakers", juce::MessageBoxIconType::NoIcon);
+        w->addTextEditor ("n", "my speakers"); w->addButton ("save", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("cancel", 0);
         w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int r)
         {
             if (r != 1) return;
             auto es = ctx.model.eqSettings(); auto user = es.getChildWithName ("presets"); if (! user.isValid()) { user = juce::ValueTree ("presets"); es.appendChild (user, nullptr); }
-            juce::ValueTree p ("preset"); p.setProperty (ids::name, w->getTextEditorContents ("n"), nullptr); p.setProperty (ids::bands, blockOf (BlockType::Eq)[ids::bands], nullptr);
+            juce::ValueTree p ("preset"); p.setProperty (ids::name, w->getTextEditorContents ("n"), nullptr);
+            for (auto role : { "graphic", "tone", "correction", "speakers" }) { auto b = stage (role); juce::ValueTree st ("stage"); st.setProperty (ids::role, role, nullptr);
+                for (auto id : { ids::bands, ids::db, ids::bypass, ids::align, juce::Identifier ("count") }) if (b.hasProperty (id)) st.setProperty (id, b[id], nullptr); p.appendChild (st, nullptr); }
             user.appendChild (p, nullptr); ctx.status ("preset saved");
         }), true);
     };
+    importLink.onClick = [this]
+    {
+        auto fc = std::make_shared<juce::FileChooser> ("filters from room eq wizard, equalizer apo or autoeq", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.txt;*.cfg;*.csv");
+        fc->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this, fc] (const juce::FileChooser& c) { if (c.getResult().existsAsFile()) importCorrection (c.getResult().loadFileAsString(), c.getResult().getFileName()); });
+    };
+    pasteLink.onClick = [this]
+    {
+        auto* w = new juce::AlertWindow ("paste filters", "lines like: Filter 1: ON PK Fc 63.5 Hz Gain -4.3 dB Q 2.5  (room eq wizard, equalizer apo, autoeq)", juce::MessageBoxIconType::NoIcon);
+        w->addTextEditor ("t", juce::SystemClipboard::getTextFromClipboard()); w->getTextEditor ("t")->setMultiLine (true); w->getTextEditor ("t")->setSize (520, 220);
+        w->addButton ("import", 1); w->addButton ("cancel", 0);
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int r) { if (r == 1) importCorrection (w->getTextEditorContents ("t"), "pasted text"); }), true);
+    };
+    clearLink.onClick = [this] { stage ("correction").setProperty (ids::bands, "", nullptr); stage ("correction").setProperty (ids::db, 0.0f, nullptr); build(); };
     build();
 }
-juce::ValueTree EqPage::blockOf (BlockType t) { for (auto b : session) if (b.hasType (ids::block) && typeFromId (b[ids::type]) == t) return b; return {}; }
+juce::ValueTree EqPage::stage (const char* role) { for (auto b : session) if (b.hasType (ids::block) && b[ids::role].toString() == role) return b; return {}; }
+void EqPage::importCorrection (const juce::String& text, const juce::String& from)
+{
+    const auto c = parseCorrection (text);
+    if (c.read == 0) { ctx.status ("no filters found in " + from); return; }
+    auto b = stage ("correction");
+    b.setProperty (ids::bands, Model::peqText (c.bands), nullptr); b.setProperty (ids::db, c.preamp, nullptr); b.setProperty (ids::bypass, false, nullptr);
+    ctx.status (juce::String (c.read) + " filters read from " + from + (c.preamp != 0 ? ", preamp " + juce::String (c.preamp, 2) + " db" : juce::String()) + (c.skipped > 0 ? " (" + juce::String (c.skipped) + " lines not understood)" : juce::String()));
+    build();
+}
 void EqPage::applyPreset (const std::array<float, 10>& g)
 {
-    blockOf (BlockType::Eq).setProperty (ids::bands, Model::graphicText (g), nullptr);
-    if (mode && mode->getIndex() == 2) mode->setIndex (1);
+    // a 10-band preset onto 10 or 31 bands (in between: along the log of the frequency)
+    auto b = stage ("graphic"); auto gains = Model::graphicBands (b); const auto& f = dsp::graphicCentres ((int) gains.size()); const auto& f10 = dsp::graphicCentres (10);
+    for (size_t i = 0; i < gains.size(); ++i)
+    {
+        const double lf = std::log2 (f[i]);
+        size_t k = 0; while (k + 1 < 10 && std::log2 (f10[k + 1]) < lf) ++k;
+        const double a = std::log2 (f10[k]), bb = std::log2 (f10[std::min<size_t> (k + 1, 9)]);
+        const double t = bb > a ? juce::jlimit (0.0, 1.0, (lf - a) / (bb - a)) : 0.0;
+        gains[i] = (float) (g[k] + t * (g[std::min<size_t> (k + 1, 9)] - g[k]));
+    }
+    b.setProperty (ids::bands, Model::graphicText (gains), nullptr); b.setProperty (ids::bypass, false, nullptr);
     build();
 }
 void EqPage::build()
 {
     session = ctx.engine.systemEqSession();
-    auto vol = blockOf (BlockType::Volume), eq = blockOf (BlockType::Eq), peq = blockOf (BlockType::Peq), out = blockOf (BlockType::Output);
+    auto vol = stage ("volume"), graphic = stage ("graphic"), tone = stage ("tone"), corr = stage ("correction"), spk = stage ("speakers"), lim = stage ("limiter"), out = stage ("output");
     auto es = ctx.model.eqSettings();
+    currentMode = juce::jlimit (0, NumModes - 1, (int) es.getProperty (ids::mode, 1));
     juce::StringArray names, uids; deviceLists (true, names, uids, true);
     device = boundChoice (theme, out, ids::device, "output", names, uids); device->labelW = 70; addAndMakeVisible (*device);
-    volume = boundSlider (theme, vol, ids::db, "volume", { -60, 12, 0.1f }, 0, [] (float v) { return dbText (v) + " db" + (v > 0.05f ? " (boost)" : ""); }); addAndMakeVisible (*volume);
-    balance = boundSlider (theme, vol, ids::balance, "balance", { -1, 1, 0.01f }, 0, [] (float v) { return std::abs (v) < 0.005f ? juce::String ("centre") : (v < 0 ? "l " : "r ") + juce::String ((int) std::lround (std::abs (v) * 100)); }); addAndMakeVisible (*balance);
-    preamp = boundSlider (theme, eq, ids::db, "preamp", { -24, 24, 0.1f }, 0, [] (float v) { return dbText (v) + " db"; }); addAndMakeVisible (*preamp);
-    const int m = (int) es.getProperty (ids::mode, 1);
-    mode = std::make_unique<ValueChoice> (theme, "mode", juce::StringArray { "basic", "advanced", "expert" }, m); mode->asTabs = true; mode->labelW = 50; addAndMakeVisible (*mode);
+    volume = std::make_unique<PreciseSlider> (theme, "volume", -80.0, 12.0, 0.0, 2, "db"); volume->set ((float) vol[ids::db], false);
+    volume->onChange = [vol] (double v) mutable { vol.setProperty (ids::db, v, nullptr); }; addAndMakeVisible (*volume);
+    balance = std::make_unique<PreciseSlider> (theme, "balance", -100.0, 100.0, 0.0, 1, "%"); balance->set ((float) vol[ids::balance] * 100.0, false);
+    balance->onChange = [vol] (double v) mutable { vol.setProperty (ids::balance, v / 100.0, nullptr); }; addAndMakeVisible (*balance);
+    preamp = std::make_unique<PreciseSlider> (theme, "preamp", -30.0, 12.0, 0.0, 2, "db"); preamp->set ((float) tone[ids::db], false);
+    preamp->onChange = [tone] (double v) mutable { tone.setProperty (ids::db, v, nullptr); }; addAndMakeVisible (*preamp);
+    mode = std::make_unique<ValueChoice> (theme, "mode", juce::StringArray { "basic", "10-band", "31-band", "parametric", "room correction", "speakers" }, currentMode); mode->asTabs = true; mode->labelW = 46; addAndMakeVisible (*mode);
     mode->onChange = [this] (int i)
     {
         ctx.model.eqSettings().setProperty (ids::mode, i, nullptr);
-        blockOf (BlockType::Eq).setProperty (ids::bypass, i == 2, nullptr); blockOf (BlockType::Peq).setProperty (ids::bypass, i != 2, nullptr);
+        auto gr = stage ("graphic");
+        if (i == Ten && Model::graphicCount (gr) != 10) { gr.setProperty ("count", 10, nullptr); gr.setProperty (ids::bands, "0 0 0 0 0 0 0 0 0 0", nullptr); }
+        if (i == ThirtyOne && Model::graphicCount (gr) != 31) { auto old = Model::graphicBands (gr); gr.setProperty ("count", 31, nullptr); std::array<float, 10> a {}; for (size_t k = 0; k < 10 && k < old.size(); ++k) a[k] = old[k]; applyPreset (a); }
+        if (i == Basic && Model::graphicCount (gr) != 10) { gr.setProperty ("count", 10, nullptr); gr.setProperty (ids::bands, "0 0 0 0 0 0 0 0 0 0", nullptr); }
         juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<EqPage> (this)] { if (sp) sp->build(); });
     };
-    // basic: three knobs over the ten bands
-    auto g = Model::graphicBands (eq);
-    auto avg = [&] (int a, int b) { float s = 0; for (int i = a; i <= b; ++i) s += g[(size_t) i]; return s / (float) (b - a + 1); };
-    auto three = [this, eq] (int a, int b, const juce::String& label, float now) mutable
+    const int ph = (bool) graphic[ids::linear] ? 1 : (bool) graphic[ids::exact] ? 0 : 2;
+    phase = std::make_unique<ValueChoice> (theme, "filters", juce::StringArray { "exact, minimum phase", "exact, linear phase (0.7 s delay)", "light (matched iir)" }, ph); phase->labelW = 56; addAndMakeVisible (*phase);
+    phase->setTooltip ("exact: a long filter made from the ideal curve, right to the hundredth of a db at every frequency (minimum phase: no delay; linear phase: no phase shift at all, but 0.7 s late). light: matched biquads, close to the ideal (within 0.4 db up to 10 khz), the least cpu");
+    phase->onChange = [this] (int i) { for (auto r : { "graphic", "tone", "correction" }) { stage (r).setProperty (ids::linear, i == 1, nullptr); stage (r).setProperty (ids::exact, i == 0, nullptr); } };
+    scale = std::make_unique<ValueChoice> (theme, "scale", juce::StringArray { juce::String (juce::CharPointer_UTF8 ("\xc2\xb1" "3 db")), juce::String (juce::CharPointer_UTF8 ("\xc2\xb1" "6 db")), juce::String (juce::CharPointer_UTF8 ("\xc2\xb1" "12 db")), juce::String (juce::CharPointer_UTF8 ("\xc2\xb1" "24 db")) }, (int) es.getProperty ("scale", 2)); scale->labelW = 46; addAndMakeVisible (*scale);
+    scale->onChange = [this] (int i) { ctx.model.eqSettings().setProperty ("scale", i, nullptr); const float r = i == 0 ? 3.0f : i == 1 ? 6.0f : i == 2 ? 12.0f : 24.0f; if (plot) { plot->range = r; plot->repaint(); } if (faders) { faders->range = std::max (6.0f, r); faders->repaint(); } };
+    protect = std::make_unique<ValueToggle> (theme, "clip protection", ! (bool) lim[ids::bypass]); protect->onChange = [lim] (bool v) mutable { lim.setProperty (ids::bypass, ! v, nullptr); }; addAndMakeVisible (*protect);
+    perDevice = std::make_unique<ValueToggle> (theme, "per output device", (bool) es[ids::perDevice]); perDevice->onChange = [this] (bool v) { ctx.model.eqSettings().setProperty (ids::perDevice, v, nullptr); }; addAndMakeVisible (*perDevice);
+    // the stage this mode edits, and its on / off
+    juce::ValueTree edited = currentMode == Parametric ? tone : currentMode == Correction ? corr : currentMode == Speakers ? spk : graphic;
+    stageOn = std::make_unique<ValueToggle> (theme, juce::String ("this stage on: ") + (currentMode == Parametric ? "parametric" : currentMode == Correction ? "room correction" : currentMode == Speakers ? "speakers" : "graphic"), ! (bool) edited[ids::bypass]);
+    stageOn->onChange = [edited] (bool v) mutable { edited.setProperty (ids::bypass, ! v, nullptr); }; addAndMakeVisible (*stageOn);
+    // the response of every stage, the spectrum of what comes out
+    plot = std::make_unique<ResponsePlot> (theme, ctx.engine); addAndMakeVisible (*plot);
+    plot->stages = { graphic, tone, corr }; plot->watch (spk[ids::id]);
+    const int sc = (int) es.getProperty ("scale", 2); plot->range = sc == 0 ? 3.0f : sc == 1 ? 6.0f : sc == 2 ? 12.0f : 24.0f;
+    plot->editable = currentMode == Parametric ? tone : currentMode == Correction ? corr : juce::ValueTree();
+    if (auto* rt = ctx.engine.runtime (spk[ids::id])) rt->analysed = true;
+    // the editor of the mode
+    bass.reset(); mid.reset(); treble.reset(); faders.reset(); table.reset(); speakers.reset(); corrGain.reset(); tableView.setViewedComponent (nullptr, false); tableView.setVisible (false);
+    if (currentMode == Basic)
     {
-        auto s = std::make_unique<ValueSlider> (theme, label, juce::NormalisableRange<float> (-12, 12, 0.1f), now, 0.0f);
-        s->textFromValue = [] (float v) { return dbText (v) + " db"; }; s->setLabelWidth (70);
-        s->onChange = [eq, a, b] (float v) mutable { auto gg = Model::graphicBands (eq); for (int i = a; i <= b; ++i) { const float w = (i == a || i == b) && b > a ? 0.6f : 1.0f; gg[(size_t) i] = v * w; } eq.setProperty (ids::bands, Model::graphicText (gg), nullptr); };
-        addChildComponent (*s); return s;
-    };
-    bass = three (0, 3, "bass", avg (0, 2)); mid = three (3, 6, "mid", avg (4, 5)); treble = three (7, 9, "treble", avg (7, 9));
-    graphic = std::make_unique<GraphicEqEditor> (theme, eq); addChildComponent (*graphic);
-    curve = std::make_unique<CurveEditor> (theme, peq, ctx.engine); addChildComponent (*curve);
-    for (auto* x : { (juce::Component*) bass.get(), (juce::Component*) mid.get(), (juce::Component*) treble.get() }) x->setVisible (m == 0);
-    graphic->setVisible (m == 1); curve->setVisible (m == 2); spectrum.setVisible (m != 2);
-    perDevice = std::make_unique<ValueToggle> (theme, "remember the eq for each output device", (bool) es[ids::perDevice]);
-    perDevice->onChange = [this] (bool v) { ctx.model.eqSettings().setProperty (ids::perDevice, v, nullptr); };
-    addAndMakeVisible (*perDevice);
-    spectrum.src = { &ctx.engine, (int) eq[ids::id] }; levels.src = { &ctx.engine, (int) blockOf (BlockType::Output)[ids::id] };
-    if (auto* rt = ctx.engine.runtime (eq[ids::id])) rt->analysed = true;
+        auto g = Model::graphicBands (graphic);
+        auto avg = [&] (int a, int b) { float s = 0; for (int i = a; i <= b; ++i) s += g[(size_t) i]; return s / (float) (b - a + 1); };
+        auto three = [this, graphic] (int a, int b, const juce::String& label, float now) mutable
+        {
+            auto s = std::make_unique<PreciseSlider> (theme, label, -12.0, 12.0, 0.0, 2, "db"); s->set (now, false);
+            s->onChange = [graphic, a, b] (double v) mutable { auto gg = Model::graphicBands (graphic); for (int i = a; i <= b; ++i) { const double w = (i == a || i == b) && b > a ? 0.6 : 1.0; gg[(size_t) i] = (float) (v * w); } graphic.setProperty (ids::bands, Model::graphicText (gg), nullptr); };
+            addAndMakeVisible (*s); return s;
+        };
+        bass = three (0, 3, "bass", avg (0, 2)); mid = three (3, 6, "mid", avg (4, 5)); treble = three (7, 9, "treble", avg (7, 9));
+    }
+    else if (currentMode == Ten || currentMode == ThirtyOne) { faders = std::make_unique<FaderBank> (theme, graphic); faders->range = std::max (6.0f, plot->range); faders->onEdit = [this] { if (plot) plot->repaint(); }; addAndMakeVisible (*faders); }
+    else if (currentMode == Parametric || currentMode == Correction)
+    {
+        auto b = currentMode == Parametric ? tone : corr;
+        table = std::make_unique<BandTable> (theme, b); table->onEdit = [this] { if (plot) plot->repaint(); };
+        plot->onEdit = [this] { if (table) table->rebuild(); };
+        plot->onSelect = [this] (int i) { if (table) { table->highlighted = i; table->repaint(); } };
+        tableView.setViewedComponent (table.get(), false); tableView.setVisible (true);
+        if (currentMode == Correction) { corrGain = std::make_unique<PreciseSlider> (theme, "correction gain", -30.0, 12.0, 0.0, 2, "db"); corrGain->set ((float) corr[ids::db], false); corrGain->onChange = [corr] (double v) mutable { corr.setProperty (ids::db, v, nullptr); }; addAndMakeVisible (*corrGain); }
+    }
+    else if (currentMode == Speakers) { speakers = std::make_unique<SpeakerTable> (theme, spk, 2, ctx.engine.sampleRate() > 0 ? ctx.engine.sampleRate() : 48000.0); addAndMakeVisible (*speakers); }
+    for (auto* l : { &importLink, &pasteLink, &clearLink }) l->setVisible (currentMode == Correction);
+    levels.src = { &ctx.engine, (int) out[ids::id] };
     resized(); repaint();
 }
 void EqPage::tick()
 {
     onLink.setText ((bool) session[ids::on] ? "on" : "off"); onLink.setLit ((bool) session[ids::on]);
-    auto eq = blockOf (BlockType::Eq);
-    if (auto* rt = ctx.engine.runtime (eq[ids::id])) rt->analysed = isShowing();
-    // the curve over the spectrum
-    spectrum.overlay.clear();
-    const auto gains = Model::graphicBands (eq); const float pre = (float) eq[ids::db];
-    std::vector<dsp::Coefs> ks; for (auto& f : dsp::graphicFilters (gains, graphicFreqs())) ks.push_back (dsp::makeFilter ((int) f[0], 48000, f[1], f[2], f[3]));
-    for (int x = 0; x < spectrum.getWidth(); x += 4) { const double hz = spectrum.hzAt ((float) x); double d = pre; for (auto& k : ks) d += dsp::magnitudeDb (k, 48000, hz); spectrum.overlay.push_back ({ (float) hz, (float) d }); }
-    spectrum.tick(); levels.tick(); if (curve) curve->tick(); if (graphic) graphic->repaint();
-    // per output device: when the output changes, its eq comes back
+    if (auto* rt = ctx.engine.runtime (stage ("speakers")[ids::id])) rt->analysed = isShowing();
+    if (plot) plot->tick();
+    levels.tick();
+    // per output device: when the output changes, its eq comes back (every stage)
     auto es = ctx.model.eqSettings();
-    const auto outUid = blockOf (BlockType::Output)[ids::device].toString().isEmpty() ? CoreAudioHost::defaultOutputUid() : blockOf (BlockType::Output)[ids::device].toString();
+    const auto outUid = stage ("output")[ids::device].toString().isEmpty() ? CoreAudioHost::defaultOutputUid() : stage ("output")[ids::device].toString();
     if ((bool) es[ids::perDevice] && outUid.isNotEmpty())
     {
         auto store = es.getChildWithName ("devices"); if (! store.isValid()) { store = juce::ValueTree ("devices"); es.appendChild (store, nullptr); }
         auto entry = store.getChildWithProperty (ids::device, outUid);
-        if (outUid != lastOutput && lastOutput.isNotEmpty() && entry.isValid()) { eq.setProperty (ids::bands, entry[ids::bands], nullptr); ctx.status ("eq for " + outUid); build(); }
+        const juce::Identifier keep[] = { ids::bands, ids::db, ids::bypass, ids::align, juce::Identifier ("count") };
+        if (outUid != lastOutput && lastOutput.isNotEmpty() && entry.isValid())
+        {
+            for (auto st : entry) if (auto b = stage (st[ids::role].toString().toRawUTF8()); b.isValid()) for (auto& k : keep) if (st.hasProperty (k)) b.setProperty (k, st[k], nullptr);
+            ctx.status ("the eq for this output"); build();
+        }
         if (! entry.isValid()) { entry = juce::ValueTree ("dev"); entry.setProperty (ids::device, outUid, nullptr); store.appendChild (entry, nullptr); }
-        entry.setProperty (ids::bands, eq[ids::bands], nullptr);
+        entry.removeAllChildren (nullptr);
+        for (auto role : { "graphic", "tone", "correction", "speakers" }) { auto b = stage (role); juce::ValueTree st ("stage"); st.setProperty (ids::role, role, nullptr); for (auto& k : keep) if (b.hasProperty (k)) st.setProperty (k, b[k], nullptr); entry.appendChild (st, nullptr); }
     }
     lastOutput = outUid;
     repaint (0, 0, getWidth(), 100);
 }
 void EqPage::paint (juce::Graphics& g)
 {
-    juce::String sub = "everything the mac plays goes through this eq on its way to the speakers (umleitung captures it, mutes the original, and plays the eq'd copy)";
-    auto src = blockOf (BlockType::System);
+    juce::String sub = "everything the mac plays: captured, the original muted, through these stages in 64-bit (matched filters, exact to 20 khz), to the speakers";
+    auto src = stage ("source");
     if ((bool) session[ids::on]) if (auto* rt = ctx.engine.runtime (src[ids::id])) if (rt->status.isNotEmpty()) sub = rt->status;
+    if ((bool) stage ("graphic")[ids::exact] && ! (bool) stage ("graphic")[ids::linear]) sub = juce::String (juce::CharPointer_UTF8 ("exact eq (minimum phase): the ideal curve to a hundredth of a db at every frequency, no delay  ·  ")) + sub.upToFirstOccurrenceOf (":", false, false);
+    if ((bool) stage ("graphic")[ids::linear]) { int lat = 0; for (auto r : { "graphic", "tone", "correction" }) if (auto* rt = ctx.engine.runtime (stage (r)[ids::id])) lat = std::max (lat, rt->linearLatency); sub = "linear phase: " + juce::String (lat / std::max (1.0, ctx.engine.sampleRate()) * 1000.0, 0) + juce::String (juce::CharPointer_UTF8 (" ms of delay (exact magnitude, no phase shift)  ·  ")) + sub.upToFirstOccurrenceOf (":", false, false); }
     if ((bool) session[ids::on] && CoreAudioHost::capturePermission() == CoreAudioHost::Permission::Denied) sub = "umleitung may not capture the mac's sound yet: allow it in system settings > privacy & security > screen & system audio recording";
     paintHeader (g, "system eq", sub);
 }
 void EqPage::resized()
 {
-    const int y = kTop + 8;
-    onLink.setBounds (24, y, 70, 24);
-    if (device) device->setBounds (104, y, 360, 22);
-    presetLink.setBounds (476, y, 80, 22); flat.setBounds (562, y, 50, 22); savePreset.setBounds (618, y, 150, 22);
-    if (perDevice) perDevice->setBounds (780, y, 330, 22);
-    if (volume) volume->setBounds (24, y + 34, 380, 22);
-    if (balance) balance->setBounds (420, y + 34, 300, 22);
-    if (preamp) preamp->setBounds (736, y + 34, 300, 22);
-    if (mode) mode->setBounds (24, y + 66, 320, 22);
-    auto area = juce::Rectangle<int> (24, y + 100, getWidth() - 48 - 120, getHeight() - (y + 100) - 24);
-    levels.setBounds (getWidth() - 24 - 110, y + 100, 110, area.getHeight());
-    spectrum.setBounds (area);
-    if (graphic) graphic->setBounds (area.reduced (10, 30));
-    if (curve) curve->setBounds (area);
-    if (bass) { const int w = std::min (420, area.getWidth() - 40); bass->setBounds (area.getX() + 20, area.getY() + 40, w, 24); mid->setBounds (area.getX() + 20, area.getY() + 80, w, 24); treble->setBounds (area.getX() + 20, area.getY() + 120, w, 24); }
+    const int y = kTop + 8, w = getWidth();
+    onLink.setBounds (24, y, 60, 24);
+    if (device) device->setBounds (92, y, 340, 22);
+    presetLink.setBounds (440, y, 76, 22); flat.setBounds (520, y, 46, 22); savePreset.setBounds (570, y, 150, 22);
+    if (perDevice) perDevice->setBounds (730, y, 190, 22);
+    if (protect) protect->setBounds (930, y, 170, 22);
+    const int third = (w - 48 - 24) / 3;
+    if (volume) volume->setBounds (24, y + 32, third, 24);
+    if (balance) balance->setBounds (24 + third + 12, y + 32, third, 24);
+    if (preamp) preamp->setBounds (24 + 2 * (third + 12), y + 32, third, 24);
+    if (mode) mode->setBounds (24, y + 66, 640, 22);
+    if (phase) phase->setBounds (676, y + 66, 260, 22);
+    if (scale) scale->setBounds (946, y + 66, std::max (140, w - 946 - 24), 22);
+    auto area = juce::Rectangle<int> (24, y + 98, w - 48 - 96, getHeight() - (y + 98) - 26);
+    levels.setBounds (w - 24 - 84, y + 98, 84, area.getHeight());
+    if (stageOn) stageOn->setBounds (area.getX(), area.getY(), 300, 22);
+    for (auto* l : { &importLink, &pasteLink, &clearLink }) (void) l;
+    importLink.setBounds (area.getX() + 310, area.getY(), 180, 22); pasteLink.setBounds (area.getX() + 496, area.getY(), 130, 22); clearLink.setBounds (area.getX() + 630, area.getY(), 60, 22);
+    if (corrGain) corrGain->setBounds (area.getX() + 700, area.getY(), std::min (420, area.getWidth() - 700), 22);
+    area.removeFromTop (28);
+    const bool tall = currentMode == Parametric || currentMode == Correction || currentMode == Speakers || currentMode == Basic;
+    auto top = area.removeFromTop (tall ? area.getHeight() * 55 / 100 : area.getHeight() * 45 / 100);
+    if (plot) plot->setBounds (top);
+    area.removeFromTop (10);
+    if (faders) faders->setBounds (area);
+    if (bass) { const int bw = std::min (620, area.getWidth()); bass->setBounds (area.getX(), area.getY() + 10, bw, 26); mid->setBounds (area.getX(), area.getY() + 50, bw, 26); treble->setBounds (area.getX(), area.getY() + 90, bw, 26); }
+    if (table) { tableView.setBounds (area); table->setSize (std::max (720, area.getWidth() - 12), table->getHeight()); }
+    if (speakers) { speakers->setBounds (area.withHeight (std::min (area.getHeight(), speakers->heightNeeded() + 10))); }
 }
 
 // =====================================================================================================================

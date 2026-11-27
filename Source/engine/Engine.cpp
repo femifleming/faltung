@@ -49,6 +49,14 @@ Engine::~Engine()
 BlockRt* Engine::runtime (int id) { auto it = rts.find (id); return it == rts.end() ? nullptr : it->second.get(); }
 std::shared_ptr<BlockRt> Engine::runtimeShared (int id) { auto it = rts.find (id); return it == rts.end() ? nullptr : it->second; }
 
+std::vector<dsp::Band> Engine::bandsOf (const juce::ValueTree& b)
+{
+    if (typeFromId (b[ids::type]) == BlockType::Eq) return dsp::graphicBandsOf (Model::graphicBands (b));
+    std::vector<dsp::Band> v;
+    for (auto& p : Model::peqBands (b)) { dsp::Band x; x.shape = p.shape; x.freq = p.freq; x.db = p.db; x.q = p.q; x.on = p.on; x.slope = p.slope; x.kind = p.kind; x.ch = p.ch; v.push_back (x); }
+    return v;
+}
+
 juce::String Engine::resolveOutput (const juce::ValueTree& b) const
 {
     const auto d = b[ids::device].toString();
@@ -160,6 +168,7 @@ void Engine::prepareRuntime (BlockRt& rt, const juce::ValueTree& b)
     rt.filters.prepare (C, sr);
     rt.limiter.prepare (sr, C); rt.leveler.prepare (sr, C); rt.gate.prepare (sr); rt.delay.prepare (sr, C); rt.tone.prepare (sr);
     rt.loudness.prepare (sr, C);
+    rt.speakers.prepare (sr, C);
     if (rt.type == BlockType::File)
     {
         const juce::File f (b[ids::file].toString());
@@ -186,14 +195,14 @@ void Engine::refreshParams (BlockRt& rt, const juce::ValueTree& b)
         case BlockType::Output: rt.gainDb = (float) b.getProperty (ids::level, 0.0f); rt.mute = (bool) b[ids::mute]; break;
         case BlockType::Tone: rt.shape = (int) b[ids::shape]; rt.a = (float) b[ids::freq]; rt.gainDb = (float) b[ids::level]; break;
         case BlockType::File: rt.gainDb = (float) b[ids::level]; rt.fileLoop = (bool) b[ids::loop]; break;
-        case BlockType::Eq:
-            rt.filters.set (dsp::graphicFilters (Model::graphicBands (b), graphicFreqs()));
+        case BlockType::Eq: case BlockType::Peq:
+            rt.filters.set (bandsOf (b));
             rt.gainDb = (float) b[ids::db]; break;
-        case BlockType::Peq:
+        case BlockType::Speakers:
         {
-            std::vector<std::array<double, 4>> v;
-            for (auto& p : Model::peqBands (b)) if (p.on) v.push_back ({ (double) p.shape, (double) p.freq, (double) p.db, (double) p.q });
-            rt.filters.set (v); rt.gainDb = (float) b[ids::db]; break;
+            std::vector<float> g; std::vector<double> ms;
+            for (auto& x : Model::speakers (b)) { g.push_back (x.mute ? 0.0f : (float) std::pow (10.0, x.db / 20.0) * (x.invert ? -1.0f : 1.0f)); ms.push_back (x.ms); }
+            rt.speakers.set (g, ms); break;
         }
         case BlockType::Delay: rt.delaySamples = (int) std::lround ((double) (float) b[ids::ms] * 0.001 * sr); break;
         case BlockType::Leveler: rt.a = (float) b[ids::target]; rt.b = (float) b[ids::db]; break;
@@ -340,6 +349,39 @@ void Engine::compile()
             next->steps.push_back (std::move (st));
         }
     }
+    // exact eqs: per session, the eq blocks marked linear or exact (minimum phase) become one fir in the last of them
+    // (one filter: one delay for linear phase, none for minimum phase); the others let the sound through untouched
+    {
+        std::map<int, std::vector<Step*>> linear;
+        for (auto& st : next->steps)
+        {
+            st.rt->linearPass = false;
+            if ((st.rt->type == BlockType::Eq || st.rt->type == BlockType::Peq) && ! st.rt->bypass.load())
+                for (auto s : model.root) if (auto b = Model::blockById (s, st.rt->id); b.isValid() && ((bool) b[ids::linear] || (bool) b[ids::exact])) linear[st.rt->sessionId].push_back (&st);
+        }
+        const double sr = layout.sampleRate > 0 ? layout.sampleRate : 48000.0;
+        for (auto& [sid, steps] : linear)
+        {
+            std::vector<dsp::Band> all; double gain = 0; bool lin = false;
+            for (auto* st : steps) for (auto s : model.root) if (auto b = Model::blockById (s, st->rt->id); b.isValid()) { auto v = bandsOf (b); all.insert (all.end(), v.begin(), v.end()); gain += (double) b[ids::db]; lin = lin || (bool) b[ids::linear]; }
+            auto* owner = steps.back()->rt.get();
+            // flat (nothing that changes the sound, no gain): no filter at all, so the sound passes untouched, bit for bit
+            bool flat = std::abs (gain) < 1.0e-9;
+            for (auto& b : all) if (b.on && ! ((b.shape == dsp::Bell || b.shape == dsp::LowShelf || b.shape == dsp::HighShelf || b.shape == dsp::Tilt) && std::abs (b.db) < 1.0e-9)) flat = false;
+            if (flat) { for (auto* st : steps) { st->rt->linearPass = true; st->rt->conv.reset(); st->rt->linearLatency = 0; } owner->linearPass = true; continue; }
+            const int ch = std::max (1, owner->channels), order = firOrder (sr);
+            auto ir = lin ? dsp::linearPhaseIR (all, gain, sr, std::min (2, ch), order) : dsp::minimumPhaseIR (all, gain, sr, std::min (2, ch), order);
+            if (! owner->conv)
+            {
+                owner->conv = std::make_unique<juce::dsp::Convolution> (juce::dsp::Convolution::NonUniform { 1024 });
+                owner->conv->prepare ({ sr, (juce::uint32) kMaxBlock, (juce::uint32) std::min (2, ch) });
+            }
+            owner->conv->loadImpulseResponse (std::move (ir), sr, ch >= 2 ? juce::dsp::Convolution::Stereo::yes : juce::dsp::Convolution::Stereo::no, juce::dsp::Convolution::Trim::no, juce::dsp::Convolution::Normalise::no);
+            owner->linearLatency = lin ? (1 << order) / 2 : 0;
+            for (auto* st : steps) st->rt->linearPass = true;
+        }
+        for (auto& st : next->steps) if (! st.rt->linearPass.load()) { st.rt->conv.reset(); st.rt->linearLatency = 0; }
+    }
     {
         const juce::SpinLock::ScopedLockType l (planLock);
         std::swap (plan, next);
@@ -427,11 +469,24 @@ void Engine::runBlock (Step& st, const float* const* in, int numIn, float* const
             }
             case BlockType::Eq: case BlockType::Peq:
             {
+                if (rt.linearPass.load())
+                {
+                    // linear phase: only the session's fir block filters (with every linear eq's bands and gains in it)
+                    if (rt.conv)
+                    {
+                        const int cc = std::min (C, 2);
+                        juce::dsp::AudioBlock<float> blk (buf.getArrayOfWritePointers(), (size_t) cc, (size_t) n);
+                        rt.conv->process (juce::dsp::ProcessContextReplacing<float> (blk));
+                        for (int c = 2; c < C; ++c) juce::FloatVectorOperations::copy (buf.getWritePointer (c), buf.getReadPointer (c % 2), n);
+                    }
+                    break;
+                }
                 rt.filters.process (buf, n);
                 const float g = dsp::dbToGain (rt.gainDb.load());
                 if (g != 1.0f) buf.applyGain (0, n, g);
                 break;
             }
+            case BlockType::Speakers: rt.speakers.process (buf, n); break;
             case BlockType::Plugin:
             {
                 const juce::SpinLock::ScopedTryLockType pl (rt.pluginLock);
@@ -593,7 +648,10 @@ void Engine::valueTreePropertyChanged (juce::ValueTree& t, const juce::Identifie
     if (t.hasType (ids::block))
     {
         // the shape of the graph or what it needs from the mac: rebuild; anything else: the running block takes it now
-        static const juce::Identifier structural[] = { ids::type, ids::device, ids::pids, ids::bundles, ids::exclude, ids::mute, ids::mono, ids::first, ids::count, ids::outs, ids::channels, ids::file, ids::plugin };
+        static const juce::Identifier structural[] = { ids::type, ids::device, ids::pids, ids::bundles, ids::exclude, ids::mute, ids::mono, ids::first, ids::count, ids::outs, ids::channels, ids::file, ids::plugin, ids::linear, juce::Identifier ("count") };
+        // a linear-phase eq's fir is made when the plan is: any change to its bands rebuilds it
+        if (((bool) t[ids::linear] || (bool) t[ids::exact]) && (p == ids::bands || p == ids::db || p == ids::bypass || p == juce::Identifier ("count"))) { dirty = true; return; }
+        if (p == ids::exact) { dirty = true; return; }
         const auto ty = typeFromId (t[ids::type]);
         const bool sourceMute = p == ids::mute && (ty == BlockType::App || ty == BlockType::System);
         bool structuralChange = sourceMute;
@@ -608,16 +666,41 @@ void Engine::valueTreePropertyChanged (juce::ValueTree& t, const juce::Identifie
 
 juce::ValueTree Engine::systemEqSession()
 {
-    for (auto s : model.root) if (s.hasType (ids::session) && s[ids::kind].toString() == "system eq") return s;
-    auto s = model.addSession ("system eq");
-    s.setProperty (ids::kind, "system eq", nullptr);
-    auto src = model.addBlock (s, BlockType::System, 40, 60); src.setProperty (ids::mute, true, nullptr); src.setProperty (ids::name, "the mac's sound", nullptr);
-    auto vol = model.addBlock (s, BlockType::Volume, 240, 60);
-    auto eq = model.addBlock (s, BlockType::Eq, 440, 60);
-    auto peq = model.addBlock (s, BlockType::Peq, 640, 60); peq.setProperty (ids::bands, "", nullptr); peq.setProperty (ids::bypass, true, nullptr);
-    auto lim = model.addBlock (s, BlockType::Limiter, 840, 60); lim.setProperty (ids::ceiling, -0.3f, nullptr);
-    auto out = model.addBlock (s, BlockType::Output, 1040, 60); out.setProperty (ids::name, "the mac's output", nullptr);
-    int prev = src[ids::id]; for (auto b : { vol, eq, peq, lim, out }) { model.connect (s, prev, b[ids::id]); prev = b[ids::id]; }
+    juce::ValueTree s;
+    for (auto x : model.root) if (x.hasType (ids::session) && x[ids::kind].toString() == "system eq") s = x;
+    if (! s.isValid()) { s = model.addSession ("system eq"); s.setProperty (ids::kind, "system eq", nullptr); }
+    // the chain, by role: the mac's sound → volume → graphic → tone (parametric) → correction (parametric, room / speaker
+    // measurements) → speakers (trim, delay, polarity per channel) → limiter (clip protection) → output.
+    // Made once; an older one gets the stages it lacks, keeping what it has.
+    struct Stage { const char* role; BlockType type; const char* name; };
+    static const Stage chain[] = { { "source", BlockType::System, "the mac's sound" }, { "volume", BlockType::Volume, "volume" }, { "graphic", BlockType::Eq, "graphic eq" },
+                                   { "tone", BlockType::Peq, "parametric eq" }, { "correction", BlockType::Peq, "room correction" }, { "speakers", BlockType::Speakers, "speakers" },
+                                   { "limiter", BlockType::Limiter, "clip protection" }, { "output", BlockType::Output, "the mac's output" } };
+    auto byRole = [&] (const char* r) { for (auto b : s) if (b.hasType (ids::block) && b[ids::role].toString() == r) return b; return juce::ValueTree(); };
+    // blocks from before roles: by type, in order
+    for (auto b : s) if (b.hasType (ids::block) && b[ids::role].toString().isEmpty())
+        for (auto& st : chain) if (typeFromId (b[ids::type]) == st.type && ! byRole (st.role).isValid()) { b.setProperty (ids::role, st.role, nullptr); break; }
+    bool changed = false; float x = 40;
+    for (auto& st : chain)
+    {
+        auto b = byRole (st.role);
+        if (! b.isValid())
+        {
+            b = model.addBlock (s, st.type, x, 60); b.setProperty (ids::role, st.role, nullptr); b.setProperty (ids::name, st.name, nullptr); changed = true;
+            if (st.type == BlockType::System) b.setProperty (ids::mute, true, nullptr);
+            if (st.type == BlockType::Peq) { b.setProperty (ids::bands, "", nullptr); b.setProperty (ids::bypass, juce::String (st.role) == "correction", nullptr); }
+            if (st.type == BlockType::Eq || st.type == BlockType::Peq) b.setProperty (ids::exact, true, nullptr);   // exact (minimum phase fir) by default
+            if (st.type == BlockType::Limiter) { b.setProperty (ids::ceiling, -0.1f, nullptr); b.setProperty (ids::release, 200.0f, nullptr); }
+        }
+        x += 200;
+    }
+    if (changed)
+    {
+        // wire the chain in order (any old wires go)
+        for (int i = s.getNumChildren(); --i >= 0;) if (s.getChild (i).hasType (ids::wire)) s.removeChild (i, nullptr);
+        int prev = 0; float px = 40;
+        for (auto& st : chain) { auto b = byRole (st.role); b.setProperty (ids::x, px, nullptr); b.setProperty (ids::y, 60.0f, nullptr); px += 200; if (prev) model.connect (s, prev, b[ids::id]); prev = b[ids::id]; }
+    }
     return s;
 }
 } // namespace um

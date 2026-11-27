@@ -2,6 +2,7 @@
 // umleitung — the signal processing: filters (the eqs), level, channels, dynamics, generators and the meters.
 // Real-time safe: everything is sized in prepare(); process() never allocates.
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_dsp/juce_dsp.h>
 #include <cmath>
 #include <complex>
 #include <algorithm>
@@ -54,48 +55,278 @@ struct Biquad
     void reset() { z1 = z2 = 0; }
 };
 
-/** a bank of biquads per channel; coefficients are swapped in at the start of a block (from the message thread) */
+// ---- the hi-fi eq: bands designed by matching the analog filter ------------------------------------------------
+// Every band is an analog prototype (the ideal filter). The digital biquads are "matched" to it (M. Vicanek,
+// Matched Second Order Digital Filters, 2016): the poles are mapped exactly (z = e^(sT)), and the numerator is solved
+// so the magnitude equals the analog one at 0 hz, at the band's frequency and at nyquist. Unlike the usual bilinear
+// (cookbook) filters, a bell or a shelf near the top keeps its shape: no cramping at 10 - 20 khz. All in double.
+enum Shape { Bell = 0, LowShelf, HighShelf, LowCut, HighCut, Notch, BandPass, AllPass, Tilt, NumShapes };
+inline const char* shapeName (int s) { static const char* n[] = { "bell", "low shelf", "high shelf", "low cut", "high cut", "notch", "band pass", "all-pass", "tilt" }; return n[juce::jlimit (0, NumShapes - 1, s)]; }
+
+/** a band as the eqs describe it: slope (db / octave, the cuts: 6 … 48), kind (cuts: 0 butterworth, 1 linkwitz-riley),
+    ch (0 every channel, n the n-th) */
+struct Band { int shape = Bell; double freq = 1000, db = 0, q = 0.7071; int slope = 12, kind = 0, ch = 0; bool on = true; };
+
+/** one analog section in s normalised to the band's frequency: (n2 s² + n1 s + n0) / (d2 s² + d1 s + d0); first: first order */
+struct Analog { double n2 = 0, n1 = 0, n0 = 1, d2 = 0, d1 = 0, d0 = 1; double f0 = 1000; bool first = false; double gain = 1; };
+
+inline std::vector<Analog> analogSections (const Band& b)
+{
+    std::vector<Analog> v;
+    const double f = b.freq, q = std::max (0.025, b.q), A = std::pow (10.0, b.db / 40.0), sa = std::sqrt (A);
+    auto sec2 = [&] (double n2, double n1, double n0, double d2, double d1, double d0, double gain = 1) { Analog x; x.n2 = n2; x.n1 = n1; x.n0 = n0; x.d2 = d2; x.d1 = d1; x.d0 = d0; x.f0 = f; x.gain = gain; v.push_back (x); };
+    auto sec1 = [&] (bool high) { Analog x; x.first = true; x.n1 = high ? 1 : 0; x.n0 = high ? 0 : 1; x.d1 = 1; x.d0 = 1; x.f0 = f; v.push_back (x); };
+    switch (b.shape)
+    {
+        case Bell:      sec2 (1, A / q, 1, 1, 1 / (A * q), 1); break;
+        case LowShelf:  sec2 (A * 1, A * sa / q, A * A, A, sa / q, 1); break;
+        case HighShelf: sec2 (A * A, A * sa / q, A * 1, 1, sa / q, A); break;
+        case Notch:     sec2 (1, 0, 1, 1, 1 / q, 1); break;
+        case BandPass:  sec2 (0, 1 / q, 0, 1, 1 / q, 1); break;
+        case AllPass:   sec2 (1, -1 / q, 1, 1, 1 / q, 1); break;
+        case Tilt:      sec2 (A * A, A * sa / 0.5, A * 1, 1, sa / 0.5, A, 1.0 / A); break;   // a gentle high shelf, the middle at 0 db
+        case LowCut: case HighCut:
+        {
+            const bool high = b.shape == LowCut;
+            int order = juce::jlimit (1, 8, (int) std::lround (b.slope / 6.0));
+            auto butter = [&] (int n, double userQ)
+            {
+                if (n % 2 == 1) sec1 (high);
+                for (int k = 1; k <= n / 2; ++k)
+                {
+                    const double phi = (n % 2 == 0) ? (2.0 * k - 1.0) * dsp::kPi / (2.0 * n) : k * dsp::kPi / n;
+                    const double qq = (n == 2 && userQ > 0) ? userQ : 1.0 / (2.0 * std::cos (phi));
+                    if (high) sec2 (1, 0, 0, 1, 1 / qq, 1); else sec2 (0, 0, 1, 1, 1 / qq, 1);
+                }
+            };
+            if (b.kind == 1) { order = std::max (2, order - order % 2); butter (order / 2, -1); butter (order / 2, -1); }   // linkwitz-riley: butterworth squared
+            else butter (order, order == 2 ? q : -1);
+            break;
+        }
+        default: break;
+    }
+    return v;
+}
+/** the analog magnitude² of a section at a frequency */
+inline double analogMag2 (const Analog& a, double hz)
+{
+    const double x = hz / a.f0;
+    if (a.first) { const double nr = a.n0, ni = a.n1 * x, dr = a.d0, di = a.d1 * x; return a.gain * a.gain * (nr * nr + ni * ni) / std::max (1.0e-300, dr * dr + di * di); }
+    const double nr = a.n0 - a.n2 * x * x, ni = a.n1 * x, dr = a.d0 - a.d2 * x * x, di = a.d1 * x;
+    return a.gain * a.gain * (nr * nr + ni * ni) / std::max (1.0e-300, dr * dr + di * di);
+}
+/** the matched digital section */
+inline Coefs matched (const Analog& a, double fs)
+{
+    const double T = 1.0 / fs, w0 = 2.0 * kPi * std::min (a.f0, fs * 0.4999);
+    Analog an = a; an.f0 = std::min (a.f0, fs * 0.4999);
+    if (a.first)
+    {
+        const double z = std::exp (-w0 * T), a1 = -z;
+        const double h0 = std::sqrt (analogMag2 (an, 0.0)), hn = std::sqrt (analogMag2 (an, fs * 0.5));
+        // (b0 + b1) / (1 + a1) = h0, (b0 - b1) / (1 - a1) = hn
+        const double sum = h0 * (1 + a1), diff = hn * (1 - a1);
+        return { 0.5 * (sum + diff), 0.5 * (sum - diff), 0, a1, 0 };
+    }
+    // the poles, exactly: roots of d2 s² + d1 s + d0 (s normalised), then z = e^(s w0 T)
+    double a1, a2;
+    const double d2 = std::max (1.0e-12, a.d2), bb = a.d1 / d2, cc = a.d0 / d2, disc = bb * bb - 4 * cc;
+    if (disc < 0) { const double re = -0.5 * bb * w0 * T, im = 0.5 * std::sqrt (-disc) * w0 * T; a1 = -2.0 * std::exp (re) * std::cos (im); a2 = std::exp (2.0 * re); }
+    else { const double r1 = (-bb + std::sqrt (disc)) * 0.5 * w0 * T, r2 = (-bb - std::sqrt (disc)) * 0.5 * w0 * T; a1 = -(std::exp (r1) + std::exp (r2)); a2 = std::exp (r1 + r2); }
+    const double A0 = (1 + a1 + a2) * (1 + a1 + a2), A1 = (1 - a1 + a2) * (1 - a1 + a2), A2 = -4 * a2;
+    auto phis = [] (double w, double& p0, double& p1, double& p2) { p1 = std::sin (w * 0.5); p1 *= p1; p0 = 1 - p1; p2 = 4 * p0 * p1; };
+    auto den = [&] (double w) { double p0, p1, p2; phis (w, p0, p1, p2); return A0 * p0 + A1 * p1 + A2 * p2; };
+    const double B0 = analogMag2 (an, 0.0) * A0, B1 = analogMag2 (an, fs * 0.5) * A1;
+    const double wm = w0 * T;   // match at the band's own frequency
+    double p0, p1, p2; phis (wm, p0, p1, p2);
+    const double B2 = (analogMag2 (an, an.f0) * den (wm) - B0 * p0 - B1 * p1) / std::max (1.0e-300, p2);
+    const double sB0 = std::sqrt (std::max (0.0, B0)), sB1 = std::sqrt (std::max (0.0, B1));
+    const double W = 0.5 * (sB0 + sB1);
+    const double b0 = 0.5 * (W + std::sqrt (std::max (0.0, W * W + B2)));
+    const double b1 = 0.5 * (sB0 - sB1), b2 = W - b0;
+    // an all-pass keeps its phase: the numerator is the denominator mirrored
+    if (a.n1 < 0 && a.n2 == a.d2 && a.n0 == a.d0) return { a2, a1, 1.0, a1, a2 };
+    return { b0, b1, b2, a1, a2 };
+}
+/** every section of a band (a steep cut is several) */
+inline std::vector<Coefs> designBand (const Band& b, double fs) { std::vector<Coefs> v; if (b.on) for (auto& s : analogSections (b)) v.push_back (matched (s, fs)); return v; }
+/** per channel (the bands meant for it and the ones for all) */
+inline std::vector<std::vector<Coefs>> designBank (const std::vector<Band>& bands, double fs, int channels)
+{
+    std::vector<std::vector<Coefs>> v ((size_t) std::max (1, channels));
+    for (auto& b : bands) { if (! b.on) continue; auto k = designBand (b, fs); for (int c = 0; c < (int) v.size(); ++c) if (b.ch == 0 || b.ch == c + 1) v[(size_t) c].insert (v[(size_t) c].end(), k.begin(), k.end()); }
+    return v;
+}
+/** the ideal (analog) response of bands on a channel, in db */
+inline double analogDb (const std::vector<Band>& bands, double hz, int channel = 0)
+{
+    double m2 = 1; for (auto& b : bands) if (b.on && (b.ch == 0 || b.ch == channel + 1)) for (auto& s : analogSections (b)) m2 *= analogMag2 (s, hz);
+    return 10.0 * std::log10 (std::max (1.0e-30, m2));
+}
+/** what the digital filters really do (for the curve on the page) */
+inline double digitalDb (const std::vector<Band>& bands, double fs, double hz, int channel = 0)
+{
+    double d = 0; for (auto& b : bands) if (b.on && (b.ch == 0 || b.ch == channel + 1)) for (auto& k : designBand (b, fs)) d += magnitudeDb (k, fs, hz);
+    return d;
+}
+
+/** a bank of biquads, its own list per channel; a new set is swapped in at the start of a block */
 class FilterBank
 {
 public:
-    static constexpr int kMax = 32;
-    void prepare (int channels, double fs) { sr = fs; state.assign ((size_t) channels, {}); }
-    /** message thread: new filters (shape, freq, db, q) */
-    void set (const std::vector<std::array<double, 4>>& bands)
+    void prepare (int channels, double fs) { sr = fs; state.assign ((size_t) channels, std::vector<Biquad> (256)); }
+    /** message thread */
+    void set (std::vector<std::vector<Coefs>> perChannel)
     {
-        Pending p; p.n = std::min ((int) bands.size(), kMax);
-        for (int i = 0; i < p.n; ++i) p.k[(size_t) i] = makeFilter ((int) bands[(size_t) i][0], sr, bands[(size_t) i][1], bands[(size_t) i][2], bands[(size_t) i][3]);
-        const juce::SpinLock::ScopedLockType l (lock); pending = p; dirty = true;
+        for (auto& v : perChannel) if (v.size() > 256) v.resize (256);
+        const juce::SpinLock::ScopedLockType l (lock); pending = std::move (perChannel); dirty = true;
     }
+    void set (const std::vector<Band>& bands) { set (designBank (bands, sr, std::max (1, (int) state.size()))); }
     double sampleRate() const { return sr; }
     void process (juce::AudioBuffer<float>& b, int n)
     {
-        if (dirty.load()) { const juce::SpinLock::ScopedTryLockType l (lock); if (l.isLocked()) { active = pending; dirty = false; } }
+        if (dirty.load()) { const juce::SpinLock::ScopedTryLockType l (lock); if (l.isLocked()) { std::swap (active, pending); dirty = false; } }
         const int ch = std::min (b.getNumChannels(), (int) state.size());
         for (int c = 0; c < ch; ++c)
         {
-            auto* x = b.getWritePointer (c); auto& st = state[(size_t) c];
-            for (int f = 0; f < active.n; ++f)
-            {
-                auto& q = st[(size_t) f]; q.k = active.k[(size_t) f];
-                for (int i = 0; i < n; ++i) x[i] = q.tick (x[i]);
-            }
+            if (active.empty()) return;
+            const auto& ks = active[(size_t) std::min (c, (int) active.size() - 1)];
+            auto& st = state[(size_t) c];
+            if (st.size() < ks.size()) continue;   // (sized in prepare: 256 sections)
+            auto* x = b.getWritePointer (c);
+            for (size_t f = 0; f < ks.size(); ++f) { auto& q = st[f]; q.k = ks[f]; for (int i = 0; i < n; ++i) x[i] = q.tick (x[i]); }
             for (int i = 0; i < n; ++i) if (! std::isfinite (x[i])) { for (auto& q : st) q.reset(); std::fill (x, x + n, 0.0f); break; }
         }
     }
 private:
-    struct Pending { std::array<Coefs, kMax> k; int n = 0; };
-    Pending pending, active; juce::SpinLock lock; std::atomic<bool> dirty { false };
-    std::vector<std::array<Biquad, kMax>> state; double sr = 48000;
+    std::vector<std::vector<Coefs>> pending, active; juce::SpinLock lock; std::atomic<bool> dirty { false };
+    std::vector<std::vector<Biquad>> state; double sr = 48000;
 };
 
-/** the graphic eq's bands (constant-q bells an octave wide) */
-inline std::vector<std::array<double, 4>> graphicFilters (const std::array<float, 10>& g, const std::array<float, 10>& freqs)
+/** the graphic eqs: constant-q bells on the iso centres (10 bands an octave wide, 31 a third of an octave) */
+inline const std::vector<float>& graphicCentres (int count)
 {
-    std::vector<std::array<double, 4>> v;
-    for (size_t i = 0; i < 10; ++i) if (std::abs (g[i]) > 0.01f) v.push_back ({ 0.0, (double) freqs[i], (double) g[i], 1.41 });
+    static const std::vector<float> ten { 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+    static const std::vector<float> third { 20, 25, 31.5f, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000 };
+    return count >= 31 ? third : ten;
+}
+inline std::vector<Band> graphicBandsOf (const std::vector<float>& gains)
+{
+    const auto& f = graphicCentres ((int) gains.size());
+    const double q = gains.size() >= 31 ? 4.318 : 1.414;   // a third of an octave / an octave
+    std::vector<Band> v;
+    for (size_t i = 0; i < gains.size() && i < f.size(); ++i) if (std::abs (gains[i]) > 1.0e-4f) { Band b; b.shape = Bell; b.freq = f[i]; b.db = gains[i]; b.q = q; v.push_back (b); }
     return v;
 }
+
+/** a linear-phase fir with the bands' exact (analog) magnitude, per channel: n taps, its delay n / 2 */
+inline juce::AudioBuffer<float> linearPhaseIR (const std::vector<Band>& bands, double gainDb, double fs, int channels, int order)
+{
+    const int n = 1 << order;
+    juce::AudioBuffer<float> ir (channels, n);
+    juce::dsp::FFT fft (order);
+    std::vector<float> buf ((size_t) n * 2);
+    const double g = std::pow (10.0, gainDb / 20.0);
+    for (int c = 0; c < channels; ++c)
+    {
+        std::fill (buf.begin(), buf.end(), 0.0f);
+        for (int k = 0; k <= n / 2; ++k)
+        {
+            const double hz = (double) k * fs / n;
+            const double m = g * std::pow (10.0, analogDb (bands, std::max (0.01, hz), c) / 20.0);
+            buf[(size_t) (2 * k)] = (float) m; buf[(size_t) (2 * k + 1)] = 0.0f;   // zero phase
+        }
+        fft.performRealOnlyInverseTransform (buf.data());
+        auto* y = ir.getWritePointer (c);
+        for (int i = 0; i < n; ++i)
+        {
+            const int k = (i + n / 2) % n;                                         // centred: the delay is n / 2
+            const double w = 0.5 - 0.5 * std::cos (2.0 * kPi * (i + 0.5) / n);     // hann
+            y[i] = (float) (buf[(size_t) k] * w);
+        }
+    }
+    return ir;
+}
+
+/** a minimum-phase fir with the bands' exact (analog) magnitude: the same level at every frequency as the ideal curve,
+    the least delay any filter with that magnitude can have (the real-cepstrum method: log magnitude → cepstrum →
+    folded → exponent → impulse) */
+inline juce::AudioBuffer<float> minimumPhaseIR (const std::vector<Band>& bands, double gainDb, double fs, int channels, int order)
+{
+    const int n = 1 << order;
+    juce::AudioBuffer<float> ir (channels, n);
+    juce::dsp::FFT fft (order);
+    std::vector<std::complex<float>> a ((size_t) n), b ((size_t) n);
+    const double g = std::pow (10.0, gainDb / 20.0);
+    for (int c = 0; c < channels; ++c)
+    {
+        // log magnitude on the whole circle (real, even)
+        for (int k = 0; k <= n / 2; ++k)
+        {
+            const double hz = std::max (0.01, (double) k * fs / n);
+            const double lm = std::log (std::max (1.0e-12, g * std::pow (10.0, analogDb (bands, hz, c) / 20.0)));
+            a[(size_t) k] = { (float) lm, 0.0f }; if (k > 0 && k < n / 2) a[(size_t) (n - k)] = { (float) lm, 0.0f };
+        }
+        fft.perform (a.data(), b.data(), true);                       // the real cepstrum (inverse transform)
+        // fold it: what is causal doubles, the rest goes
+        for (int k = 0; k < n; ++k) { const float re = b[(size_t) k].real(); a[(size_t) k] = { k == 0 || k == n / 2 ? re : (k < n / 2 ? 2.0f * re : 0.0f), 0.0f }; }
+        fft.perform (a.data(), b.data(), false);                      // back: log of the minimum-phase spectrum
+        for (int k = 0; k < n; ++k) b[(size_t) k] = std::exp (b[(size_t) k]);
+        fft.perform (b.data(), a.data(), true);                       // the impulse response
+        auto* y = ir.getWritePointer (c);
+        for (int i = 0; i < n; ++i)
+        {
+            const double fade = i < n * 3 / 4 ? 1.0 : 0.5 + 0.5 * std::cos (kPi * (i - n * 3.0 / 4.0) / (n / 4.0));   // the tail out smoothly
+            y[i] = (float) (a[(size_t) i].real() * fade);
+        }
+    }
+    return ir;
+}
+
+/** speakers: per channel a trim, a delay (to a fraction of a sample: whole samples, then a thiran all-pass for the
+    rest, so the level stays flat), polarity and mute */
+struct SpeakerAlign
+{
+    struct Ch { float gain = 1; int whole = 0; double frac = 0, ap = 0, z = 0; };
+    std::vector<std::vector<float>> line; std::vector<Ch> ch; int w = 0, len = 1; double sr = 48000;
+    void prepare (double fs, int channels) { sr = fs; len = (int) (0.2 * fs) + 4; line.assign ((size_t) channels, std::vector<float> ((size_t) len, 0.0f)); ch.assign ((size_t) channels, {}); w = 0; }
+    /** message thread: gains (linear, sign = polarity, 0 = mute) and delays (ms) */
+    void set (const std::vector<float>& gains, const std::vector<double>& ms)
+    {
+        const juce::SpinLock::ScopedLockType l (lock); pg = gains; pm = ms; dirty = true;
+    }
+    void process (juce::AudioBuffer<float>& b, int n)
+    {
+        if (dirty.load()) { const juce::SpinLock::ScopedTryLockType l (lock); if (l.isLocked())
+        {
+            for (size_t c = 0; c < ch.size(); ++c)
+            {
+                ch[c].gain = c < pg.size() ? pg[c] : 1.0f;
+                const double d = juce::jlimit (0.0, (len - 3) / sr * 1000.0, c < pm.size() ? pm[c] : 0.0) * 0.001 * sr;
+                // thiran first-order all-pass delays well around 1 sample: whole = floor (d) - 1 when there is room, frac in [1, 2)
+                int whole = (int) std::floor (d); double fr = d - whole;
+                if (whole >= 1 && fr < 0.5) { whole -= 1; fr += 1.0; }
+                if (ch[c].whole != whole || std::abs (ch[c].frac - fr) > 1.0e-12) { ch[c].whole = whole; ch[c].frac = fr; ch[c].ap = fr > 1.0e-9 ? (1.0 - fr) / (1.0 + fr) : 0.0; }
+            }
+            dirty = false;
+        } }
+        const int C = std::min (b.getNumChannels(), (int) ch.size());
+        for (int i = 0; i < n; ++i)
+        {
+            for (int c = 0; c < C; ++c)
+            {
+                auto& L = line[(size_t) c]; auto& k = ch[(size_t) c];
+                L[(size_t) w] = b.getSample (c, i);
+                const float x = L[(size_t) ((w - k.whole + len) % len)];
+                double y = x;
+                if (k.frac > 1.0e-9) { y = k.ap * x + k.z; k.z = x - k.ap * y; }   // y[n] = a x[n] + x[n-1] - a y[n-1]
+                b.setSample (c, i, (float) (y * k.gain));
+            }
+            w = (w + 1) % len;
+        }
+    }
+    std::vector<float> pg; std::vector<double> pm; juce::SpinLock lock; std::atomic<bool> dirty { false };
+};
 
 // ---- level ----------------------------------------------------------------------------------------------------
 /** a gain that glides (no zipper noise) */

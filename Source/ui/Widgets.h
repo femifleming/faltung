@@ -45,45 +45,6 @@ inline void deviceLists (bool outputs, juce::StringArray& names, juce::StringArr
     }
 }
 
-// ---- the graphic eq: ten slanted vertical sliders and a preamp --------------------------------------------------------
-class GraphicEqEditor : public juce::Component
-{
-public:
-    GraphicEqEditor (Theme t, juce::ValueTree b) : theme (t), block (b) {}
-    void paint (juce::Graphics& g) override
-    {
-        const auto gains = Model::graphicBands (block);
-        auto r = getLocalBounds().toFloat();
-        const float colW = r.getWidth() / 10.0f, mid = r.getY() + (r.getHeight() - 18.0f) * 0.5f, half = (r.getHeight() - 30.0f) * 0.5f;
-        g.setColour (theme.ink.withAlpha (0.25f)); g.fillRect (r.getX(), mid, r.getWidth(), 1.0f);
-        g.setFont (mono (9.0f));
-        for (float d : { 12.0f, -12.0f }) { g.setColour (theme.ink.withAlpha (0.1f)); g.fillRect (r.getX(), mid - d / 24.0f * half, r.getWidth(), 1.0f); }
-        juce::Path curve;
-        for (int i = 0; i < 10; ++i)
-        {
-            const float x = r.getX() + colW * (i + 0.5f), y = mid - gains[(size_t) i] / 24.0f * half;
-            g.setColour (theme.ink.withAlpha (0.35f)); g.fillRect (x - 0.5f, r.getY() + 6.0f, 1.0f, r.getHeight() - 30.0f);
-            auto bar = juce::Rectangle<float>::leftTopRightBottom (x - colW * 0.28f, std::min (y, mid), x + colW * 0.28f, std::max (y, mid));
-            g.setColour (theme.fill); g.fillPath (skewRect (bar, 0.2f));
-            g.setColour (edgeFor (theme.ground)); g.fillRect (x - colW * 0.3f, y - 1.0f, colW * 0.6f, 2.0f);
-            g.setColour (theme.ink); g.drawText (graphicFreqs()[(size_t) i] >= 1000 ? juce::String (graphicFreqs()[(size_t) i] / 1000.0f, 0) + "k" : juce::String ((int) graphicFreqs()[(size_t) i]), (int) (x - colW * 0.5f), (int) r.getBottom() - 16, (int) colW, 14, juce::Justification::centred);
-            g.setColour (theme.ink.withAlpha (0.7f)); g.drawText (dbText (gains[(size_t) i]), (int) (x - colW * 0.5f), (int) r.getY() - 2, (int) colW, 10, juce::Justification::centred);
-        }
-    }
-    void mouseDown (const juce::MouseEvent& e) override { band = bandAt (e.x); if (e.getNumberOfClicks() > 1) set (band, 0.0f); else mouseDrag (e); }
-    void mouseDrag (const juce::MouseEvent& e) override
-    {
-        if (band < 0) return;
-        const float mid = (getHeight() - 18.0f) * 0.5f, half = (getHeight() - 30.0f) * 0.5f;
-        set (band, juce::jlimit (-24.0f, 24.0f, std::round ((mid - (float) e.y) / half * 24.0f * 2.0f) / 2.0f));
-    }
-    std::function<void()> onEdit;
-private:
-    int bandAt (int x) const { return juce::jlimit (0, 9, (int) (x / (getWidth() / 10.0f))); }
-    void set (int i, float v) { auto g = Model::graphicBands (block); g[(size_t) i] = v; block.setProperty (ids::bands, Model::graphicText (g), nullptr); repaint(); if (onEdit) onEdit(); }
-    Theme theme; juce::ValueTree block; int band = -1;
-};
-
 // ---- the parametric eq's curve: points you drag (frequency, gain), wheel for q; the spectrum behind --------------------
 class CurveEditor : public juce::Component
 {
@@ -99,10 +60,11 @@ public:
     {
         auto bands = Model::peqBands (block);
         const double fs = 48000;
+        const auto designed = Engine::bandsOf (block);
         juce::Path p;
         for (int x = 0; x < getWidth(); x += 2)
         {
-            double d = 0; for (auto& b : bands) if (b.on) d += dsp::magnitudeDb (dsp::makeFilter (b.shape, fs, b.freq, b.db, b.q), fs, hzAt ((float) x));
+            double d = dsp::digitalDb (designed, fs, hzAt ((float) x));
             d += (float) block[ids::db];
             const float y = yOf ((float) juce::jlimit (-24.0, 24.0, d));
             if (x == 0) p.startNewSubPath ((float) x, y); else p.lineTo ((float) x, y);
@@ -143,7 +105,7 @@ public:
         }
         if (e.getNumberOfClicks() > 1 && selected < 0)
         {
-            auto v = Model::peqBands (block); v.push_back ({ 0, (float) hzAt ((float) e.x), juce::jlimit (-24.0f, 24.0f, dbAt ((float) e.y)), 1.0f, true });
+            auto v = Model::peqBands (block); PeqBand nb; nb.freq = std::round (hzAt ((float) e.x)); nb.db = juce::jlimit (-24.0, 24.0, (double) dbAt ((float) e.y)); nb.q = 1.0; v.push_back (nb);
             selected = (int) v.size() - 1; store (v);
         }
         repaint();
@@ -152,14 +114,14 @@ public:
     {
         if (selected < 0) return;
         auto v = Model::peqBands (block); if (selected >= (int) v.size()) return;
-        v[(size_t) selected].freq = (float) juce::jlimit (20.0, 20000.0, hzAt ((float) e.x));
-        if (v[(size_t) selected].shape < 3) v[(size_t) selected].db = juce::jlimit (-24.0f, 24.0f, std::round (dbAt ((float) e.y) * 10.0f) / 10.0f);
+        v[(size_t) selected].freq = juce::jlimit (5.0, 24000.0, std::round (hzAt ((float) e.x) * 10.0) / 10.0);
+        if (v[(size_t) selected].shape < 3 || v[(size_t) selected].shape == 8) v[(size_t) selected].db = juce::jlimit (-24.0, 24.0, std::round ((double) dbAt ((float) e.y) * 100.0) / 100.0);
         store (v);
     }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
         const int i = hit (e.getPosition()); if (i < 0) return;
-        auto v = Model::peqBands (block); v[(size_t) i].q = juce::jlimit (0.1f, 20.0f, v[(size_t) i].q * std::pow (1.25f, w.deltaY * 4.0f)); store (v);
+        auto v = Model::peqBands (block); v[(size_t) i].q = juce::jlimit (0.05, 50.0, v[(size_t) i].q * std::pow (1.25, (double) w.deltaY * 4.0)); store (v);
     }
     std::function<void()> onEdit;
     int selected = -1;

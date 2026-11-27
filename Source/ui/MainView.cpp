@@ -187,6 +187,26 @@ void MainView::screenshots (const juce::File& dir, int watchBlock)
         auto f = dir.getChildFile ("umleitung-" + juce::String (p) + "-" + juce::String (pageName (p)).replace (" ", "-") + ".png"); f.deleteFile();
         juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
     }
+    // the system eq in each of its modes (with something set, to see it)
+    {
+        auto es = ctx.model.eqSettings();
+        auto st = [&] (const char* r) { return eq->stage (r); };
+        PeqBand a; a.shape = 3; a.freq = 22; a.slope = 24; PeqBand b2; b2.freq = 3150; b2.db = -2.5; b2.q = 2.2; PeqBand c2; c2.shape = 2; c2.freq = 9000; c2.db = 1.5; c2.q = 0.7;
+        st ("tone").setProperty (ids::bands, Model::peqText ({ a, b2, c2 }), nullptr);
+        st ("correction").setProperty (ids::bands, "0 42.5 -6.3 4.1 1 12 0 1|0 42.5 -4.8 3.6 1 12 0 2|0 118 -3.2 6 1 12 0 0|0 260 2.1 2 1 12 0 1", nullptr); st ("correction").setProperty (ids::bypass, false, nullptr);
+        st ("speakers").setProperty (ids::align, "-0.35 0.271 0 0|0 0 0 0", nullptr);
+        for (int m = 0; m < EqPage::NumModes; ++m)
+        {
+            es.setProperty (ids::mode, m, nullptr);
+            if (m == EqPage::ThirtyOne) { st ("graphic").setProperty ("count", 31, nullptr); std::vector<float> g31 (31, 0.0f); g31[3] = 2.5f; g31[4] = 3; g31[5] = 2; g31[22] = -1.75f; g31[29] = 1.25f; st ("graphic").setProperty (ids::bands, Model::graphicText (g31), nullptr); }
+            if (m == EqPage::Ten || m == EqPage::Basic) { st ("graphic").setProperty ("count", 10, nullptr); st ("graphic").setProperty (ids::bands, "3 2 1 0 -0.5 0 0 0.75 1.5 2", nullptr); }
+            show (SystemEq); eq->refresh();
+            for (int k = 0; k < 8; ++k) { if (watchBlock) juce::Thread::sleep (30); timerCallback(); }
+            auto img = createComponentSnapshot (getLocalBounds(), true, 1.0f);
+            auto f = dir.getChildFile ("umleitung-eq-" + juce::String (m) + ".png"); f.deleteFile();
+            juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
+        }
+    }
     // every block type's controls, in a scratch session
     auto scratch = ctx.model.addSession ("every block");
     show (Sessions, scratch[ids::id]);

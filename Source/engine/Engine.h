@@ -40,6 +40,9 @@ struct BlockRt
     juce::AudioBuffer<float> scratch;
     // meters and pictures
     dsp::LevelTap levels; dsp::ScopeFifo scope; dsp::Loudness loudness; std::atomic<bool> analysed { false };
+    // the hi-fi eq: speakers (trim / delay / polarity per channel); linear phase (one fir for the session's linear eqs)
+    dsp::SpeakerAlign speakers;
+    std::unique_ptr<juce::dsp::Convolution> conv; std::atomic<bool> linearPass { false }; int linearLatency = 0;
     // file player
     juce::AudioBuffer<float> file; double filePos = 0, fileRatio = 1; std::atomic<bool> fileLoop { true };
     // plug-in
@@ -78,6 +81,10 @@ public:
     void stopRecording (int blockId);
     bool recording (int blockId);
     static juce::File recordingFolder (const juce::ValueTree& block);
+    /** an eq block's bands (graphic or parametric), as the dsp designs them */
+    static std::vector<dsp::Band> bandsOf (const juce::ValueTree& block);
+    /** linear phase: the fir's length (2^order) at a rate (about 1.4 s: fine enough for room modes; its delay is half) */
+    static int firOrder (double sr) { int o = 10; while ((1 << o) < sr * 1.3 && o < 18) ++o; return o; }
     static juce::String fileName (const juce::ValueTree& block, const juce::String& session, int index);
 
     // ---- offline use (tests, and the engine's own checks): run the plan with a layout of our own ----

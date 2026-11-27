@@ -9,7 +9,7 @@ juce_add_console_app(umleitung_engine_test PRODUCT_NAME "umleitung_engine_test")
 target_sources(umleitung_engine_test PRIVATE tests/EngineTest.cpp ${UM_ENGINE_SOURCES})
 target_compile_definitions(umleitung_engine_test PRIVATE ${UM_JUCE_DEFS} JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(umleitung_engine_test PRIVATE umleitung_platform
-    juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_data_structures juce::juce_gui_basics
+    juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_data_structures juce::juce_gui_basics juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
 
 # ---- the app ----
@@ -48,5 +48,5 @@ target_sources(umleitung_live_check PRIVATE tests/LiveCheck.cpp ${UM_ENGINE_SOUR
 target_compile_definitions(umleitung_live_check PRIVATE ${UM_JUCE_DEFS} JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1
     UM_TONE_PATH="$<IF:$<TARGET_EXISTS:umleitung_host_check_tone>,$<TARGET_FILE:umleitung_host_check_tone>,>")
 target_link_libraries(umleitung_live_check PRIVATE umleitung_platform
-    juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_data_structures juce::juce_gui_basics
+    juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_data_structures juce::juce_gui_basics juce::juce_dsp
     juce::juce_recommended_config_flags)

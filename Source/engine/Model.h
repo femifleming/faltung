@@ -34,11 +34,11 @@ UM_ID (release) UM_ID (matrix) UM_ID (outs) UM_ID (plugin) UM_ID (state) UM_ID (
 UM_ID (folder) UM_ID (pattern) UM_ID (format) UM_ID (bits) UM_ID (splitMin) UM_ID (maxMin) UM_ID (armed) UM_ID (startAt) UM_ID (stopAfter)
 UM_ID (pauseSilence) UM_ID (silenceDb)
 // eq page
-UM_ID (enabled) UM_ID (followDefault) UM_ID (preset) UM_ID (mode) UM_ID (boost) UM_ID (perDevice)
+UM_ID (enabled) UM_ID (followDefault) UM_ID (preset) UM_ID (mode) UM_ID (boost) UM_ID (perDevice) UM_ID (role) UM_ID (linear) UM_ID (align) UM_ID (exact)
 #undef UM_ID
 }
 
-enum class BlockType { App, System, Input, Tone, File, Volume, Eq, Peq, Plugin, Matrix, Delay, Leveler, Gate, Limiter, Output, Recorder, Meter, Count };
+enum class BlockType { App, System, Input, Tone, File, Volume, Eq, Peq, Plugin, Matrix, Delay, Leveler, Gate, Limiter, Output, Recorder, Meter, Speakers, Count };
 
 struct BlockTypeInfo { BlockType type; const char* id; const char* name; const char* group; const char* blurb; };
 inline const BlockTypeInfo& typeInfo (BlockType t)
@@ -61,6 +61,7 @@ inline const BlockTypeInfo& typeInfo (BlockType t)
         { BlockType::Output,   "output",   "output device", "outputs",   "speakers, headphones, an interface's outputs, or a virtual device for other apps" },
         { BlockType::Recorder, "recorder", "recorder",      "outputs",   "writes wav (or aiff, flac) files: any number of channels, split, timed" },
         { BlockType::Meter,    "meter",    "meters",        "outputs",   "vu, peak, loudness, spectrum, spectrogram, stereo field and scope" },
+        { BlockType::Speakers, "speakers", "speakers",      "effects",   "per channel: level trim, delay (to a fraction of a sample), polarity, mute: lines the speakers up" },
     };
     return infos[juce::jlimit (0, (int) BlockType::Count - 1, (int) t)];
 }
@@ -76,9 +77,11 @@ inline bool isSink (BlockType t) { return t == BlockType::Output || t == BlockTy
 inline const std::array<float, 10>& graphicFreqs() { static const std::array<float, 10> f { 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 }; return f; }
 
 /** a parametric band */
-struct PeqBand { int shape = 0; float freq = 1000, db = 0, q = 0.707f; bool on = true; };   // shape: bell, low shelf, high shelf, low cut, high cut, notch, band pass
-inline const char* peqShapeName (int s) { static const char* n[] = { "bell", "low shelf", "high shelf", "low cut", "high cut", "notch", "band pass" }; return n[juce::jlimit (0, 6, s)]; }
-constexpr int kPeqShapes = 7;
+/** a parametric band. shape: bell, low shelf, high shelf, low cut, high cut, notch, band pass, all-pass, tilt;
+    slope (db / octave, the cuts), kind (the cuts: 0 butterworth, 1 linkwitz-riley), ch (0 all channels, n the n-th) */
+struct PeqBand { int shape = 0; double freq = 1000, db = 0, q = 0.7071; bool on = true; int slope = 12, kind = 0, ch = 0; };
+inline const char* peqShapeName (int s) { static const char* n[] = { "bell", "low shelf", "high shelf", "low cut", "high cut", "notch", "band pass", "all-pass", "tilt" }; return n[juce::jlimit (0, 8, s)]; }
+constexpr int kPeqShapes = 9;
 
 /** helpers to read / write the model */
 struct Model
@@ -123,7 +126,8 @@ struct Model
             case BlockType::Tone: set (ids::freq, 440.0f); set (ids::level, -18.0f); set (ids::shape, 0); set (ids::channels, 2); break;
             case BlockType::File: set (ids::loop, true); set (ids::level, 0.0f); break;
             case BlockType::Volume: set (ids::db, 0.0f); set (ids::balance, 0.0f); set (ids::mute, false); set (ids::invert, false); break;
-            case BlockType::Eq: set (ids::bands, "0 0 0 0 0 0 0 0 0 0"); set (ids::db, 0.0f); break;
+            case BlockType::Eq: set (ids::bands, "0 0 0 0 0 0 0 0 0 0"); set (ids::db, 0.0f); set ("count", 10); break;
+            case BlockType::Speakers: set ("align", ""); break;
             case BlockType::Peq: set (ids::bands, "1 80 0 0.7 1|0 1000 0 1 1|2 8000 0 0.7 1"); set (ids::db, 0.0f); break;
             case BlockType::Matrix: set (ids::outs, 2); set (ids::matrix, ""); break;
             case BlockType::Delay: set (ids::ms, 0.0f); break;
@@ -171,30 +175,46 @@ struct Model
     }
 
     // ---- band lists ----------------------------------------------------------------------------------------
-    static std::array<float, 10> graphicBands (const juce::ValueTree& b)
+    /** the graphic eq's gains: 10 or 31 bands (property "count") */
+    static int graphicCount (const juce::ValueTree& b) { return (int) b.getProperty ("count", 10) >= 31 ? 31 : 10; }
+    static std::vector<float> graphicBands (const juce::ValueTree& b)
     {
-        std::array<float, 10> g {}; auto t = juce::StringArray::fromTokens (b[ids::bands].toString(), " ", "");
-        for (int i = 0; i < 10 && i < t.size(); ++i) g[(size_t) i] = juce::jlimit (-24.0f, 24.0f, t[i].getFloatValue());
+        std::vector<float> g ((size_t) graphicCount (b), 0.0f); auto t = juce::StringArray::fromTokens (b[ids::bands].toString(), " ", "");
+        for (int i = 0; i < (int) g.size() && i < t.size(); ++i) g[(size_t) i] = juce::jlimit (-24.0f, 24.0f, t[i].getFloatValue());
         return g;
     }
-    static juce::String graphicText (const std::array<float, 10>& g) { juce::StringArray a; for (float v : g) a.add (juce::String (v, 1)); return a.joinIntoString (" "); }
+    static juce::String graphicText (const std::vector<float>& g) { juce::StringArray a; for (float v : g) a.add (juce::String (v, 2)); return a.joinIntoString (" "); }
+    static juce::String graphicText (const std::array<float, 10>& g) { return graphicText (std::vector<float> (g.begin(), g.end())); }
     static std::vector<PeqBand> peqBands (const juce::ValueTree& b)
     {
         std::vector<PeqBand> v;
         for (auto& s : juce::StringArray::fromTokens (b[ids::bands].toString(), "|", ""))
         {
             auto t = juce::StringArray::fromTokens (s, " ", ""); if (t.size() < 4) continue;
-            PeqBand p; p.shape = juce::jlimit (0, kPeqShapes - 1, t[0].getIntValue()); p.freq = juce::jlimit (10.0f, 24000.0f, t[1].getFloatValue());
-            p.db = juce::jlimit (-30.0f, 30.0f, t[2].getFloatValue()); p.q = juce::jlimit (0.1f, 30.0f, t[3].getFloatValue()); p.on = t.size() < 5 || t[4].getIntValue() != 0;
+            PeqBand p; p.shape = juce::jlimit (0, kPeqShapes - 1, t[0].getIntValue()); p.freq = juce::jlimit (1.0, 96000.0, t[1].getDoubleValue());
+            p.db = juce::jlimit (-40.0, 40.0, t[2].getDoubleValue()); p.q = juce::jlimit (0.025, 100.0, t[3].getDoubleValue()); p.on = t.size() < 5 || t[4].getIntValue() != 0;
+            if (t.size() > 5) p.slope = juce::jlimit (6, 48, t[5].getIntValue());
+            if (t.size() > 6) p.kind = juce::jlimit (0, 1, t[6].getIntValue());
+            if (t.size() > 7) p.ch = juce::jlimit (0, 64, t[7].getIntValue());
             v.push_back (p);
         }
         return v;
     }
     static juce::String peqText (const std::vector<PeqBand>& v)
     {
-        juce::StringArray a; for (auto& p : v) a.add (juce::String (p.shape) + " " + juce::String (p.freq, 1) + " " + juce::String (p.db, 2) + " " + juce::String (p.q, 3) + " " + (p.on ? "1" : "0"));
+        juce::StringArray a; for (auto& p : v) a.add (juce::String (p.shape) + " " + juce::String (p.freq, 3) + " " + juce::String (p.db, 3) + " " + juce::String (p.q, 4) + " " + (p.on ? "1" : "0") + " " + juce::String (p.slope) + " " + juce::String (p.kind) + " " + juce::String (p.ch));
         return a.joinIntoString ("|");
     }
+    /** speakers: per channel trim (db), delay (ms), polarity (1 / -1), mute */
+    struct Speaker { double db = 0, ms = 0; bool invert = false, mute = false; };
+    static std::vector<Speaker> speakers (const juce::ValueTree& b)
+    {
+        std::vector<Speaker> v;
+        for (auto& s : juce::StringArray::fromTokens (b[ids::align].toString(), "|", ""))
+        { auto t = juce::StringArray::fromTokens (s, " ", ""); Speaker x; x.db = t[0].getDoubleValue(); x.ms = t[1].getDoubleValue(); x.invert = t[2].getIntValue() != 0; x.mute = t[3].getIntValue() != 0; v.push_back (x); }
+        return v;
+    }
+    static juce::String speakersText (const std::vector<Speaker>& v) { juce::StringArray a; for (auto& x : v) a.add (juce::String (x.db, 4) + " " + juce::String (x.ms, 5) + " " + (x.invert ? "1" : "0") + " " + (x.mute ? "1" : "0")); return a.joinIntoString ("|"); }
     /** the channel matrix: "in:out:gain" entries */
     struct Cell { int in = 0, out = 0; float gain = 1; };
     static std::vector<Cell> matrixCells (const juce::ValueTree& b)

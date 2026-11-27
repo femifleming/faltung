@@ -2,6 +2,7 @@
 // comes out is measured: levels, routing, channel mapping, the eqs, dynamics, loudness, delay, recording, plug-ins.
 #include "engine/Engine.h"
 #include "engine/PluginHost.h"
+#include "engine/Correction.h"
 #include <iostream>
 
 using namespace um;
@@ -311,9 +312,140 @@ int main (int argc, char** argv)
         Model m; Engine e (m);
         auto s = e.systemEqSession();
         int blocks = 0, wires = 0; for (auto c : s) { if (c.hasType (ids::block)) ++blocks; if (c.hasType (ids::wire)) ++wires; }
-        check (blocks == 6 && wires == 5 && e.systemEqSession() == s, "made once: the mac's sound -> volume -> eq -> parametric -> limiter -> output");
+        check (blocks == 8 && wires == 7 && e.systemEqSession() == s, "made once: the mac's sound -> volume -> graphic -> parametric -> correction -> speakers -> limiter -> output");
         auto cfg = (s.setProperty (ids::on, true, nullptr), e.wantedConfig());
         check (cfg.taps.size() == 1 && cfg.taps[0].kind == TapSpec::Kind::System && cfg.taps[0].muteSource, "it taps the whole system, muted at the source");
+    }
+
+    std::cout << "== the hi-fi eq: matched filters, steep cuts, linear phase, speakers, imports, transparency\n";
+    {
+        // matched bells against the ideal (analog) curve, and the usual (cookbook) ones for comparison
+        auto worst = [] (double f0, double db, double q, double fs, bool cookbook)
+        {
+            dsp::Band b; b.freq = f0; b.db = db; b.q = q;
+            const auto k = dsp::makeFilter (0, fs, f0, db, q);
+            double w = 0;
+            for (double hz = 20; hz < 20000; hz *= 1.01)
+            {
+                const double ideal = dsp::analogDb ({ b }, hz), got = cookbook ? dsp::magnitudeDb (k, fs, hz) : dsp::digitalDb ({ b }, fs, hz);
+                w = std::max (w, std::abs (got - ideal));
+            }
+            return w;
+        };
+        for (double f0 : { 1000.0, 10000.0, 16000.0 })
+        {
+            const double m = worst (f0, 6, 1, 48000, false), c = worst (f0, 6, 1, 48000, true);
+            std::cout << "    bell +6 db q 1 at " << f0 << " hz, 48 khz: matched off by at most " << m << " db, cookbook " << c << " db\n";
+            check (f0 < 10000 ? m < 0.01 : m < c * 0.3, "light (matched iir) bell at " + juce::String (f0) + " hz: " + (f0 < 10000 ? juce::String ("within 0.01 db") : "at least 3x closer to ideal than the usual design"));
+        }
+        {
+            dsp::Band b; b.freq = 1000; b.db = 3; b.q = 0.7;
+            double w = 0; for (double hz = 20; hz < 20000; hz *= 1.01) w = std::max (w, std::abs (dsp::digitalDb ({ b }, 48000, hz) - dsp::analogDb ({ b }, hz)));
+            check (w < 0.02, "a +3 db bell at 1 khz: within 0.02 db of the ideal from 20 hz to 20 khz (" + juce::String (w, 4) + ")");
+        }
+        // steep cuts
+        dsp::Band hc; hc.shape = dsp::HighCut; hc.freq = 1000; hc.slope = 24;
+        const double at = dsp::digitalDb ({ hc }, 48000, 1000), oct = dsp::digitalDb ({ hc }, 48000, 2000), oct2 = dsp::digitalDb ({ hc }, 48000, 4000);
+        std::cout << "    24 db/oct butterworth high cut at 1 khz: " << at << " db there, " << oct << " an octave up, " << oct2 << " two up\n";
+        check (std::abs (at + 3.0103) < 0.02 && std::abs (oct - oct2 - 24.0) < 0.5, "24 db/oct butterworth: -3.01 db at its frequency, 24 db more an octave on");
+        hc.kind = 1; check (std::abs (dsp::digitalDb ({ hc }, 48000, 1000) + 6.0206) < 0.03, "linkwitz-riley 24: -6.02 db at its frequency (" + juce::String (dsp::digitalDb ({ hc }, 48000, 1000), 3) + ")");
+        dsp::Band lc; lc.shape = dsp::LowCut; lc.freq = 30; lc.slope = 48;
+        check (std::abs (dsp::digitalDb ({ lc }, 48000, 30) + 3.0103) < 0.05 && dsp::digitalDb ({ lc }, 48000, 15) < -45.0, "48 db/oct low cut at 30 hz");
+        // through the engine: a bell at 16 khz on a sine, the 31-band eq
+        {
+            Model m; Engine e (m);
+            auto s = m.addSession ("hifi"); s.setProperty (ids::on, true, nullptr);
+            auto app = m.addBlock (s, BlockType::App, 0, 0); app.setProperty (ids::pids, "1", nullptr);
+            auto peq = m.addBlock (s, BlockType::Peq, 1, 0); PeqBand pb; pb.freq = 16000; pb.db = 6; pb.q = 1; peq.setProperty (ids::bands, Model::peqText ({ pb }), nullptr);
+            auto out = m.addBlock (s, BlockType::Output, 2, 0); out.setProperty (ids::device, "out2", nullptr);
+            m.connect (s, app[ids::id], peq[ids::id]); m.connect (s, peq[ids::id], out[ids::id]);
+            e.runOffline (fakeLayout());
+            auto level = [&] (double f) { auto o = run (e, 48000, [f] (int c, int i) { return c < 2 ? sine (i, f, 0.1f) : 0.0f; }); return db (rms (o, 8, 24000, 24000) / (0.1f * 0.70710678f)); };
+            const float l16 = level (16000), l12 = level (12000);
+            dsp::Band b; b.freq = 16000; b.db = 6; b.q = 1;
+            std::cout << "    through the engine: 16 khz " << l16 << " db, 12 khz " << l12 << " db (ideal " << dsp::analogDb ({ b }, 12000) << ")\n";
+            check (std::abs (l16 - 6.0f) < 0.02f, "light (iir): a 16 khz bell is +6 db at 16 khz, heard");
+            peq.setProperty (ids::exact, true, nullptr); e.rebuild(); juce::Thread::sleep (300);
+            run (e, 1 << Engine::firOrder (kSr), [] (int, int) { return 0.0f; });
+            double worstHeard = 0;
+            for (double f : { 100.0, 1000.0, 8000.0, 12000.0, 14000.0, 16000.0, 18000.0, 20000.0 })
+            {
+                const float l = level (f); const double ideal = dsp::analogDb ({ b }, f);
+                worstHeard = std::max (worstHeard, std::abs (l - ideal));
+                std::cout << "      exact: " << f << " hz " << l << " db (ideal " << ideal << ")\n";
+            }
+            check (worstHeard < 0.02, "exact (minimum phase fir): the 16 khz bell heard within 0.02 db of the ideal from 100 hz to 20 khz (" + juce::String (worstHeard, 4) + ")");
+            auto oz = run (e, 4000, [] (int c, int i) { return c < 2 && i == 100 ? 1.0f : 0.0f; });
+            int zpk = 0; float zv = 0; for (int i = 0; i < 4000; ++i) if (std::abs (oz.getSample (8, i)) > zv) { zv = std::abs (oz.getSample (8, i)); zpk = i; }
+            check (zpk - 100 <= 2, "exact (minimum phase): no delay (the click comes out " + juce::String (zpk - 100) + " samples later)");
+            // the 31-band eq: +4.5 db at 1.25 khz only
+            m.removeBlock (s, peq[ids::id]);
+            auto eq = m.addBlock (s, BlockType::Eq, 1, 1); eq.setProperty (ids::exact, true, nullptr); eq.setProperty ("count", 31, nullptr);
+            std::vector<float> g (31, 0.0f); g[18] = 4.5f; eq.setProperty (ids::bands, Model::graphicText (g), nullptr);
+            m.connect (s, app[ids::id], eq[ids::id]); m.connect (s, eq[ids::id], out[ids::id]); e.rebuild();
+            juce::Thread::sleep (300); run (e, 1 << Engine::firOrder (kSr), [] (int, int) { return 0.0f; });   // (the new filter crossfades in)
+            const float l1250 = level (1250), l1000 = level (1000), l2000 = level (2000);
+            std::cout << "    31-band +4.5 db at 1.25 khz: 1.25 khz " << l1250 << ", 1 khz " << l1000 << ", 2 khz " << l2000 << " db\n";
+            check (std::abs (l1250 - 4.5f) < 0.02f && l1000 < 2.5f && l2000 < 0.6f, "31 bands (exact): +4.5 db at 1.25 khz, a third of an octave wide");
+            // linear phase: the same bell, as a fir
+            m.removeBlock (s, eq[ids::id]);
+            auto lp = m.addBlock (s, BlockType::Peq, 1, 2); lp.setProperty (ids::exact, false, nullptr); PeqBand b2; b2.freq = 1000; b2.db = 6; b2.q = 2; lp.setProperty (ids::bands, Model::peqText ({ b2 }), nullptr); lp.setProperty (ids::linear, true, nullptr);
+            m.connect (s, app[ids::id], lp[ids::id]); m.connect (s, lp[ids::id], out[ids::id]); e.rebuild();
+            auto* rt = e.runtime (lp[ids::id]);
+            check (rt && rt->conv && rt->linearLatency == (1 << Engine::firOrder (kSr)) / 2, "linear phase: one fir, its delay " + juce::String (rt ? rt->linearLatency : 0) + " samples (" + juce::String (rt ? rt->linearLatency / kSr * 1000.0 : 0, 0) + " ms)");
+            juce::Thread::sleep (300);   // (the convolution takes the new response on its own thread)
+            const int L = rt ? rt->linearLatency : 0;
+            auto o = run (e, L + 96000, [L] (int c, int i) { return c < 2 ? sine (i, 1000, 0.1f) : 0.0f; });
+            const float lin1k = db (rms (o, 8, L + 48000, 48000) / (0.1f * 0.70710678f));
+            run (e, 2 * L + 2000, [] (int, int) { return 0.0f; });   // (let the sine's tail out first)
+            auto oi = run (e, 2 * L + 4000, [] (int c, int i) { return c < 2 && i == 100 ? 1.0f : 0.0f; });
+            int peakAt = 0; float pk = 0; for (int i = 0; i < oi.getNumSamples(); ++i) if (std::abs (oi.getSample (8, i)) > pk) { pk = std::abs (oi.getSample (8, i)); peakAt = i; }
+            double asym = 0; for (int k = 1; k < 2000; ++k) asym = std::max (asym, (double) std::abs (oi.getSample (8, peakAt - k) - oi.getSample (8, peakAt + k)));
+            std::cout << "    linear phase: 1 khz " << lin1k << " db; the click comes out " << peakAt - 100 << " samples later, symmetric to " << asym << "\n";
+            check (std::abs (lin1k - 6.0f) < 0.05f && peakAt - 100 == L && asym < 1.0e-4, "linear phase: the exact gain, a symmetric impulse (no phase shift), delayed by half the fir");
+        }
+        // speakers: delay, fraction of a sample, trim, polarity, mute
+        {
+            Model m; Engine e (m);
+            auto s = m.addSession ("spk"); s.setProperty (ids::on, true, nullptr);
+            auto app = m.addBlock (s, BlockType::App, 0, 0); app.setProperty (ids::pids, "1", nullptr);
+            auto sp = m.addBlock (s, BlockType::Speakers, 1, 0);
+            sp.setProperty (ids::align, Model::speakersText ({ { -6.0206, 1.0, false, false }, { 0.0, 0.0, true, false } }), nullptr);
+            auto out = m.addBlock (s, BlockType::Output, 2, 0); out.setProperty (ids::device, "out2", nullptr);
+            m.connect (s, app[ids::id], sp[ids::id]); m.connect (s, sp[ids::id], out[ids::id]);
+            e.runOffline (fakeLayout());
+            auto o = run (e, 2400, [] (int c, int i) { return c < 2 && i == 100 ? 1.0f : 0.0f; });
+            std::cout << "    1 ms: at 148 " << o.getSample (8, 148) << ", before " << o.getMagnitude (8, 0, 148) << ", right at 100 " << o.getSample (9, 100) << "\n";
+            check (std::abs (o.getSample (8, 148) - 0.5f) < 1.0e-6f && o.getMagnitude (8, 0, 148) == 0.0f && std::abs (o.getSample (9, 100) + 1.0f) < 1.0e-6f,
+                   "1 ms on the left = 48 samples, at -6.02 db; the right inverted");
+            // half a sample: a sine comes out delayed by half a sample (its phase), its level unchanged
+            sp.setProperty (ids::align, Model::speakersText ({ { 0, 10.5 / 48.0, false, false }, { 0, 0, false, true } }), nullptr);
+            auto o2 = run (e, 48000, [] (int c, int i) { return c < 2 ? sine (i, 1000, 0.5f) : 0.0f; });
+            double re = 0, im = 0; for (int i = 24000; i < 48000; ++i) { const double w = 2.0 * dsp::kPi * 1000.0 * i / kSr; re += o2.getSample (8, i) * std::cos (w); im += o2.getSample (8, i) * std::sin (w); }
+            const double phase = std::atan2 (-re, im), delaySamples = phase / (2.0 * dsp::kPi * 1000.0 / kSr);
+            std::cout << "    10.5 samples asked: a 1 khz sine comes out " << delaySamples << " samples later, at " << db (rms (o2, 8, 24000, 24000) / (0.5f * 0.70710678f)) << " db; the muted right " << o2.getMagnitude (9, 0, 48000) << "\n";
+            check (std::abs (delaySamples - 10.5) < 0.01 && std::abs (db (rms (o2, 8, 24000, 24000) / (0.5f * 0.70710678f))) < 0.01f && o2.getMagnitude (9, 0, 48000) == 0.0f, "a fractional delay (to a hundredth of a sample), level unchanged; mute");
+        }
+        // room correction files
+        {
+            auto c = parseCorrection ("Filter Settings file\nPreamp: -6.5 dB\nChannel: L\nFilter  1: ON  PK       Fc   63.50 Hz  Gain  -4.30 dB  Q  2.500\nFilter  2: ON  LSC      Fc   105 Hz  Gain  5.5 dB  Q 0.71\nChannel: R\nFilter 3: ON HS Fc 8000 Hz Gain -2 dB\nFilter 4: ON PK Fc 1000 Hz Gain 2 dB BW Oct 1\nFilter 5: OFF PK Fc 500 Hz Gain 9 dB Q 1\nFilter 6: ON HP Fc 25 Hz\nFilter 7: ON XYZ Fc 1 Hz\n");
+            check (c.read == 5 && c.skipped == 1 && std::abs (c.preamp + 6.5) < 1.0e-9, "a filter file: 5 filters read, the unknown one skipped, preamp -6.5 db");
+            check (c.bands.size() == 5 && c.bands[0].ch == 1 && c.bands[0].shape == 0 && std::abs (c.bands[0].freq - 63.5) < 1.0e-9 && std::abs (c.bands[0].db + 4.3) < 1.0e-9 && std::abs (c.bands[0].q - 2.5) < 1.0e-9, "filter 1: left, a bell, 63.5 hz, -4.3 db, q 2.5");
+            check (c.bands[1].shape == 1 && c.bands[2].shape == 2 && c.bands[2].ch == 2 && std::abs (c.bands[3].q - 1.4142) < 0.001 && c.bands[4].shape == 3, "shelves, the right channel, bandwidth in octaves to q, a high pass");
+        }
+        // flat is untouched: the whole system eq chain at its defaults lets the sound through to the sample
+        {
+            Model m; Engine e (m);
+            auto s = e.systemEqSession(); s.setProperty (ids::on, true, nullptr);
+            for (auto b : s) if (b.hasType (ids::block) && typeFromId (b[ids::type]) == BlockType::Output) b.setProperty (ids::device, "out2", nullptr);
+            IOLayout l = fakeLayout(); e.runOffline (l);
+            int limLat = 0; for (auto b : s) if (b.hasType (ids::block) && typeFromId (b[ids::type]) == BlockType::Limiter) if (auto* rt = e.runtime (b[ids::id])) limLat = rt->limiter.latency();
+            juce::Random r (7);
+            std::vector<float> src (48000); for (auto& x : src) x = (r.nextFloat() * 2.0f - 1.0f) * 0.5f;
+            auto o = run (e, 48000, [&] (int c, int i) { return c < 2 ? src[(size_t) i] * (c == 0 ? 1.0f : -0.5f) : 0.0f; });
+            bool same = true; for (int i = 2000; i < 46000; ++i) same = same && o.getSample (8, i + limLat) == src[(size_t) i] && o.getSample (9, i + limLat) == src[(size_t) i] * -0.5f;
+            check (same, "the system eq, flat: what comes out is what went in, bit for bit (after the clip protection's " + juce::String (limLat) + " samples)");
+        }
     }
 
     std::cout << "== save and load\n";

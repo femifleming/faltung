@@ -1,4 +1,5 @@
 #include "SessionPage.h"
+#include "EqWidgets.h"
 
 namespace um::ui
 {
@@ -79,8 +80,9 @@ void Inspector::show (juce::ValueTree b)
             break;
         case BlockType::Eq:
         {
-            auto ge = std::make_unique<GraphicEqEditor> (theme, b); add (std::move (ge), 170);
-            add (boundSlider (theme, b, ids::db, "preamp", { -24, 24, 0.1f }, 0, db), 22);
+            add (boundChoice (theme, b, "count", "bands", { "10 (octaves)", "31 (thirds of an octave)" }, { "10", "31" }), 22);
+            auto fb = std::make_unique<FaderBank> (theme, b); fb->range = 12.0f; add (std::move (fb), 200);
+            add (boundSlider (theme, b, ids::db, "preamp", { -24, 24, 0.01f }, 0, db), 22);
             addLink ("flat", [this, b] () mutable { b.setProperty (ids::bands, "0 0 0 0 0 0 0 0 0 0", nullptr); show (b); });
             break;
         }
@@ -88,7 +90,9 @@ void Inspector::show (juce::ValueTree b)
         {
             auto ce = std::make_unique<CurveEditor> (theme, b, eng); curve = ce.get(); add (std::move (ce), 200);
             add (boundSlider (theme, b, ids::db, "output", { -24, 24, 0.1f }, 0, db), 22);
-            addLink ("+ band", [this, b] () mutable { auto v = Model::peqBands (b); v.push_back ({ 0, 1000, 0, 1, true }); b.setProperty (ids::bands, Model::peqText (v), nullptr); show (b); });
+            addLink ("+ band", [this, b] () mutable { auto v = Model::peqBands (b); v.push_back (PeqBand()); b.setProperty (ids::bands, Model::peqText (v), nullptr); show (b); });
+            addLabel ("exact values: the system eq page's parametric table, or right-click a point");
+            add (boundToggle (theme, b, ids::linear, "linear phase (a delay of about 0.7 s)"), 22);
             break;
         }
         case BlockType::Plugin:
