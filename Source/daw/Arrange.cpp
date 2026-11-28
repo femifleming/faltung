@@ -2,6 +2,7 @@
 // muted; time inserted and removed across every track, lane and marker; the tempo map (seconds <-> beats).
 // Message thread only: every edit goes through editClips / editAudioClips / editLane / editMarkers (copy on write).
 #include "Session.h"
+#include "devices/StudioDevices.h"
 #include <set>
 
 namespace fal::daw
@@ -70,6 +71,17 @@ void Session::moveClips (const std::vector<ClipRef>& refs, double delta)
     }
 }
 
+/** points (beats from a clip's start) after its start moved later by `cut` beats: the value at the cut becomes the first */
+static void shiftPoints (std::vector<std::pair<double, float>>& pts, double cut)
+{
+    if (pts.empty() || std::abs (cut) < 1.0e-12) return;
+    if (cut < 0) { for (auto& p : pts) p.first -= cut; return; }
+    float v0 = pts.back().second;
+    for (size_t i = 0; i < pts.size(); ++i) if (cut <= pts[i].first) { if (i == 0) v0 = pts[0].second; else { const auto& a = pts[i - 1]; const auto& d = pts[i]; v0 = (float) (a.second + (d.second - a.second) * (cut - a.first) / std::max (1.0e-9, d.first - a.first)); } break; }
+    std::vector<std::pair<double, float>> out { { 0.0, v0 } };
+    for (auto& [pb, pv] : pts) if (pb > cut + 1.0e-9) out.push_back ({ pb - cut, pv });
+    pts = out;
+}
 std::vector<ClipRef> Session::splitClips (const std::vector<ClipRef>& refs, double at)
 {
     std::vector<ClipRef> made;
@@ -117,6 +129,10 @@ void Session::trimClipStart (const ClipRef& r, double newStart)
                 const double per = sourcePerBar (c, bpm);
                 double off = c.offset + (ns - c.startBar) * per;
                 if (off < 0) { ns = c.startBar - c.offset / std::max (1.0e-9, per); off = 0; }   // the file has no more before its start
+                // its own lines and markers stay with the sound
+                const double cut = (ns - c.startBar) * 4.0, srcCut = off - c.offset;
+                shiftPoints (c.gainLine, cut); for (auto& e : c.envs) shiftPoints (e.pts, cut);
+                if (c.mode == 3) { std::vector<std::pair<double, double>> w; for (auto& [wb, ws] : c.warp) if (wb - cut > 1.0e-9) w.push_back ({ wb - cut, ws - srcCut }); c.warp = w; }
                 c.offset = off; c.bars = end - ns; c.startBar = ns;
             }
         });
@@ -342,6 +358,56 @@ double Session::beatAt (double seconds) const
     const double d = v[i + 1] - v[i];
     return ((double) i + (d > 0 ? (seconds - v[i]) / d : 0.0)) * TempoTable::step;
 }
+double Session::TempoKey::secondsAt (double beat) const
+{
+    beat = std::max (0.0, beat);
+    if (! keep || keep->secs.empty()) return beat * 60.0 / std::max (1.0, bpm);
+    const double u = beat / TempoTable::step; const size_t i = (size_t) u;
+    if (i + 1 >= keep->secs.size()) return keep->secs.back() + (beat - (double) (keep->secs.size() - 1) * TempoTable::step) * 60.0 / keep->tailBpm;
+    return keep->secs[i] + (keep->secs[i + 1] - keep->secs[i]) * (u - (double) i);
+}
+juce::String Session::formatRuler (int f, double beat) const
+{
+    const double sec = secondsAt (beat);
+    switch (f)
+    {
+        case timeline::RULER_TIME: return timeline::formatTime (sec);
+        case timeline::RULER_SAMPLES: return timeline::formatSamples (sec, sr);
+        case timeline::RULER_TIMECODE: return timeline::formatTimecode (sec, timecodeFps.load());
+        case timeline::RULER_NONE: return {};
+        default: return timeline::formatPosition (beat, *meter);
+    }
+}
+void Session::retime()
+{
+    TempoKey now; now.keep = tempoTable; now.table = tempoTable.get(); now.bpm = tempo();
+    if (lastTempo.bpm <= 0) { lastTempo = now; return; }
+    if (now.table == lastTempo.table && (now.table != nullptr || std::abs (now.bpm - lastTempo.bpm) < 1.0e-6)) return;
+    const TempoKey old = lastTempo; lastTempo = now;
+    auto move = [&] (double beat) { return beatAt (old.secondsAt (beat)); };
+    bool any = false;
+    for (auto& tp : tracks)
+    {
+        auto& t = *tp;
+        bool has = false;
+        for (auto& c : *t.clips) has |= clipIsTime (t, c.timebase);
+        for (auto& c : *t.aclips) has |= clipIsTime (t, c.timebase);
+        if (! has) continue;
+        any = true;
+        editClips (t, [&] (std::vector<Clip>& v) { for (auto& c : v) if (clipIsTime (t, c.timebase)) { const double a = move (c.startBar * 4.0), b = move ((c.startBar + c.bars) * 4.0); c.startBar = a / 4.0; c.bars = std::max (1.0e-6, (b - a) / 4.0); } });
+        editAudioClips (t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (clipIsTime (t, c.timebase)) { const double a = move (c.startBar * 4.0), b = move ((c.startBar + c.bars) * 4.0); c.startBar = a / 4.0; c.bars = std::max (1.0e-6, (b - a) / 4.0); } });
+    }
+    // a project in time: its markers, loop and automation (but not the tempo lane) keep their seconds too
+    if (timebase.load() == 1)
+    {
+        any = true;
+        editMarkers ([&] (std::vector<Marker>& m) { for (auto& k : m) k.bar = move (k.bar * 4.0) / 4.0; });
+        const double ls = move (loopStart.load() * 4.0) / 4.0, le = move (loopEnd.load() * 4.0) / 4.0; loopStart.store (ls); loopEnd.store (le);
+        std::vector<Target> ts; for (auto& l : *lanes) if (! (l->target == Target { 0, 0, GP_TEMPO })) ts.push_back (l->target);
+        for (auto& tg : ts) editLane (tg, [&] (AutoLane& l) { for (auto& pt : l.pts) pt.beat = move (pt.beat); });
+    }
+    if (any) dirty = true;
+}
 void Session::tempoChanged()
 {
     auto l = lane ({ 0, 0, GP_TEMPO });
@@ -359,6 +425,7 @@ void Session::tempoChanged()
     }
     { const juce::SpinLock::ScopedLockType sl (lock); tempoTable = nt; }
     tempoVersion.fetch_add (1);
+    if (! inRetime) { inRetime = true; retime(); inRetime = false; }
 }
 double Session::warpSrc (const AudioClip& c, double beat, double beats, double srcAvail)
 {
@@ -431,5 +498,52 @@ void Session::removeGroup (int id)
 {
     for (auto& t : tracks) if (t->group.load() == id) t->group.store (0);
     editGroups ([id] (std::vector<Group>& v) { v.erase (std::remove_if (v.begin(), v.end(), [id] (const Group& g) { return g.id == id; }), v.end()); });
+}
+std::vector<ClipRef> Session::sliceClip (ClipRef r, int how, double step, int n)
+{
+    auto* t = clipTrack (r); if (! t || ! r.audio) return {};
+    const AudioClip* c = nullptr; for (auto& x : *t->aclips) if (x.id == r.id) c = &x;
+    if (! c || ! c->sample) return { r };
+    const double a = c->startBar, b = c->startBar + c->bars;
+    std::vector<double> at;
+    if (how == 0)
+    {
+        const auto ct = clipTime (*c, c->sample->rate);
+        for (int on : c->sample->onsets)
+        {
+            const double src = on / c->sample->rate - c->offset; if (src <= 0.005) continue;
+            const double beat = ct.beat0 + ct.beatOf (ct.outAt (src)); at.push_back (beat / 4.0);
+        }
+    }
+    else if (how == 1 && step > 1.0e-6) for (double p = std::ceil (a / step - 1.0e-9) * step; p < b; p += step) at.push_back (p);
+    else if (how == 2 && n > 1) for (int k = 1; k < n; ++k) at.push_back (a + (b - a) * k / n);
+    else if (how == 3) for (auto& [wb, ws] : c->warp) at.push_back (a + wb / 4.0);
+    std::sort (at.begin(), at.end());
+    std::vector<ClipRef> pieces { r }; ClipRef cur = r;
+    for (double p : at)
+    {
+        if (p <= a + 1.0e-6 || p >= b - 1.0e-6) continue;
+        double s0 = 0, len = 0; if (! clipSpan (cur, s0, len) || p <= s0 + 1.0e-6 || p >= s0 + len - 1.0e-6) continue;
+        auto right = splitClips ({ cur }, p);
+        if (right.empty()) continue;
+        cur = right.front(); pieces.push_back (cur);
+    }
+    return pieces;
+}
+Track* Session::clipToSampler (ClipRef r, juce::String& error)
+{
+    auto* t = clipTrack (r); if (! t || ! r.audio) { error = "not an audio clip"; return nullptr; }
+    juce::String path; double bars = 1; for (auto& x : *t->aclips) if (x.id == r.id) { path = x.path; bars = x.bars; }
+    auto dev = createDevice ("st:sampler", &error); if (! dev) return nullptr;
+    auto* h = dynamic_cast<SampleHolder*> (dev->processor());
+    if (! h || ! h->setSampleFile (juce::File (path))) { error = "cannot load " + path; return nullptr; }
+    const int mode = dev->paramIndexForId ("mode"), sm = dev->paramIndexForId ("slicemode");
+    if (mode >= 0) dev->setBase (mode, 1.0f); if (sm >= 0) dev->setBase (sm, 1.0f);
+    auto* nt = addTrack (juce::File (path).getFileNameWithoutExtension() + " slices", indexOf (t) + 1, TrackKind::Instrument);
+    if (! nt) { error = "no room for a track"; return nullptr; }
+    setInstrument (*nt, std::move (dev));
+    const int steps = juce::jlimit (1, 64, (int) std::lround (bars * 16.0));
+    editPattern (*nt, 0, [steps] (Pattern& p) { p = Pattern(); p.length = std::min (16, steps); for (int i = 0; i < p.length; ++i) { p.s[(size_t) i].on = true; p.s[(size_t) i].slice = i; p.s[(size_t) i].len = 1.0f; } });
+    return nt;
 }
 } // namespace fal::daw

@@ -749,7 +749,7 @@ public:
 class SamplerFx : public StudioFx, public SampleHolder
 {
 public:
-    enum { MODE, ROOT, PITCH, START, END, SLICES, SLICEMODE, CUTOFF, RES, ATT, DEC, SUS, REL, GAIN, CHOKE, REVERSE, VEL, LOOP, MICRO, MICROGRID };
+    enum { MODE, ROOT, PITCH, START, END, SLICES, SLICEMODE, CUTOFF, RES, ATT, DEC, SUS, REL, GAIN, CHOKE, REVERSE, VEL, LOOP, MICRO, MICROGRID, SLICEBY, SEED };
     SamplerFx() : StudioFx ("st:sampler", "sampler", 0, 2, true, { C ("mode", "mode", { "one-shot", "loop", "slices" }, 0), F ("root", "root note", 0, 127, 60, [] (float v) { return juce::MidiMessage::getMidiNoteName (juce::roundToInt (v), true, true, 3); }, 1.0f, 127),
         F ("pitch", "pitch", -24, 24, 0, stText), F ("start", "start", 0, 1, 0, pctText), F ("end", "end", 0, 1, 1, pctText),
         F ("slices", "slices", 1, 64, 16, [] (float v) { return juce::String (juce::roundToInt (v)); }, 1.0f, 63), C ("slicemode", "slice mode", { "grid", "onsets" }, 0),
@@ -759,7 +759,10 @@ public:
         // micro-loops: a sliver of the sample from where the note starts, repeated while the note lasts (clicks, crackle,
         // a fragment of a record turned into a tone or a pulse)
         F ("microloop", "micro-loop", 0, 1000, 0, [] (float v) { return v < 0.05f ? juce::String ("off") : juce::String (v, v < 10 ? 2 : 1) + " ms"; }, 0.3f),
-        C ("microgrid", "micro-loop length", { "in ms", "1/16 note", "1/32 note", "1/64 note", "1/128 note", "1/256 note" }, 0) }) {}
+        C ("microgrid", "micro-loop length", { "in ms", "1/16 note", "1/32 note", "1/64 note", "1/128 note", "1/256 note" }, 0),
+        // more ways to cut (after the two of slice mode): the strongest hits only, where it comes out of a silence, random lengths, the grid moved onto zero crossings
+        C ("sliceby", "cut at", { "as slice mode says", "the strongest hits", "after silences", "random lengths", "the grid, on zero crossings" }, 0),
+        F ("seed", "random cuts", 0, 99, 1, [] (float v) { return juce::String (juce::roundToInt (v)); }, 1.0f, 99) }) {}
     struct Voice { bool on = false; double pos = 0; double rate = 1; int note = 60; float vel = 1; int start = 0, end = 0; Adsr env; Svf fL, fR; bool rev = false, micro = false; int age = 0; };
     void prepareToPlay (double s, int b) override { sr = s; bs = b; for (auto& v : voices) v.on = false; }
     bool setSampleFile (const juce::File& f) override
@@ -773,6 +776,23 @@ public:
         rd->read (&ns->data, 0, (int) rd->lengthInSamples, 0, true, rd->numChannels > 1);
         if (rd->numChannels == 1) ns->data.copyFrom (1, 0, ns->data, 0, 0, ns->data.getNumSamples());
         ns->onsets = detectOnsets (ns->data, ns->rate);
+        // the hits by strength (their peak in 10 ms), and the places the sound comes back after a silence (below -40 db for 30 ms)
+        {
+            std::vector<std::pair<float, int>> st;
+            const int pk = (int) (0.01 * ns->rate);
+            for (int on : ns->onsets) { float m = 0; for (int i = std::max (0, on - pk / 2); i < std::min (ns->data.getNumSamples(), on + pk); ++i) m = std::max (m, std::abs (ns->data.getSample (0, i))); st.push_back ({ m, on }); }
+            std::sort (st.begin(), st.end(), [] (auto& a, auto& b) { return a.first > b.first; });
+            for (auto& [m, on] : st) ns->byStrength.push_back (on);
+            const int win = std::max (16, (int) (0.005 * ns->rate)), need = std::max (1, (int) (0.03 * ns->rate) / win);
+            int quiet = 0;
+            for (int i = 0; i + win <= ns->data.getNumSamples(); i += win)
+            {
+                double e = 0; for (int k = 0; k < win; ++k) e += ns->data.getSample (0, i + k) * ns->data.getSample (0, i + k);
+                const bool q = std::sqrt (e / win) < 0.01;
+                if (! q && quiet >= need) ns->gaps.push_back (i);
+                quiet = q ? quiet + 1 : 0;
+            }
+        }
         { const juce::SpinLock::ScopedLockType sl (lock); sample = ns; }
         return true;
     }
@@ -802,6 +822,33 @@ public:
         auto sliceBounds = [&] (int k, int& from, int& to)
         {
             k = juce::jlimit (0, slices - 1, k);
+            const int by = Pi (SLICEBY);
+            if (by > 0)
+            {
+                // the cut points for this way of cutting, in order (at most 64), from s0 to s1
+                std::array<int, 66> cuts {}; int nc = 0; cuts[(size_t) nc++] = s0;
+                if (by == 1) { std::array<int, 64> top {}; int nt = 0; for (int on : s->byStrength) if (on > s0 && on < s1 && nt < std::min (63, slices - 1)) top[(size_t) nt++] = on; std::sort (top.begin(), top.begin() + nt); for (int i = 0; i < nt; ++i) cuts[(size_t) nc++] = top[(size_t) i]; }
+                else if (by == 2) { for (int gp : s->gaps) if (gp > s0 && gp < s1 && nc < std::min (64, slices)) cuts[(size_t) nc++] = gp; }
+                else if (by == 3)
+                {
+                    Rng rr; rr.seed ((uint32_t) (1 + Pi (SEED) * 7919));
+                    std::array<double, 64> w {}; double sum = 0; for (int i = 0; i < slices; ++i) { w[(size_t) i] = 0.25 + rr.uni() * 1.5; sum += w[(size_t) i]; }
+                    double acc = 0; for (int i = 0; i + 1 < slices && nc < 64; ++i) { acc += w[(size_t) i]; cuts[(size_t) nc++] = s0 + (int) ((s1 - s0) * acc / sum); }
+                }
+                else
+                {
+                    const auto* d0 = s->data.getReadPointer (0); const int len = (s1 - s0) / slices;
+                    for (int i = 1; i < slices && nc < 64; ++i)
+                    {
+                        int c = s0 + i * len, best = c; for (int dd = 0; dd < 512; ++dd) { if (c + dd + 1 < total && (d0[c + dd] <= 0.0f) != (d0[c + dd + 1] <= 0.0f)) { best = c + dd; break; } if (c - dd - 1 > 0 && (d0[c - dd] <= 0.0f) != (d0[c - dd - 1] <= 0.0f)) { best = c - dd; break; } }
+                        cuts[(size_t) nc++] = best;
+                    }
+                }
+                cuts[(size_t) nc] = s1;
+                const int m = std::max (1, nc);
+                from = cuts[(size_t) (k % m)]; to = cuts[(size_t) (k % m) + 1]; if (to <= from) to = std::min (s1, from + 64);
+                return;
+            }
             if (sliceMode == 1 && ! s->onsets.empty())
             {
                 const int m = (int) s->onsets.size();
@@ -858,9 +905,210 @@ public:
         renderTo (n);
         midi.clear();
     }
-    struct Sampled { juce::String path; juce::AudioBuffer<float> data; double rate = 48000; std::vector<int> onsets; };
+    struct Sampled { juce::String path; juce::AudioBuffer<float> data; double rate = 48000; std::vector<int> onsets, byStrength, gaps; };
     juce::SpinLock lock; std::shared_ptr<Sampled> sample, cur;
     std::array<Voice, 12> voices; float bendSemis = 0.0f;
+};
+
+// ---- granular: a sample played as a cloud of grains, a cloud a note ------------------------------------------------
+class GranularFx : public StudioFx, public SampleHolder
+{
+public:
+    enum { POS, SPRAY, SIZE, DENSITY, PITCH, PSPRAY, SCAN, REVERSE, WIDTH, ATT, REL, GAIN, ROOT, SHAPE, FOLLOW };
+    GranularFx() : StudioFx ("st:granular", "granular", 0, 2, true, {
+        F ("pos", "position", 0, 1, 0.3f, pctText), F ("spray", "spray", 0, 1, 0.05f, pctText),
+        F ("size", "grain size", 2, 1000, 80, msText, 0.35f), F ("density", "density", 0.5f, 400, 30, [] (float v) { return juce::String (v, v < 10 ? 1 : 0) + " /s"; }, 0.35f),
+        F ("pitch", "pitch", -48, 48, 0, stText), F ("pspray", "pitch spray", 0, 24, 0, stText, 0.5f),
+        F ("scan", "scan", -2, 2, 0, [] (float v) { return std::abs (v) < 0.005f ? juce::String ("still") : "x" + juce::String (v, 2); }),
+        F ("reverse", "reverse grains", 0, 1, 0, pctText), F ("width", "width", 0, 1, 0.6f, pctText),
+        F ("attack", "attack", 0, 5000, 20, msText, 0.3f), F ("release", "release", 1, 10000, 400, msText, 0.3f),
+        F ("gain", "gain", -36, 12, -6, dbText), F ("root", "root note", 0, 127, 60, [] (float v) { return juce::MidiMessage::getMidiNoteName (juce::roundToInt (v), true, true, 3); }, 1.0f, 127),
+        C ("shape", "grain shape", { "hann", "triangle", "tukey (flat)", "percussive" }, 0), B ("follow", "notes set the pitch", true) }) {}
+    struct Sampled { juce::String path; juce::AudioBuffer<float> data; double rate = 48000; };
+    bool setSampleFile (const juce::File& f) override
+    {
+        juce::AudioFormatManager fm; fm.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (f)); if (! rd) return false;
+        auto ns = std::make_shared<Sampled>(); ns->path = f.getFullPathName(); ns->rate = rd->sampleRate;
+        ns->data.setSize (2, (int) rd->lengthInSamples); rd->read (&ns->data, 0, (int) rd->lengthInSamples, 0, true, rd->numChannels > 1);
+        if (rd->numChannels == 1) ns->data.copyFrom (1, 0, ns->data, 0, 0, ns->data.getNumSamples());
+        { const juce::SpinLock::ScopedLockType sl (lock); sample = ns; }
+        return true;
+    }
+    juce::String sampleFile() const override { auto s = sample; return s ? s->path : juce::String(); }
+    int numSlices() const override { return 1; }
+    void saveExtra (juce::XmlElement& x) override { if (sample) x.setAttribute ("sample", sample->path); }
+    void loadExtra (const juce::XmlElement& x) override { if (x.hasAttribute ("sample")) setSampleFile (juce::File (x.getStringAttribute ("sample"))); }
+    void prepareToPlay (double s, int b) override { sr = s; bs = b; for (auto& v : voices) v = Voice(); for (auto& g : grains) g.on = false; }
+    struct Voice { bool on = false; int note = 60; float vel = 1; Adsr env; double scanPos = 0, untilNext = 0; };
+    struct Grain { bool on = false; double pos = 0, step = 1; int age = 0, len = 1; float gl = 1, gr = 1; int voice = 0; };
+    float window (int shape, float u) const
+    {
+        switch (shape)
+        {
+            case 1: return 1.0f - std::abs (2.0f * u - 1.0f);
+            case 2: return u < 0.15f ? 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * u / 0.15f) : u > 0.85f ? 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * (1.0f - u) / 0.15f) : 1.0f;
+            case 3: return std::min (1.0f, u * 40.0f) * std::exp (-5.0f * u);
+            default: return 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * u);
+        }
+    }
+    void processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffer& midi) override
+    {
+        const int n = buf.getNumSamples(); buf.clear();
+        { const juce::SpinLock::ScopedTryLockType sl (lock); if (sl.isLocked()) cur = sample; }
+        auto s = cur; if (! s || s->data.getNumSamples() < 64) { midi.clear(); return; }
+        const int total = s->data.getNumSamples();
+        for (auto& v : voices) v.env.set (P (ATT), 1.0f, 1.0f, P (REL), (float) sr);
+        auto* L = buf.getWritePointer (0); auto* R = buf.getNumChannels() > 1 ? buf.getWritePointer (1) : L;
+        const float gain = juce::Decibels::decibelsToGain (P (GAIN)), width = P (WIDTH);
+        const int shape = Pi (SHAPE); const double grainLen = P (SIZE) * 0.001 * s->rate, density = P (DENSITY);
+        auto it = midi.cbegin(); const auto end = midi.cend();
+        for (int i = 0; i < n; ++i)
+        {
+            for (; it != end && (*it).samplePosition <= i; ++it)
+            {
+                const auto m = (*it).getMessage();
+                if (m.isNoteOn())
+                {
+                    Voice* v = nullptr; for (auto& x : voices) if (! x.on) { v = &x; break; } if (! v) v = &voices[0];
+                    v->on = true; v->note = m.getNoteNumber(); v->vel = m.getFloatVelocity(); v->env.on(); v->scanPos = 0; v->untilNext = 0;
+                }
+                else if (m.isNoteOff()) for (auto& x : voices) if (x.on && x.note == m.getNoteNumber() && x.env.st != Adsr::R) x.env.off();
+            }
+            // each sounding note: new grains at its density, around its (scanning) position
+            for (int vi = 0; vi < (int) voices.size(); ++vi)
+            {
+                auto& v = voices[(size_t) vi]; if (! v.on) continue;
+                v.scanPos += P (SCAN) / sr;
+                v.untilNext -= 1.0;
+                if (v.untilNext <= 0)
+                {
+                    v.untilNext += sr / std::max (0.5, density) * (0.5 + rng.uni());
+                    Grain* g = nullptr; for (auto& x : grains) if (! x.on) { g = &x; break; }
+                    if (g)
+                    {
+                        double ps = P (POS) + P (SPRAY) * (rng.uni() * 2.0f - 1.0f) + v.scanPos * s->rate / total;
+                        ps -= std::floor (ps);
+                        const float semis = P (PITCH) + (Pb (FOLLOW) ? (float) (v.note - Pi (ROOT)) : 0.0f) + P (PSPRAY) * (rng.uni() * 2.0f - 1.0f);
+                        const bool rev = rng.uni() < P (REVERSE);
+                        const float pan = width * (rng.uni() * 2.0f - 1.0f);
+                        g->on = true; g->voice = vi; g->age = 0; g->len = std::max (8, (int) (grainLen * sr / s->rate));
+                        g->step = std::exp2 (semis / 12.0) * s->rate / sr * (rev ? -1.0 : 1.0);
+                        g->pos = ps * (total - 2); g->gl = std::sqrt (0.5f * (1.0f - pan)); g->gr = std::sqrt (0.5f * (1.0f + pan));
+                    }
+                }
+            }
+            float envs[16]; for (int vi = 0; vi < (int) voices.size(); ++vi) { auto& v = voices[(size_t) vi]; envs[vi] = v.on ? v.env.tick() * v.vel : 0.0f; if (v.on && v.env.st == Adsr::Idle) v.on = false; }
+            float l = 0, r = 0;
+            for (auto& g : grains)
+            {
+                if (! g.on) continue;
+                const float w = window (shape, (float) g.age / (float) g.len) * envs[g.voice];
+                double p = std::fmod (g.pos, (double) (total - 2)); if (p < 0) p += total - 2;
+                l += hermiteAt (s->data.getReadPointer (0), total, p) * w * g.gl; r += hermiteAt (s->data.getReadPointer (1), total, p) * w * g.gr;
+                g.pos += g.step; if (++g.age >= g.len) g.on = false;
+            }
+            const float norm = gain / std::sqrt (std::max (1.0f, (float) (density * P (SIZE) * 0.001)));
+            L[i] += l * norm; if (R != L) R[i] += r * norm;
+        }
+        midi.clear();
+    }
+    juce::SpinLock lock; std::shared_ptr<Sampled> sample, cur;
+    std::array<Voice, 12> voices; std::array<Grain, 160> grains; Rng rng;
+};
+
+// ---- tape loops: six loops of their own lengths (in seconds), drifting against each other, wearing as they pass -----
+class TapeLoopsFx : public StudioFx, public SampleHolder, public LoopLengths
+{
+public:
+    static constexpr int kLoops = 6, kPer = 6;   // per loop: length, start, level, pan, wear, speed
+    enum { TARGET = kLoops * kPer, HISS, XFADE };
+    static std::vector<PSpec> specs()
+    {
+        std::vector<PSpec> v;
+        static const float lens[kLoops] = { 17.3f, 23.1f, 31.7f, 11.9f, 41.3f, 7.7f };
+        for (int i = 0; i < kLoops; ++i)
+        {
+            const juce::String k (i + 1);
+            // (the ids and names made here, as strings: never pointers into something that moves)
+            auto spec = [&] (const juce::String& id, const juce::String& name, float lo, float hi, float def, std::function<juce::String (float)> text, float skew = 1.0f) { PSpec p = F ("x", "x", lo, hi, def, std::move (text), skew); p.id = id; p.name = name; return p; };
+            v.push_back (spec ("len" + k, "loop " + k + " length", 0.2f, 180.0f, lens[i], [] (float x) { return juce::String (x, x < 10 ? 2 : 1) + " s"; }, 0.35f));
+            v.push_back (spec ("start" + k, "loop " + k + " start", 0, 1, 0.0f, pctText));
+            v.push_back (spec ("level" + k, "loop " + k + " level", -60, 6, i == 0 ? -6.0f : -60.0f, [] (float x) { return x <= -59.9f ? juce::String ("off") : dbText (x); }));
+            v.push_back (spec ("pan" + k, "loop " + k + " pan", -1, 1, 0, pctText));
+            v.push_back (spec ("wear" + k, "loop " + k + " wear", 0, 1, 0.2f, pctText));
+            v.push_back (spec ("speed" + k, "loop " + k + " speed", 0.25f, 2.0f, 1.0f, [] (float x) { return "x" + juce::String (x, 3); }, 0.5f));
+        }
+        v.push_back (F ("target", "files go to loop", 1, kLoops, 1, [] (float x) { return juce::String (juce::roundToInt (x)); }, 1.0f, kLoops - 1));
+        v.push_back (F ("hiss", "tape hiss", 0, 1, 0.1f, pctText));
+        v.push_back (F ("xfade", "seam", 1, 200, 20, msText, 0.5f));
+        return v;
+    }
+    TapeLoopsFx() : StudioFx ("st:tapeloops", "tape loops", 0, 2, true, specs()) {}
+    struct Loop { std::shared_ptr<juce::AudioBuffer<float>> data; double rate = 48000; juce::String path; };
+    bool setSampleFile (const juce::File& f) override
+    {
+        juce::AudioFormatManager fm; fm.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> rd (fm.createReaderFor (f)); if (! rd) return false;
+        auto b = std::make_shared<juce::AudioBuffer<float>> (2, (int) rd->lengthInSamples);
+        rd->read (b.get(), 0, (int) rd->lengthInSamples, 0, true, rd->numChannels > 1);
+        if (rd->numChannels == 1) b->copyFrom (1, 0, *b, 0, 0, b->getNumSamples());
+        // into the loop chosen if it is empty, else the next empty one (else the one chosen, replacing it)
+        int slot = juce::jlimit (0, kLoops - 1, forced >= 0 ? forced : Pi (TARGET) - 1);
+        if (forced < 0 && loops[(size_t) slot].data) for (int k = 1; k < kLoops; ++k) { const int q = (slot + k) % kLoops; if (! loops[(size_t) q].data) { slot = q; break; } }
+        { const juce::SpinLock::ScopedLockType sl (lock); loops[(size_t) slot] = { b, rd->sampleRate, f.getFullPathName() }; }
+        // a loop that gets a file and was off comes on
+        if (P (slot * kPer + 2) <= -59.9f) setPlain ("level" + juce::String (slot + 1), -6.0f);
+        return true;
+    }
+    int forced = -1;
+    bool loadInto (int slot, const juce::File& f) { forced = slot; const bool ok = setSampleFile (f); forced = -1; return ok; }
+    juce::String sampleFile() const override { const int slot = juce::jlimit (0, kLoops - 1, Pi (TARGET) - 1); return loops[(size_t) slot].path; }
+    int numSlices() const override { return kLoops; }
+    void saveExtra (juce::XmlElement& x) override { for (int i = 0; i < kLoops; ++i) if (loops[(size_t) i].path.isNotEmpty()) x.setAttribute ("file" + juce::String (i + 1), loops[(size_t) i].path); }
+    void loadExtra (const juce::XmlElement& x) override { for (int i = 0; i < kLoops; ++i) if (x.hasAttribute ("file" + juce::String (i + 1))) loadInto (i, juce::File (x.getStringAttribute ("file" + juce::String (i + 1)))); }
+    std::vector<double> loopLengths() const override { return lengths(); }
+    juce::StringArray files() const override { juce::StringArray a; for (auto& l : loops) if (l.path.isNotEmpty()) a.add (l.path); return a; }
+    void replaceFile (const juce::String& old, const juce::File& now) override { for (int i = 0; i < kLoops; ++i) if (loops[(size_t) i].path == old) loadInto (i, now); }
+    std::vector<double> lengths() const { std::vector<double> v; for (int i = 0; i < kLoops; ++i) if (P (i * kPer + 2) > -59.9f && loops[(size_t) i].data) v.push_back (P (i * kPer) / P (i * kPer + 5)); return v; }
+    void prepareToPlay (double s, int b) override { sr = s; bs = b; for (auto& z : lp) z = {}; }
+    void processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffer& midi) override
+    {
+        midi.clear(); buf.clear();
+        const int n = buf.getNumSamples();
+        double t0 = 0; bool playing = false;
+        if (auto* ph = getPlayHead()) if (auto p = ph->getPosition()) { playing = p->getIsPlaying(); if (auto s = p->getTimeInSeconds()) t0 = *s; }
+        if (! playing) return;
+        std::array<Loop, kLoops> ls; { const juce::SpinLock::ScopedTryLockType sl (lock); if (sl.isLocked()) cache = loops; } ls = cache;
+        auto* L = buf.getWritePointer (0); auto* R = buf.getNumChannels() > 1 ? buf.getWritePointer (1) : L;
+        const float hiss = P (HISS); const double xf = std::max (0.001, P (XFADE) * 0.001);
+        for (int i = 0; i < kLoops; ++i)
+        {
+            const auto& lp0 = ls[(size_t) i];
+            const float lvlDb = P (i * kPer + 2); if (lvlDb <= -59.9f || ! lp0.data) continue;
+            const auto& d = *lp0.data; const int ns = d.getNumSamples(); if (ns < 8) continue;
+            const double len = P (i * kPer), speed = P (i * kPer + 5), wear = P (i * kPer + 4);
+            const double startSec = P (i * kPer + 1) * ns / lp0.rate;
+            const float g = juce::Decibels::decibelsToGain (lvlDb), pan = P (i * kPer + 3);
+            const float gl = g * std::sqrt (0.5f * (1.0f - pan)), gr = g * std::sqrt (0.5f * (1.0f + pan));
+            for (int k = 0; k < n; ++k)
+            {
+                // where in the loop (tape seconds), which pass; the seam crossfaded; the wear of this pass
+                const double tape = (t0 + k / sr) * speed, u = std::fmod (tape, len); const long long pass = (long long) std::floor (tape / len);
+                auto at = [&] (double sec, int ch) { double p = (startSec + sec) * lp0.rate; p = std::fmod (p, (double) (ns - 2)); if (p < 0) p += ns - 2; return hermiteAt (d.getReadPointer (ch), ns, p); };
+                float l = at (u, 0), r = at (u, 1);
+                if (u > len - xf) { const float w = (float) ((u - (len - xf)) / xf); l = l * (1.0f - w) + at (u - len, 0) * w; r = r * (1.0f - w) + at (u - len, 1) * w; }
+                const float decay = (float) std::pow (1.0 - wear * 0.035, (double) pass), cut = (float) std::max (300.0, 18000.0 * std::pow (1.0 - wear * 0.06, (double) pass));
+                const float a = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * cut / (float) sr);
+                lp[(size_t) i].l += (l - lp[(size_t) i].l) * a; lp[(size_t) i].r += (r - lp[(size_t) i].r) * a;
+                const float hs = hiss * (float) (0.002 * std::sqrt ((double) pass + 1.0)) * (noise.uni() * 2.0f - 1.0f);
+                L[k] += (lp[(size_t) i].l * std::max (0.15f, decay) + hs) * gl; if (R != L) R[k] += (lp[(size_t) i].r * std::max (0.15f, decay) + hs) * gr;
+            }
+        }
+    }
+    juce::SpinLock lock; std::array<Loop, kLoops> loops, cache;
+    struct Lp { float l = 0, r = 0; }; std::array<Lp, kLoops> lp {};
+    Rng noise;
 };
 
 #include "Spatial.h"
@@ -895,6 +1143,8 @@ static const std::vector<Entry>& registry()
         { "st:tone", "tone", "precision sine / pulse / click / impulse / noise generator", true, [] { return std::make_unique<ToneGen>(); } },
         { "st:data", "data", "byte-to-pulse bursts", true, [] { return std::make_unique<DataGen>(); } },
         { "st:fm", "fm perc", "four-operator fm percussion", true, [] { return std::make_unique<FmPerc>(); } },
+        { "st:granular", "granular", "a sample as a cloud of grains a note: position, spray, size, density, pitch and its spray, scan, reverse, width", true, [] { return std::make_unique<GranularFx>(); } },
+        { "st:tapeloops", "tape loops", "six tape loops of their own lengths in seconds, drifting against each other and wearing as they pass (eno, basinski)", true, [] { return std::make_unique<TapeLoopsFx>(); } },
         { "st:sampler", "sampler", "one-shots, loops, slices to steps, micro-loops shorter than a beat", true, [] { return std::make_unique<SamplerFx>(); } },
     };
     return r;

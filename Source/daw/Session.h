@@ -106,6 +106,7 @@ struct Track
     double clipFrom = -1, clipTo = -1;   // arrangement: the clip playing (beats); the steps fire only inside it
     NotesPtr noteSrc; CtrlPtr ctrlSrc; double noteAnchor = 0;   // a note clip playing (its notes and controllers, where its beat 0 is)
     std::atomic<int> group { 0 };        // the group (folder + vca) it belongs to; 0 none
+    std::atomic<int> timebase { -1 };    // -1 the project's, 0 beats, 1 time
     // frozen: the chain's output rendered to a file and played instead of the instrument, clips and devices (no cpu)
     SamplePtr frozen; juce::File frozenFile; double frozenFromBeat = 0;
     juce::AudioBuffer<float>* freezeTap = nullptr;   // (while freezing: the chain's output, before the fader, is copied here)
@@ -236,6 +237,14 @@ public:
     void recordWithCountIn();
     /** the notes played into armed instrument tracks while recording, written into their steps (message thread) */
     int collectRecordedNotes();
+    // ---- rules between tracks -----------------------------------------------------------------------------------------------
+    std::shared_ptr<const std::vector<Rule>> rules = std::make_shared<const std::vector<Rule>>();
+    /** locators: places kept to go back to (the playhead, the view, the loop) */
+    struct Locator { bool set = false; juce::String name; double bar = 0, viewFrom = 0, viewTo = 16; bool loop = false; double loopA = 0, loopB = 4; };
+    std::array<Locator, 9> locators;
+    void setRules (std::vector<Rule>);
+    struct RuleState { long long count = 0; int shift = 0; std::array<int, 128> noteShift {}; double lastSrcPpq = -1.0e9; Rng rng; };
+    std::array<RuleState, 64> ruleState;
     // ---- grooves, follow actions, midi effects (message thread) ---------------------------------------------------------
     static std::vector<GroovePtr> builtinGrooves();
     static juce::File groovesDir();
@@ -360,6 +369,19 @@ public:
     /** freeze: the track's chain (its instrument or clips and every device, before the fader) to a file it then plays
         instead, from bar 1 to the end of the project and a bar of tail; unfreeze: live again */
     bool freezeTrack (Track&, juce::String& error);
+    /** every marker region (a marker to the next, the last to the end) as its own file in a folder, named by its marker; how many */
+    int renderRegions (const juce::File& dir, const ExportOptions&, juce::String& error);
+    // ---- range edits: the time selection (the loop region) on some tracks -------------------------------------------------
+    /** the range rendered (each track's sound, through its devices) onto new audio tracks under them; the originals' clips in
+        the range muted. The new tracks */
+    std::vector<Track*> renderInPlace (const std::vector<Track*>&, double fromBar, double toBar, juce::String& error);
+    /** the audio clips in the range reversed (cut at its edges; their order inside it mirrored, each one played backwards) */
+    void reverseRange (const std::vector<Track*>&, double fromBar, double toBar);
+    /** the clips in the range muted (cut at its edges) */
+    void silenceRange (const std::vector<Track*>&, double fromBar, double toBar);
+    /** clips joined into one: audio clips of a track rendered together (their sound only) into one clip; pattern clips that
+        follow on (the same pattern, no gap) into one */
+    std::vector<ClipRef> joinClips (const std::vector<ClipRef>&, juce::String& error);
     // ---- what is missing, and finding it --------------------------------------------------------------------------------
     struct Missing { juce::StringArray audio, plugins, frozen; bool empty() const { return audio.isEmpty() && plugins.isEmpty() && frozen.isEmpty(); } };
     Missing missing() const;
@@ -435,6 +457,14 @@ public:
     void moveClips (const std::vector<ClipRef>&, double deltaBars);
     /** cut clips at a bar; returns the right-hand halves */
     std::vector<ClipRef> splitClips (const std::vector<ClipRef>&, double atBar);
+    /** an audio clip cut into clips: 0 at its hits, 1 every `step` bars (the grid), 2 into `n` equal parts, 3 at its warp
+        markers. The pieces (in order) */
+    std::vector<ClipRef> sliceClip (ClipRef, int how, double step, int n);
+    /** a clip's spectral edits rendered: the original through an stft, every bin of every frame turned by the boxes it is in,
+        back to a file the clip then plays (no edits: the original again) */
+    bool applySpectral (ClipRef, std::vector<AudioClip::SpecEdit> edits, juce::String& error);
+    /** an audio clip's file in a sampler on a new instrument track, sliced at its hits, a step a slice in order */
+    Track* clipToSampler (ClipRef, juce::String& error);
     /** move a clip's start, its content staying where it is (trimming or extending from the left) */
     void trimClipStart (const ClipRef&, double newStartBar);
     void setClipLength (const ClipRef&, double bars);
@@ -469,6 +499,21 @@ public:
     double beatAt (double seconds) const;
     /** the tempo lane changed: its table again (message thread; every place that swaps `lanes` calls it) */
     void tempoChanged();
+    // ---- rulers and timebases (like logic / pro tools' main and secondary rulers, reaper's timebase) ------------------
+    std::atomic<int> rulerMain { 0 }, rulerSub { 1 };   // timeline::RulerFormat
+    std::atomic<float> timecodeFps { 25.0f };
+    std::atomic<int> timeGridIndex { 0 };              // the grid when the main ruler counts time
+    std::atomic<int> timebase { 0 };                   // the project's: 0 beats, 1 time
+    bool timeRuler() const { return rulerMain.load() != timeline::RULER_BARS; }
+    /** what a clip is locked to: true = its seconds */
+    bool clipIsTime (const Track& t, int clipTimebase) const { const int c = clipTimebase >= 0 ? clipTimebase : t.timebase.load() >= 0 ? t.timebase.load() : timebase.load(); return c == 1; }
+    /** a position in the main / second ruler's format */
+    juce::String formatRuler (int format, double beat) const;
+    /** when the tempo map changed: everything set to time moves (in beats) so it stays at its seconds. Message thread;
+        cheap when nothing changed (the editor calls it every tick) */
+    void retime();
+    struct TempoKey { const void* table = nullptr; double bpm = 0; double secondsAt (double beat) const; std::shared_ptr<const TempoTable> keep; };
+    TempoKey lastTempo; bool inRetime = false;
     std::shared_ptr<const TempoTable> tempoTable; std::atomic<int> tempoVersion { 1 };
     /** an audio clip's source position (seconds from its offset) at an output time (samples since the clip started), and back */
     struct ClipTime
@@ -484,6 +529,11 @@ public:
     static double warpSrc (const AudioClip&, double beat, double beats, double srcAvail);
     static double warpBeat (const AudioClip&, double src, double beats, double srcAvail);
     juce::File collectSample (const juce::File&);   // copy into the project's audio folder
+    /** every file the project uses from outside its folder copied into its audio folder, and used from there: audio clips
+        (and their originals), frozen files, the samplers', granular's and tape loops' samples. How many were copied */
+    int collectAll (juce::String& error);
+    /** a copy of a track (its devices, mixer, patterns, clips, settings) under it */
+    Track* duplicateTrack (Track&, juce::String& error);
     // recording
     void startRecording();                           // arms the writers for armed audio tracks; recording follows play
     void stopRecording();                            // finishes the clips
@@ -518,7 +568,7 @@ public:
     void setMacro (int i, float v) { global->setBase (GP_MACRO1 + i, v); }
     float macroValue (int i) const { return global->finalValue (GP_MACRO1 + i); }
     float tempo() const { return tempoFromNorm (global->finalValue (GP_TEMPO)); }
-    void setTempo (float bpm) { global->setBase (GP_TEMPO, tempoToNorm (bpm)); }
+    void setTempo (float bpm) { global->setBase (GP_TEMPO, tempoToNorm (bpm)); if (! inRetime) { inRetime = true; retime(); inRetime = false; } }
     float swing() const { return swingFromNorm (global->finalValue (GP_SWING)); }
     double songBars() const;
     double arrangementBars() const;
@@ -549,11 +599,13 @@ public:
 
     // ---- state -------------------------------------------------------------------------------------
     std::unique_ptr<juce::XmlElement> save() const;
-    bool load (const juce::XmlElement& e, juce::String* error = nullptr) { const bool ok = loadImpl (e, error); if (onReplaced) onReplaced(); return ok; }
+    bool load (const juce::XmlElement& e, juce::String* error = nullptr) { const bool ok = loadImpl (e, error); tempoSettled(); if (onReplaced) onReplaced(); return ok; }
     /** after load / newFromTemplate replaced every track: views that hold tracks or devices rebuild (message thread) */
     std::function<void()> onReplaced;
     void clear();
-    void newFromTemplate (int which) { newFromTemplateImpl (which); if (onReplaced) onReplaced(); }
+    void newFromTemplate (int which) { newFromTemplateImpl (which); tempoSettled(); if (onReplaced) onReplaced(); }
+    /** the tempo map as it is now is where positions in time are counted from (after opening a project) */
+    void tempoSettled() { TempoKey k; k.keep = tempoTable; k.table = tempoTable.get(); k.bpm = tempo(); lastTempo = k; }
     static juce::StringArray templateNames();
     void loadTrackXml (Track&, const juce::XmlElement&, juce::StringArray& problems);
 
@@ -584,6 +636,7 @@ private:
     void modulate (Track&, double ppq0, int n, double bpm);
     void sequence (Track&, double ppq0, double ppq1, double spb, double bpm, juce::MidiBuffer& out);
     void midiEffects (Track&, double ppq0, int n, double spb, juce::MidiBuffer& io, bool playing);
+    void applyRules (int n, double ppq0, double spb, bool playing);
     void renderTrack (Track&, int n, double ppq0, double bpm, const float* macros, bool anySolo, const Outs& outs, juce::MidiBuffer& midi, const HostInfo& h, bool playing);
     void playClips (Track&, int n, double ppq0, double bpm, bool playing);
     void automate (double ppq);
@@ -594,7 +647,7 @@ private:
     juce::String uniqueTrackName (const juce::String& base) const;
     static juce::uint32 trackColour (int i);
     void finishRecordings();
-    juce::File renderTrackFile (Track& src, double fromBar, double toBar, juce::String& error);
+    juce::File renderTrackFile (Track& src, double fromBar, double toBar, juce::String& error, bool sourcesOnly = false);
     std::shared_ptr<Preview> previewNow, previewOld; std::atomic<bool> previewOn { false };
     void resetForOffline();
     void recomputeIds();

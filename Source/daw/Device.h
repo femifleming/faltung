@@ -88,6 +88,12 @@ public:
     /** sidechain / key input for devices that take one (the studio's sidechain compressor) */
     const float* keyL = nullptr; const float* keyR = nullptr;
     int scChannels = 0;
+    // randomise: the parameters left alone (locked); by default the ones that set a level
+    std::vector<char> randLock;
+    bool randLocked (int p) const;
+    void setRandLocked (int p, bool on) { if ((int) randLock.size() < numParams()) randLock.resize ((size_t) numParams(), 2); if (p >= 0 && p < (int) randLock.size()) randLock[(size_t) p] = on ? 1 : 0; }
+    /** new values for every unlocked parameter: amount 1 anywhere, less: that far from where it is */
+    void randomise (float amount, juce::Random& r);
     std::atomic<bool> lowLatencyOff { false };   // left out while the session's low-latency switch is on (it delays the sound)                // a hosted plug-in's sidechain input (its second input bus), fed from the key
 
     // ---- message thread --------------------------------------------------------------------------

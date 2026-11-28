@@ -129,6 +129,30 @@ struct MidiFx
     std::array<int, 4> intervals { 7, 12, 0, 0 }; int nIntervals = 2; int seed = 1;
 };
 constexpr int kMidiFx = 4;
+/** a rule between two tracks: when the source plays (or doesn't, or every n-th time), something happens to the
+    destination's notes. Evaluated on every block, after every track's notes are known and before any sound is made */
+enum RuleWhen { RULE_WITH = 0, RULE_WITHOUT, RULE_EVERY, RULE_WHEN_COUNT };
+enum RuleDo { RULE_ONLY = 0, RULE_MUTE, RULE_TRIGGER, RULE_TRANSPOSE, RULE_ACCENT, RULE_PATTERN, RULE_DO_COUNT };
+inline const char* ruleWhenName (int k) { static const char* n[RULE_WHEN_COUNT] = { "plays", "doesn't play", "has played n times" }; return n[juce::jlimit (0, RULE_WHEN_COUNT - 1, k)]; }
+inline const char* ruleDoName (int k) { static const char* n[RULE_DO_COUNT] = { "plays only then", "is silenced", "plays a note", "is transposed", "is accented", "switches pattern" }; return n[juce::jlimit (0, RULE_DO_COUNT - 1, k)]; }
+struct Rule
+{
+    bool on = true;
+    int src = 0, dst = 0;          // track uids
+    int when = RULE_WITH, n = 4;   // n: every n-th note (RULE_EVERY)
+    int what = RULE_ONLY;
+    float value = 0;               // semitones (transpose, trigger: from the root), gain (accent: 0.25 … 2), pattern number (switch)
+    float chance = 1.0f;           // how often it applies
+    float windowMs = 20.0f;        // how close in time counts as "together"
+};
+/** a clip's own automation of one of its track's controls: points (beats from where the clip's material starts, 0..1),
+    moving, copying and splitting with the clip */
+struct ClipEnv { int device = 0; int param = -1; std::vector<std::pair<double, float>> pts; float valueAt (double b) const
+{
+    if (pts.empty()) return 0; if (b <= pts.front().first) return pts.front().second; if (b >= pts.back().first) return pts.back().second;
+    for (size_t i = 1; i < pts.size(); ++i) if (b <= pts[i].first) { const auto& a = pts[i - 1]; const auto& c = pts[i]; const double u = (b - a.first) / std::max (1.0e-9, c.first - a.first); return (float) (a.second + (c.second - a.second) * u); }
+    return pts.back().second;
+} };
 /** a group of tracks: a folder in the arrangement and a vca in the mixer (its fader scales its members' levels) */
 struct Group { int id = 0; juce::String name; juce::uint32 colour = 0; bool folded = false; float vcaDb = 0; bool mute = false, solo = false; };
 
@@ -141,6 +165,8 @@ struct Clip
     juce::uint32 colour = 0;         // 0: the track's
     NotesPtr notes;                  // a note clip (free notes to the instrument) when set: the pattern isn't used
     CtrlPtr ctrl;                    // its controllers (cc, pitch bend, pressure), in time order
+    int timebase = -1;               // -1 the track's, 0 beats (moves with the tempo), 1 time (keeps its seconds)
+    std::vector<ClipEnv> envs;       // its own automation (beats from where its pattern starts: start - offset)
     int id = 0;                      // stable while the project is open (selection, undo)
 };
 /** a clip on the timeline, by track and id */
@@ -243,6 +269,12 @@ struct AudioClip
     int takeGroup = 0, take = 0;     // takes recorded over a loop: one group, numbered from 1 (the one not muted plays)
     std::vector<std::pair<double, float>> gainLine;   // the clip's gain drawn over time: (beats from its start, db); empty: flat
     double xIn = 0, xOut = 0;        // crossfades where it overlaps its neighbours (bars; made by the session, not saved)
+    int timebase = -1;               // -1 the track's, 0 beats, 1 time
+    std::vector<ClipEnv> envs;       // its own automation (beats from its start)
+    // spectral edits: boxes of time (seconds of the source) and frequency (hz) turned up or down; the clip plays a file
+    // rendered with them, the original (origPath) kept untouched
+    struct SpecEdit { double t0 = 0, t1 = 0, f0 = 0, f1 = 0; float db = -60.0f; };
+    std::vector<SpecEdit> spec; juce::String origPath;
     float pitch = 0.0f;              // semitones (+ cents as fraction)
     int mode = 0;                    // 0 repitch (speed = pitch), 1 stretch (length free, pitch kept), 2 warp (fits the bars at the project tempo), 3 warp markers
     std::vector<std::pair<double, double>> warp;   // warp markers: (beat from the clip's start, second of the source from its offset); (0, 0) is implied

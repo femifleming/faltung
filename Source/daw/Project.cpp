@@ -47,6 +47,17 @@ static Step loadStep (const juce::XmlElement& x)
     return s;
 }
 
+static std::vector<ClipEnv> readEnvs (const juce::XmlElement& x)
+{
+    std::vector<ClipEnv> v;
+    for (auto* y : x.getChildWithTagNameIterator ("env"))
+    {
+        ClipEnv e; e.device = y->getIntAttribute ("dev"); e.param = y->getIntAttribute ("param", -1);
+        for (auto& tk : juce::StringArray::fromTokens (y->getStringAttribute ("pts"), " ", "")) if (tk.contains (":")) e.pts.push_back ({ tk.upToFirstOccurrenceOf (":", false, false).getDoubleValue(), tk.fromFirstOccurrenceOf (":", false, false).getFloatValue() });
+        v.push_back (e);
+    }
+    return v;
+}
 static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& projectDir)
 {
     e.setAttribute ("uid", t.uid); e.setAttribute ("name", t.name); e.setAttribute ("colour", juce::String::toHexString ((int) t.colour));
@@ -57,6 +68,7 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     if (t.evolve.load() > 0.0f) e.setAttribute ("evolve", t.evolve.load());
     if (t.chokeGroup.load() > 0) e.setAttribute ("choke", t.chokeGroup.load());
     if (t.group.load() > 0) e.setAttribute ("group", t.group.load());
+    if (t.timebase.load() >= 0) e.setAttribute ("timebase", t.timebase.load());
     if (t.frozen) { e.setAttribute ("frozen", t.frozenFile.getFullPathName()); e.setAttribute ("frozenFrom", t.frozenFromBeat); }
     if (std::abs (t.phaseRate.load() - 1.0f) > 1.0e-6f) e.setAttribute ("phase", t.phaseRate.load());
     if (t.groove)
@@ -93,6 +105,8 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
     for (auto& c : *t.clips) { auto* x = e.createNewChildElement ("clip"); x->setAttribute ("id", c.id); x->setAttribute ("pattern", c.pattern); x->setAttribute ("start", c.startBar); x->setAttribute ("bars", c.bars); if (c.offset != 0) x->setAttribute ("offset", c.offset); if (c.muted) x->setAttribute ("muted", 1); if (c.name.isNotEmpty()) x->setAttribute ("name", c.name); if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
         if (c.notes) for (auto& nt : *c.notes) { auto* y = x->createNewChildElement ("n"); y->setAttribute ("b", nt.beat); y->setAttribute ("l", nt.len); y->setAttribute ("p", nt.pitch); y->setAttribute ("v", nt.vel); }
         if (c.notes && c.notes->empty()) x->setAttribute ("notes", 1);
+        if (c.timebase >= 0) x->setAttribute ("tb", c.timebase);
+        for (auto& en : c.envs) { auto* y = x->createNewChildElement ("env"); y->setAttribute ("dev", en.device); y->setAttribute ("param", en.param); juce::StringArray a; for (auto& [b, v] : en.pts) a.add (juce::String (b, 6) + ":" + juce::String (v, 5)); y->setAttribute ("pts", a.joinIntoString (" ")); }
         if (c.ctrl) for (auto& cv : *c.ctrl) { auto* y = x->createNewChildElement ("c"); y->setAttribute ("b", cv.beat); y->setAttribute ("k", cv.kind); y->setAttribute ("v", cv.value); } }
     for (auto& c : *t.aclips)
     {
@@ -107,6 +121,10 @@ static void saveTrack (juce::XmlElement& e, const Track& t, const juce::File& pr
         if (c.name.isNotEmpty()) x->setAttribute ("name", c.name);
         if (c.colour) x->setAttribute ("colour", juce::String::toHexString ((int) c.colour));
         if (c.takeGroup) { x->setAttribute ("takes", c.takeGroup); x->setAttribute ("take", c.take); }
+        if (c.timebase >= 0) x->setAttribute ("tb", c.timebase);
+        for (auto& en : c.envs) { auto* y = x->createNewChildElement ("env"); y->setAttribute ("dev", en.device); y->setAttribute ("param", en.param); juce::StringArray a; for (auto& [b, v] : en.pts) a.add (juce::String (b, 6) + ":" + juce::String (v, 5)); y->setAttribute ("pts", a.joinIntoString (" ")); }
+        if (c.origPath.isNotEmpty()) { const juce::File of (c.origPath); x->setAttribute ("orig", of.isAChildOf (projectDir) ? of.getRelativePathFrom (projectDir) : c.origPath); }
+        for (auto& se : c.spec) { auto* y = x->createNewChildElement ("spec"); y->setAttribute ("t0", se.t0); y->setAttribute ("t1", se.t1); y->setAttribute ("f0", se.f0); y->setAttribute ("f1", se.f1); y->setAttribute ("db", se.db); }
         if (! c.warp.empty()) { juce::StringArray a; for (auto& [b, sv] : c.warp) a.add (juce::String (b, 9) + ":" + juce::String (sv, 9)); x->setAttribute ("warp", a.joinIntoString (" ")); }
         if (! c.gainLine.empty()) { juce::StringArray a; for (auto& [b, d] : c.gainLine) a.add (juce::String (b, 6) + ":" + juce::String (d, 3)); x->setAttribute ("gainline", a.joinIntoString (" ")); }
     }
@@ -132,7 +150,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     t.pattern.store (e.getIntAttribute ("pattern", 0)); t.speed.store (e.getIntAttribute ("speed", 3)); t.rootNote.store (e.getIntAttribute ("root", 60));
     t.swingOffset.store ((float) e.getDoubleAttribute ("swing", 0.0)); t.shiftMs.store ((float) e.getDoubleAttribute ("shift", 0.0)); t.probMul.store ((float) e.getDoubleAttribute ("prob", 1.0));
     t.freeClock.store (e.getIntAttribute ("free", 0) != 0); t.stepMs.store ((float) e.getDoubleAttribute ("stepMs", 125.0));
-    t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0))); t.group.store (e.getIntAttribute ("group", 0));
+    t.evolve.store ((float) e.getDoubleAttribute ("evolve", 0.0)); t.chokeGroup.store (juce::jlimit (0, 8, e.getIntAttribute ("choke", 0))); t.group.store (e.getIntAttribute ("group", 0)); t.timebase.store (e.getIntAttribute ("timebase", -1));
     if (auto* x = e.getChildByName ("groove"))
     {
         auto g = std::make_shared<Groove>(); g->name = x->getStringAttribute ("name");
@@ -205,7 +223,7 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
     {
         Clip c; c.pattern = x->getIntAttribute ("pattern"); c.startBar = x->getDoubleAttribute ("start"); c.bars = x->getDoubleAttribute ("bars", 4.0);
         c.offset = x->getDoubleAttribute ("offset"); c.muted = x->getIntAttribute ("muted") != 0; c.id = x->getIntAttribute ("id", 0);
-        c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
+        c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32(); c.timebase = x->getIntAttribute ("tb", -1); c.envs = readEnvs (*x);
         if (x->getChildByName ("n") || x->getIntAttribute ("notes") != 0)
         {
             auto v = std::make_shared<std::vector<Note>>();
@@ -237,7 +255,9 @@ void Session::loadTrackXml (Track& t, const juce::XmlElement& e, juce::StringArr
         c.fadeIn = x->getDoubleAttribute ("fin"); c.fadeOut = x->getDoubleAttribute ("fout"); c.reverse = x->getIntAttribute ("rev") != 0; c.loop = x->getIntAttribute ("loop") != 0;
         c.pitch = (float) x->getDoubleAttribute ("pitch"); c.mode = x->getIntAttribute ("mode"); c.stretch = x->getDoubleAttribute ("stretch", 1.0); c.muted = x->getIntAttribute ("muted") != 0;
         c.name = x->getStringAttribute ("name"); c.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32();
-        c.takeGroup = x->getIntAttribute ("takes"); c.take = x->getIntAttribute ("take");
+        c.takeGroup = x->getIntAttribute ("takes"); c.take = x->getIntAttribute ("take"); c.timebase = x->getIntAttribute ("tb", -1); c.envs = readEnvs (*x);
+        if (const auto op = x->getStringAttribute ("orig"); op.isNotEmpty()) c.origPath = (juce::File::isAbsolutePath (op) ? juce::File (op) : projectDir().getChildFile (op)).getFullPathName();
+        for (auto* y : x->getChildWithTagNameIterator ("spec")) c.spec.push_back ({ y->getDoubleAttribute ("t0"), y->getDoubleAttribute ("t1"), y->getDoubleAttribute ("f0"), y->getDoubleAttribute ("f1"), (float) y->getDoubleAttribute ("db", -60.0) });
         for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("warp"), " ", "")) if (tk.contains (":")) c.warp.push_back ({ tk.upToFirstOccurrenceOf (":", false, false).getDoubleValue(), tk.fromFirstOccurrenceOf (":", false, false).getDoubleValue() });
         for (auto& tk : juce::StringArray::fromTokens (x->getStringAttribute ("gainline"), " ", "")) if (tk.contains (":")) c.gainLine.push_back ({ tk.upToFirstOccurrenceOf (":", false, false).getDoubleValue(), tk.fromFirstOccurrenceOf (":", false, false).getFloatValue() });
         nextTakeGroup = std::max (nextTakeGroup, c.takeGroup + 1);
@@ -294,6 +314,9 @@ std::unique_ptr<juce::XmlElement> Session::save() const
     for (auto& m : *markers) { auto* x = e->createNewChildElement ("marker"); x->setAttribute ("name", m.name); x->setAttribute ("bar", m.bar); }
     for (auto& cm : *cmdMaps) { auto* x = e->createNewChildElement ("cmd"); x->setAttribute ("note", cm.note ? 1 : 0); x->setAttribute ("n", cm.number); x->setAttribute ("c", cm.command); }
     if (mackie.load()) e->setAttribute ("mackie", 1);
+    for (int i = 0; i < (int) locators.size(); ++i) if (const auto& L = locators[(size_t) i]; L.set) { auto* x = e->createNewChildElement ("locator"); x->setAttribute ("i", i); x->setAttribute ("name", L.name); x->setAttribute ("bar", L.bar); x->setAttribute ("from", L.viewFrom); x->setAttribute ("to", L.viewTo); x->setAttribute ("loop", L.loop ? 1 : 0); x->setAttribute ("la", L.loopA); x->setAttribute ("lb", L.loopB); }
+    for (auto& r : *rules) { auto* x = e->createNewChildElement ("rule"); x->setAttribute ("on", r.on ? 1 : 0); x->setAttribute ("src", r.src); x->setAttribute ("dst", r.dst); x->setAttribute ("when", r.when); x->setAttribute ("n", r.n); x->setAttribute ("what", r.what); x->setAttribute ("value", r.value); x->setAttribute ("chance", r.chance); x->setAttribute ("window", r.windowMs); }
+    e->setAttribute ("ruler", rulerMain.load()); e->setAttribute ("ruler2", rulerSub.load()); e->setAttribute ("fps", timecodeFps.load()); e->setAttribute ("timegrid", timeGridIndex.load()); e->setAttribute ("timebase", timebase.load());
     for (auto& g : *groups) { auto* x = e->createNewChildElement ("group"); x->setAttribute ("id", g.id); x->setAttribute ("name", g.name); if (g.colour) x->setAttribute ("colour", juce::String::toHexString ((int) g.colour)); x->setAttribute ("folded", g.folded ? 1 : 0); x->setAttribute ("vca", g.vcaDb); x->setAttribute ("mute", g.mute ? 1 : 0); x->setAttribute ("solo", g.solo ? 1 : 0); }
     if (! meter->plain()) for (auto& m : meter->getChanges()) { auto* x = e->createNewChildElement ("meter"); x->setAttribute ("bar", m.bar); x->setAttribute ("sigs", timeline::sigsText (m.sigs)); }
     for (auto& l : *lanes)
@@ -398,6 +421,10 @@ bool Session::loadImpl (const juce::XmlElement& e, juce::String* error)
     editMarkers ([&] (std::vector<Marker>& m) { for (auto* x : e.getChildWithTagNameIterator ("marker")) m.push_back ({ x->getStringAttribute ("name"), x->getDoubleAttribute ("bar") }); });
     { std::vector<CmdMap> cm; for (auto* x : e.getChildWithTagNameIterator ("cmd")) cm.push_back ({ x->getIntAttribute ("note", 1) != 0, x->getIntAttribute ("n"), x->getIntAttribute ("c") }); setCmdMaps (cm); }
     mackie.store (e.getIntAttribute ("mackie", 0) != 0); mackieBank.store (0);
+    for (auto& L : locators) L = {};
+    for (auto* x : e.getChildWithTagNameIterator ("locator")) { const int i = x->getIntAttribute ("i", -1); if (i < 0 || i >= (int) locators.size()) continue; auto& L = locators[(size_t) i]; L.set = true; L.name = x->getStringAttribute ("name"); L.bar = x->getDoubleAttribute ("bar"); L.viewFrom = x->getDoubleAttribute ("from"); L.viewTo = x->getDoubleAttribute ("to", 16.0); L.loop = x->getIntAttribute ("loop") != 0; L.loopA = x->getDoubleAttribute ("la"); L.loopB = x->getDoubleAttribute ("lb", 4.0); }
+    { std::vector<Rule> rv; for (auto* x : e.getChildWithTagNameIterator ("rule")) { Rule r; r.on = x->getIntAttribute ("on", 1) != 0; r.src = x->getIntAttribute ("src"); r.dst = x->getIntAttribute ("dst"); r.when = x->getIntAttribute ("when"); r.n = x->getIntAttribute ("n", 4); r.what = x->getIntAttribute ("what"); r.value = (float) x->getDoubleAttribute ("value"); r.chance = (float) x->getDoubleAttribute ("chance", 1.0); r.windowMs = (float) x->getDoubleAttribute ("window", 20.0); rv.push_back (r); } setRules (rv); }
+    rulerMain.store (e.getIntAttribute ("ruler", 0)); rulerSub.store (e.getIntAttribute ("ruler2", 1)); timecodeFps.store ((float) e.getDoubleAttribute ("fps", 25.0)); timeGridIndex.store (e.getIntAttribute ("timegrid", 0)); timebase.store (e.getIntAttribute ("timebase", 0));
     editGroups ([&] (std::vector<Group>& v) { v.clear(); for (auto* x : e.getChildWithTagNameIterator ("group")) { Group g; g.id = x->getIntAttribute ("id"); g.name = x->getStringAttribute ("name"); g.colour = (juce::uint32) x->getStringAttribute ("colour").getHexValue32(); g.folded = x->getIntAttribute ("folded") != 0; g.vcaDb = (float) x->getDoubleAttribute ("vca"); g.mute = x->getIntAttribute ("mute") != 0; g.solo = x->getIntAttribute ("solo") != 0; v.push_back (g); } });
     {
         std::vector<timeline::MeterChange> mc;
@@ -751,6 +778,20 @@ Track* Session::addTrackFromTemplate (const juce::File& f, juce::String& error)
     if (! t) { error = "no room for another track"; return nullptr; }
     juce::StringArray problems;
     loadTrackXml (*t, *x, problems);
+    if (! problems.isEmpty()) error = problems.joinIntoString ("; ");
+    return t;
+}
+Track* Session::duplicateTrack (Track& src, juce::String& error)
+{
+    if (src.isMaster() || src.isReturn()) { error = "only tracks"; return nullptr; }
+    juce::XmlElement e ("track"); saveTrack (e, src, projectDir());
+    e.removeAttribute ("uid"); e.deleteAllChildElementsWithTagName ("route");
+    auto* t = addTrack (src.name + " copy", indexOf (&src) + 1, src.kind);
+    if (! t) { error = "no room for another track"; return nullptr; }
+    juce::StringArray problems; loadTrackXml (*t, e, problems);
+    // its clips get ids of their own
+    editClips (*t, [] (std::vector<Clip>& v) { for (auto& c : v) c.id = 0; });
+    editAudioClips (*t, [] (std::vector<AudioClip>& v) { for (auto& c : v) c.id = 0; });
     if (! problems.isEmpty()) error = problems.joinIntoString ("; ");
     return t;
 }

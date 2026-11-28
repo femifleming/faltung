@@ -125,6 +125,7 @@ int main (int argc, char** argv)
     std::cout << std::unitbuf; std::setvbuf (stdout, nullptr, _IONBF, 0);   // (a crash in CI shows the line it happened after)
     juce::ScopedJuceInitialiser_GUI gui;
     juce::File shotDir, wavDir, vst3;
+
     for (int i = 1; i < argc; ++i)
     {
         const juce::String a (argv[i]);
@@ -2839,6 +2840,268 @@ int main (int argc, char** argv)
         check (ok, "every theme: the colours, the same page, the window in its ground");
         se->setTheme (0);
     }
+    std::cout << "== seconds and bars: rulers, the time grid, timebases, export by regions\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f);
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        check (s.formatRuler (timeline::RULER_TIME, 8.0) == "0:04.000" && s.formatRuler (timeline::RULER_SAMPLES, 8.0) == "192000" && s.formatRuler (timeline::RULER_TIMECODE, 9.0) == "00:00:04:12", "positions as time, samples and timecode (" + s.formatRuler (timeline::RULER_TIMECODE, 9.0) + ")");
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); }
+        auto& t = *s.tracks[0];
+        s.editClips (t, [] (std::vector<Clip>& v) { Clip a; a.pattern = 0; a.startBar = 1.0; a.bars = 1.0; a.timebase = 1; Clip b; b.pattern = 0; b.startBar = 3.0; b.bars = 1.0; b.timebase = 0; v.push_back (a); v.push_back (b); });
+        s.editMarkers ([] (std::vector<Marker>& m) { m.push_back ({ "here", 2.0 }); });
+        s.setTempo (60.0f);
+        double tStart = -1, bStart = -1, tLen = -1; for (auto& c : *t.clips) { if (c.timebase == 1) { tStart = c.startBar; tLen = c.bars; } else bStart = c.startBar; }
+        std::cout << "  tempo 120 -> 60: the time clip now at bar " << tStart + 1 << " (" << s.secondsAt (tStart * 4.0) << " s), the beat clip at bar " << bStart + 1 << "\n";
+        check (std::abs (tStart - 0.5) < 1.0e-6 && std::abs (tLen - 0.5) < 1.0e-6 && std::abs (bStart - 3.0) < 1.0e-9, "a clip in time keeps its seconds; one in beats keeps its bar");
+        check (std::abs ((*s.markers)[0].bar - 2.0) < 1.0e-9, "a beats project's markers stay on their bars");
+        s.timebase.store (1); s.setTempo (120.0f);
+        check (std::abs ((*s.markers)[0].bar - 4.0) < 1.0e-6, "a time project's markers keep their seconds (" + juce::String ((*s.markers)[0].bar) + ")");
+        // the time grid: 100 ms, snapping in seconds
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get()); ed->setSize (1440, 900); se->showPage (1);
+        auto* arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
+        s.rulerMain.store (timeline::RULER_TIME); s.timeGridIndex.store (5); s.snap.store (true);
+        const double b = s.beatAt (1.234) / 4.0, sn = arr->snapBar (b);
+        check (std::abs (s.secondsAt (sn * 4.0) - 1.2) < 1.0e-9, "the 100 ms grid snaps in seconds (" + juce::String (s.secondsAt (sn * 4.0), 4) + ")");
+        se->tickForTest(); juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        // saved and opened: the rulers, the timebase; nothing moves on opening
+        juce::String err; s.projectFile = tmp.getChildFile ("time.fstudio"); check (p.saveProject (s.projectFile, err), "save");
+        StudioProcessor p2; p2.loadProject (s.projectFile, err); p2.session.retime();
+        double t2 = -1; for (auto& c : *p2.session.tracks[0]->clips) if (c.timebase == 1) t2 = c.startBar;
+        check (p2.session.rulerMain.load() == timeline::RULER_TIME && p2.session.timebase.load() == 1 && std::abs (t2 - tStart * 2.0) < 1.0e-6, "rulers and timebases are saved, and opening moves nothing");
+        // regions: a file each, named by its marker
+        s.editMarkers ([] (std::vector<Marker>& m) { m = { { "intro", 0.0 }, { "drop", 1.0 } }; });
+        s.editClips (t, [] (std::vector<Clip>& v) { v.clear(); v.push_back ({ 0, 0.0, 2.0 }); });
+        const auto dir = tmp.getChildFile ("regions"); dir.deleteRecursively();
+        ExportOptions o; o.tail = false; o.bits = 24;
+        const int nr = s.renderRegions (dir, o, err);
+        const auto f1 = dir.getChildFile ("01 intro.wav"), f2 = dir.getChildFile ("02 drop.wav");
+        check (nr == 2 && f1.existsAsFile() && f2.existsAsFile() && std::abs (readWav (f1).getNumSamples() - 2.0 * kSr) < 64, "every marker region as its own file, named by its marker");
+        dir.deleteRecursively();
+    }
+    std::cout << "== rules between tracks\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.global->setBase (GP_SWING, 0.0f);
+        auto& a = *s.tracks[0]; shortHit (a);
+        auto* bt = s.addTrack ("b", -1, TrackKind::Instrument); s.setInstrument (*bt, s.createDevice ("fal:bd1")); auto& b = *bt; shortHit (b);
+        a.mixer->setBase (MP_LEVEL, 0.0f);   // (a is heard only through the rules)
+        s.editPattern (a, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k : { 0, 8 }) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } });
+        s.editPattern (b, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k : { 0, 4, 8, 12 }) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } });
+        s.launch (a, 0); s.launch (b, 0);
+        const int sx = (int) (0.25 * spb (120));
+        auto steps = [&] { auto r = render (p, 1.0); auto on = onsets (r.out, 0); juce::String v; for (int o : on) v << (int) std::lround ((double) o / sx) << " "; return v.trim(); };
+        Rule r; r.src = a.uid; r.dst = b.uid; r.when = RULE_WITH; r.what = RULE_ONLY;
+        s.setRules ({ r }); const auto only = steps();
+        r.what = RULE_MUTE; s.setRules ({ r }); const auto mute = steps();
+        r.when = RULE_EVERY; r.n = 2; r.what = RULE_TRIGGER; s.editPattern (b, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; }); s.setRules ({ r }); const auto trig = steps();
+        std::cout << "  only with a: " << only << " · silenced with a: " << mute << " · a note every 2nd hit of a: " << trig << "\n";
+        check (only == "0 8" && mute == "4 12" && trig == "8", "plays only with, is silenced with, plays a note every n-th time");
+        // transposed (toggles on every 2nd hit of a): read b's notes as they go to its instrument
+        s.editPattern (b, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; for (int k : { 2, 6, 10, 14 }) { pt.s[(size_t) k].on = true; pt.s[(size_t) k].vel = 1; } });
+        r.when = RULE_WITH; r.what = RULE_TRANSPOSE; r.value = 7; s.setRules ({ r });
+        std::vector<int> notes;
+        render (p, 2.0, {}, 0, {}, [&] (int, juce::AudioBuffer<float>&) { for (const auto m : b.seqMidi) if (m.getMessage().isNoteOn()) notes.push_back (m.getMessage().getNoteNumber()); });
+        juce::String nv; for (int x : notes) nv << x << " ";
+        std::cout << "  b's notes, transposed +7 from each hit of a until the next: " << nv << "\n";
+        check (notes.size() == 8 && notes[0] == notes[1] + 0 - 0 && notes[0] - notes[2] == 7 && notes[2] == notes[3] - 0 && notes[4] - notes[6] == 7, "is transposed (and back) by the source's hits");
+        juce::String e2; s.projectFile = tmp.getChildFile ("rules.fstudio"); p.saveProject (s.projectFile, e2);
+        StudioProcessor p2; p2.loadProject (s.projectFile, e2);
+        check (p2.session.rules->size() == 1 && (*p2.session.rules)[0].what == RULE_TRANSPOSE && (*p2.session.rules)[0].value == 7.0f, "rules are saved");
+    }
+    std::cout << "== slicing: audio clips into clips, the sampler's cuts, into a sampler\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); }
+        s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange);
+        s.projectFile = tmp.getChildFile ("slices.fstudio"); s.projectName = "slices";
+        const int N = (int) (2.0 * kSr); juce::AudioBuffer<float> cl (2, N); cl.clear();
+        const float amp[4] = { 0.3f, 0.9f, 0.5f, 0.7f };
+        for (int k = 0; k < 4; ++k) for (int i = 0; i < 400; ++i) { const float v = amp[k] * std::exp (-i / 80.0f) * (i % 2 ? 1.0f : -1.0f); cl.setSample (0, k * 24000 + i, v); cl.setSample (1, k * 24000 + i, v); }
+        const auto cf = tmp.getChildFile ("four.wav"); writeWav (cf, cl);
+        auto* at = s.addTrack ("loop", -1, TrackKind::Audio); juce::String err;
+        auto* c0 = s.addAudioClip (*at, cf, 0.0, &err); const ClipRef r0 { at->uid, c0 ? c0->id : 0, true };
+        s.setClipLength (r0, 1.0);
+        auto before = render (p, 1.0);
+        auto pieces = s.sliceClip (r0, 0, 0, 0);
+        juce::String st; for (auto& pc : pieces) { double s0, l; s.clipSpan (pc, s0, l); st << juce::String (s0, 3) << " "; }
+        std::cout << "  sliced at its hits: " << pieces.size() << " clips at bars " << st << "\n";
+        auto after = render (p, 1.0);
+        double worst = 0; int wi = 0; for (int i = 0; i < before.out.getNumSamples(); ++i) { const double dd = std::abs (before.out.getSample (0, i) - after.out.getSample (0, i)); if (dd > worst) { worst = dd; wi = i; } }
+        check (pieces.size() == 4 && worst < 1.0e-4, "four clips, one a hit, the sound unchanged (" + juce::String (worst) + ")");
+        s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { v.clear(); });
+        auto* c1 = s.addAudioClip (*at, cf, 0.0, &err); const ClipRef r1 { at->uid, c1 ? c1->id : 0, true }; s.setClipLength (r1, 1.0);
+        auto* sp = s.clipToSampler (r1, err);
+        check (s.sliceClip (r1, 2, 0, 8).size() == 8, "into eight equal parts");
+        check (sp && sp->instrument && sp->patternAt (0) && sp->patternAt (0)->s[3].slice == 3, "into a sampler on a new track, a slice a step");
+        if (sp)
+        {
+            auto& d = *sp->instrument;
+            if (auto* h = dynamic_cast<SampleHolder*> (d.processor())) h->setSampleFile (cf);
+            d.setBase (d.paramIndexForId ("slices"), (2.0f - 1.0f) / 63.0f); d.setBase (d.paramIndexForId ("sliceby"), 0.25f);   // 2 slices, the strongest hits
+            s.editClips (*at, [] (std::vector<Clip>& v) { v.clear(); }); s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { v.clear(); });
+            s.mode.store ((int) PlayMode::Session);
+            s.editPattern (*sp, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[0].slice = 1; pt.s[0].vel = 1; pt.s[0].len = 4; });
+            s.launch (*sp, 0);
+            auto rs = render (p, 0.25); auto on = onsets (rs.out, 0, 0.02f);
+            const float pk = on.empty() ? 0.0f : rs.out.getMagnitude (0, on[0], 300), pk2 = rs.out.getMagnitude (0, 0, rs.out.getNumSamples());
+            std::cout << "  slice 2 of 'the strongest hits' starts with a hit of " << pk << " (the strongest is 0.9 before the sampler's gain); its loudest " << pk2 << "\n";
+            check (! on.empty() && on[0] < 2000, "the strongest-hits slice starts on a hit");
+        }
+    }
+    std::cout << "== tape loops: lengths in seconds that drift, and when they line up\n";
+    {
+        const auto sc = scanLoops ({ 2.0, 3.0 }); const auto sc2 = scanLoops ({ 1.5, 2.5, 4.0 });
+        std::cout << "  2 s and 3 s: together after " << sc.all << " s; 1.5, 2.5, 4: " << sc2.all << " s\n";
+        check (std::abs (sc.all - 6.0) < 1.0e-9 && std::abs (sc2.all - 60.0) < 1.0e-9 && sc2.pairs.size() == 3, "the scan finds when loops start together");
+        check (scanLoops ({ 17.31, 23.17 }, 0.001, 600.0).all < 0, "and says never (within the time asked) for lengths that don't");
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); }
+        for (auto& tr : s.tracks) tr->mixer->setBase (MP_MUTE, 1.0f);
+        s.masterBypass.store (true);   // (the master's dynamics would make two moments differ)
+        auto* tt = s.addTrack ("tape", -1, TrackKind::Instrument); s.setInstrument (*tt, s.createDevice ("st:tapeloops"));
+        auto& d = *tt->instrument;
+        juce::AudioBuffer<float> nz (2, (int) (4 * kSr)); for (int i = 0; i < nz.getNumSamples(); ++i) { const double x = i / kSr; const float v = (float) (0.1 * std::sin (2.0 * juce::MathConstants<double>::pi * 110.3 * x) + 0.07 * std::sin (2.0 * juce::MathConstants<double>::pi * 173.9 * x + 1.0) + 0.05 * std::sin (2.0 * juce::MathConstants<double>::pi * 301.7 * x + 2.0) + 0.04 * std::sin (2.0 * juce::MathConstants<double>::pi * 0.37 * x)); nz.setSample (0, i, v); nz.setSample (1, i, v); }
+        const auto nf = tmp.getChildFile ("noise.wav"); writeWav (nf, nz);
+        auto setP = [&] (const char* id, float plain) { const int i = d.paramIndexForId (id); if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (d.processor()->getParameters()[i])) d.setBase (i, rp->convertTo0to1 (plain)); };
+        setP ("target", 1); dynamic_cast<SampleHolder*> (d.processor())->setSampleFile (nf);
+        setP ("target", 2); dynamic_cast<SampleHolder*> (d.processor())->setSampleFile (nf);
+        setP ("len1", 2.0f); setP ("len2", 3.0f); setP ("start2", 0.5f); setP ("wear1", 0); setP ("wear2", 0); setP ("hiss", 0); setP ("level2", -6.0f);
+        auto r = render (p, 8.0 * 120.0 / 120.0 * 0.5 + 0.5);   // 8.5 s of song... (bars at 120: 4.25 bars)
+        auto at = [&] (double sec) { return r.out.getSample (0, (int) (sec * kSr)); };
+        double same = 0, diff = 0; for (int k = 0; k < 200; ++k) { same = std::max (same, (double) std::abs (at (0.5 + k * 0.001) - at (6.5 + k * 0.001))); diff = std::max (diff, (double) std::abs (at (0.5 + k * 0.001) - at (2.5 + k * 0.001))); }
+        std::cout << "  the two loops at 0.5 s and 6.5 s differ by " << same << "; at 0.5 s and 2.5 s by " << diff << "\n";
+        check (same < 2.0e-3 && diff > 0.02, "6 s later both loops are where they were (and not at 2 s: only one is)");
+        auto* ll = dynamic_cast<LoopLengths*> (d.processor());
+        check (ll && ll->loopLengths().size() == 2, "the device says its loops' lengths for the scan");
+    }
+    std::cout << "== clip automation, granular, randomise\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange);
+        auto& t = *s.tracks[0];
+        s.editClips (t, [] (std::vector<Clip>& v) { v.clear(); Clip c; c.pattern = 0; c.startBar = 0; c.bars = 1; c.envs.push_back ({ 0, MP_PAN, { { 0.0, 0.0f }, { 4.0, 1.0f } } }); v.push_back (c); });
+        render (p, 0.5);
+        const float pan = t.mixer->baseValue (MP_PAN);
+        std::cout << "  the clip's pan, half way: " << pan << "\n";
+        check (std::abs (pan - 0.5f) < 0.03f, "the clip's own automation moves the control while it plays");
+        s.splitClips (s.allClips(), 0.5);
+        bool right = false; for (auto& c : *t.clips) if (c.startBar > 0.4 && ! c.envs.empty()) right = std::abs (c.envs[0].valueAt (c.offset) - 0.5f) < 0.01f;
+        check (right, "split: the right half's automation goes on from where it was");
+        juce::String err; s.projectFile = tmp.getChildFile ("env.fstudio"); p.saveProject (s.projectFile, err);
+        StudioProcessor p2; p2.loadProject (s.projectFile, err); int envs = 0; for (auto& c : *p2.session.tracks[0]->clips) envs += (int) c.envs.size();
+        check (envs == 2, "clip automation is saved");
+        // granular: a note makes a cloud
+        auto* gt = s.addTrack ("grains", -1, TrackKind::Instrument); s.setInstrument (*gt, s.createDevice ("st:granular"));
+        juce::AudioBuffer<float> sn (2, (int) kSr); for (int i = 0; i < sn.getNumSamples(); ++i) { const float v = 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 220.0 * i / kSr); sn.setSample (0, i, v); sn.setSample (1, i, v); }
+        const auto gf = tmp.getChildFile ("g.wav"); writeWav (gf, sn); dynamic_cast<SampleHolder*> (gt->instrument->processor())->setSampleFile (gf);
+        s.mode.store ((int) PlayMode::Session);
+        for (auto& tr : s.tracks) if (tr.get() != gt) tr->mixer->setBase (MP_MUTE, 1.0f);
+        s.editPattern (*gt, 0, [] (Pattern& pt) { pt = Pattern(); pt.length = 16; pt.s[0].on = true; pt.s[0].len = 16; pt.s[0].vel = 1; });
+        s.launch (*gt, 0);
+        auto rg = render (p, 1.0);
+        const float early = rg.out.getMagnitude (0, 0, 2000), mid = rg.out.getMagnitude (0, (int) kSr / 2, (int) kSr / 2);
+        std::cout << "  granular: the cloud's peak " << mid << " (at its very start " << early << ")\n";
+        check (mid > 0.02f, "granular: a note plays a cloud of the sample");
+        // randomise: unlocked parameters move, locked and level ones stay
+        auto& dev = *s.tracks[0]->instrument;
+        std::vector<float> was; for (int i = 0; i < dev.numParams(); ++i) was.push_back (dev.baseValue (i));
+        dev.setRandLocked (1, true);
+        juce::Random rr (7); dev.randomise (1.0f, rr);
+        int moved = 0, lockedMoved = 0, levelMoved = 0;
+        for (int i = 0; i < dev.numParams(); ++i) { const bool m = std::abs (dev.baseValue (i) - was[(size_t) i]) > 1.0e-6f; if (! dev.randLocked (i)) moved += m; else if (i == 1) lockedMoved += m; else levelMoved += m; }
+        std::cout << "  randomised: " << moved << " of " << dev.numParams() << " moved\n";
+        check (moved > dev.numParams() / 3 && lockedMoved == 0 && levelMoved == 0, "randomise: the unlocked ones move, the locked (and levels) stay");
+    }
+    std::cout << "== spectral editing, range edits\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); s.setTempo (120.0f); s.mode.store ((int) PlayMode::Arrange);
+        for (auto& tr : s.tracks) { s.editClips (*tr, [] (std::vector<Clip>& v) { v.clear(); }); }
+        s.projectFile = tmp.getChildFile ("spec.fstudio"); s.projectName = "spec";
+        p.setRateAndBufferSizeDetails (kSr, kBs); p.prepareToPlay (kSr, kBs);
+        const int N = (int) (2 * kSr); juce::AudioBuffer<float> two (2, N);
+        for (int i = 0; i < N; ++i) { const float v = 0.3f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 440.0 * i / kSr) + 0.3f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 3000.0 * i / kSr); two.setSample (0, i, v); two.setSample (1, i, v); }
+        const auto tf = tmp.getChildFile ("two.wav"); writeWav (tf, two);
+        auto* at = s.addTrack ("two", -1, TrackKind::Audio); juce::String err; auto* c0 = s.addAudioClip (*at, tf, 0.0, &err); const ClipRef r { at->uid, c0 ? c0->id : 0, true };
+        auto level = [&] (const juce::AudioBuffer<float>& b, double hz) { double re = 0, im = 0; for (int i = 24000; i < 72000; ++i) { re += b.getSample (0, i) * std::cos (2.0 * juce::MathConstants<double>::pi * hz * i / kSr); im += b.getSample (0, i) * std::sin (2.0 * juce::MathConstants<double>::pi * hz * i / kSr); } return 20.0 * std::log10 (std::sqrt (re * re + im * im) / 48000.0 * 2.0 + 1.0e-12); };
+        check (s.applySpectral (r, { { 0.0, 2.0, 2000.0, 4500.0, -60.0f } }, err), "spectral: " + err);
+        juce::String path; for (auto& c : *at->aclips) if (c.id == r.id) path = c.path;
+        auto ed = readWav (juce::File (path));
+        const double l440 = level (ed, 440), l3k = level (ed, 3000), o440 = level (two, 440), o3k = level (two, 3000);
+        std::cout << "  440 hz: " << o440 << " -> " << l440 << " db; 3 khz: " << o3k << " -> " << l3k << " db\n";
+        check (std::abs (l440 - o440) < 0.5 && l3k < o3k - 40.0, "a box over 2 - 4.5 khz takes the 3 khz tone out and leaves 440 hz");
+        check (s.applySpectral (r, {}, err), "no edits");
+        for (auto& c : *at->aclips) if (c.id == r.id) path = c.path;
+        check (path == tf.getFullPathName(), "no edits: the original again");
+        // range edits: reverse, render in place, join, silence
+        s.setClipLength (r, 1.0);
+        auto before = render (p, 1.0);
+        s.reverseRange ({ at }, 0.0, 1.0);
+        bool rev = false; for (auto& c : *at->aclips) rev = c.reverse;
+        auto revd = render (p, 1.0);
+        double rw = 0; for (int i = 1000; i < 1100; ++i) rw = std::max (rw, (double) std::abs (revd.out.getSample (0, i) - before.out.getSample (0, (int) (2.0 * kSr) - i)));
+        check (rev && rw < 0.02, "reverse: played backwards (" + juce::String (rw) + ")");
+        s.reverseRange ({ at }, 0.0, 1.0);
+        auto made = s.renderInPlace ({ at }, 0.0, 1.0, err);
+        bool muted = true; for (auto& c : *at->aclips) muted = muted && c.muted;
+        check (made.size() == 1 && made[0]->aclips->size() == 1 && muted, "render in place: a new track with the sound, the original quiet there");
+        auto inPlace = render (p, 1.0);
+        double worst = 0; for (int i = 0; i < before.out.getNumSamples(); ++i) worst = std::max (worst, (double) std::abs (before.out.getSample (0, i) - inPlace.out.getSample (0, i)));
+        std::cout << "  rendered in place vs the original: largest difference " << worst << "\n";
+        check (worst < 2.0e-3, "and it sounds the same");
+        // join: two halves into one clip
+        s.removeTrack (s.indexOf (made[0]));
+        s.editAudioClips (*at, [] (std::vector<AudioClip>& v) { for (auto& c : v) c.muted = false; });
+        auto halves = s.sliceClip ({ at->uid, (*at->aclips)[0].id, true }, 2, 0, 2);
+        auto joined = s.joinClips (halves, err);
+        auto afterJoin = render (p, 1.0); double wj = 0; for (int i = 0; i < before.out.getNumSamples(); ++i) wj = std::max (wj, (double) std::abs (before.out.getSample (0, i) - afterJoin.out.getSample (0, i)));
+        check (joined.size() == 1 && at->aclips->size() == 1 && wj < 2.0e-3, "join: two clips into one, the same sound (" + juce::String (wj) + ")");
+        s.silenceRange ({ at }, 0.25, 0.5);
+        auto sil = render (p, 1.0);
+        check (sil.out.getMagnitude (0, (int) (0.3 * 4 * spb (120)), (int) (0.15 * 4 * spb (120))) < 1.0e-4f && sil.out.getMagnitude (0, 1000, 10000) > 0.05f, "silence: that part quiet, the rest as it was");
+    }
+    std::cout << "== undo history, backups, locators, collect all, the new keys\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0); p.history.reset();
+        s.setTempo (101.0f); s.dirty = true; p.history.poll (false);
+        s.tracks[0]->name = "renamed"; s.dirty = true; p.history.poll (false);
+        s.editMarkers ([] (std::vector<Marker>& m) { m.push_back ({ "x", 1.0 }); }); p.history.poll (false);
+        auto e = p.history.entries();
+        juce::String labels; for (auto& x : e) labels << "[" << x.label.upToFirstOccurrenceOf ("  ", false, false) << "] ";
+        std::cout << "  history: " << labels << "\n";
+        check (e.size() == 4 && e.back().now && e.back().label.contains ("marker") && e[2].label.startsWith ("renamed"), "every step named");
+        p.history.jumpTo (0);
+        check (s.markers->empty() && s.tracks[0]->name != "renamed", "jump back to the start");
+        p.history.jumpTo (3);
+        check (s.markers->size() == 1 && s.tracks[0]->name == "renamed", "and forward again");
+        // backups
+        const auto pf = tmp.getChildFile ("bk").getChildFile ("song.fstudio"); pf.getParentDirectory().deleteRecursively(); pf.getParentDirectory().createDirectory();
+        juce::String err; p.saveProject (pf, err); s.setTempo (99.0f); p.saveProject (pf, err); s.setTempo (98.0f); p.saveProject (pf, err);
+        auto bks = StudioProcessor::backups (pf);
+        check (bks.size() >= 1 && bks.size() <= 2, "backups of the versions saved over (" + juce::String (bks.size()) + ")");
+        if (! bks.isEmpty()) { check (p.restoreBackup (bks.getLast(), err) && s.projectFile == pf, "a backup back, as the project"); }
+        // collect all: a clip from outside the project's folder
+        juce::AudioBuffer<float> b (2, 4800); b.clear(); const auto out = tmp.getChildFile ("outside.wav"); writeWav (out, b);
+        auto* at = s.addTrack ("aud", -1, TrackKind::Audio); s.addAudioClip (*at, out, 0.0, &err);
+        const int n = s.collectAll (err);
+        bool inside = true; for (auto& c : *at->aclips) inside = inside && juce::File (c.path).isAChildOf (pf.getParentDirectory());
+        check (n == 1 && inside, "collect all: the file copied into the project, the clip uses the copy");
+        // keys
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get()); ed->setSize (1440, 900); se->showPage (1);
+        const int tracks0 = (int) s.tracks.size(), markers0 = (int) s.markers->size();
+        se->key (juce::KeyPress ('k', juce::ModifierKeys::commandModifier, 'k'));
+        se->key (juce::KeyPress ('t', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 'T'));
+        se->selectTrack (s.tracks[0].get());
+        se->key (juce::KeyPress ('d', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 'D'));
+        check ((int) s.markers->size() == markers0 + 1 && (int) s.tracks.size() == tracks0 + 2, "cmd+k a marker, cmd+shift+t a track, cmd+shift+d a copy of the track");
+        s.locate (3.0); se->key (juce::KeyPress ('1', juce::ModifierKeys::altModifier | juce::ModifierKeys::shiftModifier, '!'));
+        s.locate (0.0); se->key (juce::KeyPress ('1', juce::ModifierKeys::altModifier, '1'));
+        check (std::abs (s.currentBar() - 3.0) < 1.0e-9 && s.locators[0].set, "alt+shift+1 keeps the place, alt+1 goes back to it");
+        const int g0 = s.gridIndex.load(); s.gridIndex.store (5);
+        se->key (juce::KeyPress ('1', juce::ModifierKeys::commandModifier, '1')); const int finer = s.gridIndex.load();
+        se->key (juce::KeyPress ('3', juce::ModifierKeys::commandModifier, '3')); const int tri = s.gridIndex.load();
+        check (finer == 6 && tri == 13, "cmd+1 a finer grid, cmd+3 its triplet");
+        s.gridIndex.store (g0);
+        pf.getParentDirectory().deleteRecursively();
+    }
+
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
@@ -3063,6 +3326,48 @@ int main (int argc, char** argv)
                         se->showPage (1);
                     }
                     s.gridIndex.store (0);
+                }
+                // time first: min:sec on top, bars below; clip automation; spectral editing; the rules
+                {
+                    s.rulerMain.store (timeline::RULER_TIME); s.rulerSub.store (timeline::RULER_BARS); s.timeGridIndex.store (0);
+                    arr->showBars (0.0, 24.0); arr->scrollY = 0; run (8); snap (*ed, "sndstudio-seconds");
+                    s.rulerMain.store (timeline::RULER_BARS); s.rulerSub.store (timeline::RULER_TIME);
+                    // a pattern clip with its own automation of the filter
+                    auto* kt2 = s.tracks.size() > 1 ? s.tracks[1].get() : s.tracks[0].get();
+                    if (! kt2->clips->empty())
+                    {
+                        const ClipRef cr { kt2->uid, (*kt2->clips)[0].id, false };
+                        double s0 = 0, len = 0, origin = 0; s.clipSpan (cr, s0, len); juce::Rectangle<float> fr; arr->envsOf (cr, &fr, &origin);
+                        std::vector<ClipEnv> ev { { kt2->mixer->uid, MP_PAN, { { (s0 - origin) * 4.0, 0.2f }, { (s0 - origin) * 4.0 + len, 0.9f }, { (s0 - origin) * 4.0 + len * 2.0, 0.4f }, { (s0 - origin + len) * 4.0, 0.7f } } } };
+                        arr->setEnvs (cr, ev); arr->envClip = cr; arr->envIndex = 0;
+                        arr->setTrackHeight (90); arr->showBars (s0 - len * 0.1, s0 + len * 1.1); arr->scrollY = std::max (0, arr->rowOf (kt2) * arr->laneH - arr->laneH);
+                        run (8); snap (*ed, "sndstudio-clipauto");
+                        arr->envClip = {}; arr->setEnvs (cr, {}); arr->setTrackHeight (40);
+                    }
+                    if (! at->aclips->empty())
+                    {
+                        const ClipRef sr { at->uid, (*at->aclips)[0].id, true };
+                        arr->editSpectrum (sr);
+                        if (auto* sp = arr->spectralEditor()) { sp->edits = { { 0.05, 0.35, 2500.0, 9000.0, -60.0f }, { 0.4, 0.9, 120.0, 400.0, 6.0f } }; sp->selected = 0; sp->resized(); }
+                        run (6); snap (*ed, "sndstudio-spectral");
+                        if (auto* sp = arr->spectralEditor()) sp->onClose();
+                    }
+                    Ctx cx { p, s, [&s] { return s.tracks.empty() ? nullptr : s.tracks[0].get(); }, [] (Track*) {}, [] (int) {}, [] (Device&) {}, [] (Track&, Device&) {}, [] (const juce::String&) {} };
+                    if (s.tracks.size() >= 3)
+                    {
+                        Rule r1; r1.src = s.tracks[0]->uid; r1.dst = s.tracks[2]->uid; r1.when = RULE_WITHOUT; r1.what = RULE_ONLY;
+                        Rule r2; r2.src = s.tracks[0]->uid; r2.dst = s.tracks[1]->uid; r2.when = RULE_EVERY; r2.n = 4; r2.what = RULE_TRANSPOSE; r2.value = 7; r2.chance = 0.75f;
+                        Rule r3; r3.src = s.tracks[1]->uid; r3.dst = s.tracks[2]->uid; r3.when = RULE_WITH; r3.what = RULE_ACCENT; r3.value = 1.5f;
+                        s.setRules ({ r1, r2, r3 });
+                        RulesPanel rp (cx); rp.grow(); snap (rp, "sndstudio-rules"); s.setRules ({});
+                    }
+                    // tape loops and granular on the seq page
+                    auto* tl = s.addTrack ("tape loops", -1, TrackKind::Instrument); s.setInstrument (*tl, s.createDevice ("st:tapeloops"));
+                    se->selectTrack (tl); se->showPage (2); run (8); snap (*ed, "sndstudio-tapeloops");
+                    auto* gr = s.addTrack ("grains", -1, TrackKind::Instrument); s.setInstrument (*gr, s.createDevice ("st:granular"));
+                    s.addInsert (*gr, s.createDevice ("st:ott")); s.addInsert (*gr, s.createDevice ("st:xmod"));
+                    se->selectTrack (gr); run (8); snap (*ed, "sndstudio-granular");
+                    s.removeTrack (s.indexOf (gr)); s.removeTrack (s.indexOf (tl)); se->showPage (1); se->selectTrack (at); run (4);
                 }
                 // every colour theme, on the arrangement
                 {

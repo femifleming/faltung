@@ -48,8 +48,9 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> Session::getPosition() const
     p.setTimeSignature (TimeSignature { std::max (1, (int) std::lround (sig.num)), sig.den });
     p.setBarCount (bar);
     p.setPpqPositionOfLastBarStart (barStart);
-    p.setTimeInSamples ((juce::int64) (headPpq * 60.0 / headBpm * sr));
-    p.setTimeInSeconds (headPpq * 60.0 / headBpm);
+    const double secs = secondsAt (headPpq);   // (through the tempo map)
+    p.setTimeInSamples ((juce::int64) (secs * sr));
+    p.setTimeInSeconds (secs);
     return p;
 }
 
@@ -167,6 +168,7 @@ void Session::process (juce::MidiBuffer& midi, const HostInfo& h, const Outs& ou
         };
         for (auto& t : tracks) fresh (*t);
         for (auto& r : returns) fresh (*r);
+        for (auto& rs : ruleState) { rs.count = 0; rs.shift = 0; rs.lastSrcPpq = -1.0e9; rs.noteShift.fill (0); }
         fresh (*master);
     }
     wasPlaying = playing;
@@ -289,6 +291,25 @@ void Session::automate (double ppq)
         const float v = l->valueAt (ppq);
         if (std::abs (v - d->baseValue (l->target.param)) > 1.0e-4f) d->setBase (l->target.param, v);
     }
+    // the clips' own automation, while a clip plays (the arrangement)
+    if (mode.load (std::memory_order_relaxed) != (int) PlayMode::Arrange || ! running.load (std::memory_order_relaxed)) return;
+    auto drive = [] (Track& t, const std::vector<ClipEnv>& envs, double rel)
+    {
+        for (auto& e : envs)
+        {
+            if (e.param < 0 || e.pts.empty()) continue;
+            auto* d = t.device (e.device);
+            if (! d || e.param >= d->numParams() || d->inGesture (e.param)) continue;
+            const float v = juce::jlimit (0.0f, 1.0f, e.valueAt (rel));
+            if (std::abs (v - d->baseValue (e.param)) > 1.0e-4f) d->setBase (e.param, v);
+        }
+    };
+    const double bar = ppq / 4.0;
+    for (auto& tp : tracks)
+    {
+        for (auto& c : *tp->clips) if (! c.muted && ! c.envs.empty() && bar >= c.startBar - 1.0e-9 && bar < c.startBar + c.bars) drive (*tp, c.envs, ppq - (c.startBar * 4.0 - c.offset));
+        for (auto& c : *tp->aclips) if (! c.muted && ! c.envs.empty() && bar >= c.startBar - 1.0e-9 && bar < c.startBar + c.bars) drive (*tp, c.envs, ppq - c.startBar * 4.0);
+    }
 }
 
 void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce::MidiBuffer& live, bool playing, const HostInfo& h)
@@ -410,6 +431,8 @@ void Session::renderSpan (int n, double ppq0, double bpm, const Outs& outs, juce
         if (t.chokeGroup.load (std::memory_order_relaxed) > 0)
             for (const auto m : scratchMidi) if (m.getMessage().isNoteOn()) { t.firstHit = m.samplePosition; break; }
     }
+    // rules between tracks: every track's notes for this span are known now
+    if (! rules->empty()) applyRules (n, ppq0, spb, playing);
     // 2. the audio, in routing order
     for (auto* tp : order) renderTrack (*tp, n, ppq0, bpm, macros, anySolo, outs, tp->seqMidi, h, playing);
     modulate (*master, ppq0, n, bpm);
@@ -972,8 +995,9 @@ void Session::playClips (Track& t, int n, double ppq0, double bpm, bool playing)
         const int G = kGrain, H = kHop;   // stretch grains (~43 ms at 48 k), half overlap
         for (int i = s0; i < s1; ++i)
         {
-            const double tOut = outBase + i;                         // output samples since the clip start
-            if (tOut < 0) continue;
+            double tOut = outBase + i;                               // output samples since the clip start
+            if (tOut < -0.5) continue;
+            tOut = std::max (0.0, tOut);                             // (a clip starting inside the block: its first sample, not lost to rounding)
             float env = g;
             if (fadeIn > 1 && tOut < fadeIn) env *= (float) (tOut / fadeIn);
             if (fadeOut > 1 && clipLen - tOut < fadeOut) env *= (float) std::max (0.0, (clipLen - tOut) / fadeOut);
@@ -1458,7 +1482,7 @@ Track* Session::renderProjectToTrack (double fromBar, double toBar, bool preMast
     return t;
 }
 
-juce::File Session::renderTrackFile (Track& src, double fromBar, double toBar, juce::String& error)
+juce::File Session::renderTrackFile (Track& src, double fromBar, double toBar, juce::String& error, bool sourcesOnly)
 {
     if (! prepared) { error = "audio not running"; return {}; }
     if (toBar <= fromBar) { error = "nothing to render"; return {}; }
@@ -1481,15 +1505,17 @@ juce::File Session::renderTrackFile (Track& src, double fromBar, double toBar, j
         while (p < end)
         {
             automate (p); global->apply (nullptr, p);
-            const double bpm = tempo(); const double spb = 60.0 / bpm * sr;
-            const double limit = meter->nextBarLine (p);
+            double spb = 60.0 / tempo() * sr;
+            const double limit = std::min (end, meter->nextBarLine (p));
             int len = juce::jlimit (1, bs, (int) std::ceil ((limit - p) * spb - 1.0e-6));
+            double pNext = p + len / spb;
+            if (tempoTable) { pNext = beatAt (secondsAt (p) + len / sr); if (pNext > p) spb = len / (pNext - p); }
             std::fill (outMem.begin(), outMem.end(), 0.0f);
             headPpq = p;
-            renderSpan (len, p, bpm, outs, none, true, h);
-            w->writeFromAudioSampleBuffer (src.post, 0, len);
-            p += len / spb;
-            if (std::abs (p - limit) < 1.0e-6) p = limit;
+            renderSpan (len, p, 60.0 * sr / spb, outs, none, true, h);
+            if (sourcesOnly) w->writeFromAudioSampleBuffer (juce::AudioBuffer<float> (src.inst.getArrayOfWritePointers(), std::min (ch, src.inst.getNumChannels()), len), 0, len);
+            else w->writeFromAudioSampleBuffer (src.post, 0, len);
+            p = std::abs (pNext - limit) < 1.0e-6 ? limit : pNext;
         }
         w.reset();
         for (auto* t : order) { t->nPending = 0; t->activePattern = -1; t->silent = true; t->forEachDevice ([] (Device& d) { d.reset(); d.unlockAll(); }); }
@@ -2031,5 +2057,283 @@ Track* Session::spectralFreeze (Track& src, double atBar, double seconds, juce::
     const int id = c->id;
     editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& x : v) if (x.id == id) { x.loop = true; x.bars = 8.0; x.fadeIn = 0.5; x.fadeOut = 1.0; x.name = "frozen " + src.name; } });
     return t;
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+int Session::renderRegions (const juce::File& dir, const ExportOptions& o, juce::String& error)
+{
+    std::vector<Marker> mk (markers->begin(), markers->end()); std::sort (mk.begin(), mk.end(), [] (const Marker& x, const Marker& y) { return x.bar < y.bar; });
+    if (mk.empty()) { error = "no markers"; return 0; }
+    dir.createDirectory();
+    int n = 0;
+    for (size_t i = 0; i < mk.size(); ++i)
+    {
+        const double ra = mk[i].bar, rb = i + 1 < mk.size() ? mk[i + 1].bar : std::max (ra + 0.25, projectBars());
+        if (rb <= ra + 1.0e-6) continue;
+        const auto name = juce::File::createLegalFileName (juce::String (i + 1).paddedLeft ('0', 2) + " " + (mk[i].name.isNotEmpty() ? mk[i].name : juce::String ("region")));
+        if (renderMaster (dir.getChildFile (name + ExportOptions::extension (o.format)), ra, rb, nullptr, error, o)) ++n;
+    }
+    return n;
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+void Session::setRules (std::vector<Rule> v)
+{
+    if (v.size() > ruleState.size()) v.resize (ruleState.size());
+    auto p = std::make_shared<const std::vector<Rule>> (std::move (v));
+    { const juce::SpinLock::ScopedLockType sl (lock); rules = p; for (size_t i = 0; i < ruleState.size(); ++i) { auto r = ruleState[i].rng; ruleState[i] = RuleState(); ruleState[i].rng = r; ruleState[i].rng.seed ((uint32_t) (977 + i * 31)); } }
+    dirty = true;
+}
+void Session::applyRules (int n, double ppq0, double spb, bool playing)
+{
+    if (! playing) return;
+    for (size_t ri = 0; ri < rules->size() && ri < ruleState.size(); ++ri)
+    {
+        const Rule& r = (*rules)[ri]; auto& st = ruleState[ri];
+        if (! r.on) continue;
+        Track* src = trackByUid (r.src); Track* dst = trackByUid (r.dst);
+        if (! src || ! dst || src == dst) continue;
+        // the source's hits in this span (samples), and where its last one was
+        std::array<int, 256> hits {}; int nh = 0;
+        for (const auto m : src->seqMidi) if (m.getMessage().isNoteOn() && nh < 256) hits[(size_t) nh++] = m.samplePosition;
+        const int w = std::max (1, (int) (r.windowMs * 0.001 * sr));
+        auto near = [&] (int p)
+        {
+            for (int k = 0; k < nh; ++k) if (std::abs (hits[(size_t) k] - p) <= w) return true;
+            const double lastAgo = (ppq0 - st.lastSrcPpq) * spb + p;   // (the source's last hit in an earlier span)
+            return lastAgo >= 0 && lastAgo <= w;
+        };
+        juce::MidiBuffer out;
+        switch (r.what)
+        {
+            case RULE_ONLY: case RULE_MUTE: case RULE_ACCENT:
+            {
+                // the destination's notes, each judged against the source at its moment
+                for (const auto m : dst->seqMidi)
+                {
+                    auto msg = m.getMessage();
+                    if (msg.isNoteOn())
+                    {
+                        bool cond;
+                        if (r.when == RULE_EVERY)
+                        {
+                            // the last source hit before this note: was it the n-th?
+                            long long c = st.count; for (int k = 0; k < nh; ++k) if (hits[(size_t) k] <= m.samplePosition) ++c;
+                            cond = c > 0 && near (m.samplePosition) && (c % std::max (1, r.n)) == 0;
+                        }
+                        else cond = near (m.samplePosition) == (r.when == RULE_WITH);
+                        const bool apply = cond && st.rng.uni() < r.chance;
+                        if (r.what == RULE_ONLY && ! (cond)) continue;           // plays only then
+                        if (r.what == RULE_MUTE && apply) continue;              // silenced
+                        if (r.what == RULE_ACCENT && apply) msg = juce::MidiMessage::noteOn (msg.getChannel(), msg.getNoteNumber(), juce::jlimit (0.02f, 1.0f, msg.getFloatVelocity() * juce::jlimit (0.1f, 4.0f, r.value)));
+                    }
+                    out.addEvent (msg, m.samplePosition);
+                }
+                dst->seqMidi.swapWith (out);
+                break;
+            }
+            case RULE_TRIGGER: case RULE_PATTERN: case RULE_TRANSPOSE:
+            {
+                // things that happen on the source's hits (every one, or every n-th, or when it is silent on a beat)
+                std::array<int, 256> fire {}; int nf = 0;
+                if (r.when == RULE_WITHOUT)
+                {
+                    // on each beat of this span where the source did not play
+                    for (double b = std::ceil (ppq0 - 1.0e-9); (b - ppq0) * spb < n; b += 1.0) { const int p = (int) std::floor ((b - ppq0) * spb + 1.0e-6); if (! near (p) && nf < 256) fire[(size_t) nf++] = juce::jlimit (0, n - 1, p); }
+                }
+                else for (int k = 0; k < nh; ++k) { const long long c = st.count + k + 1; if ((r.when != RULE_EVERY || c % std::max (1, r.n) == 0) && nf < 256) fire[(size_t) nf++] = hits[(size_t) k]; }
+                if (r.what == RULE_TRANSPOSE)
+                {
+                    // transposes from the moment it fires (toggles back on the next time)
+                    int fi = 0;
+                    for (const auto m : dst->seqMidi)
+                    {
+                        while (fi < nf && fire[(size_t) fi] <= m.samplePosition) { if (st.rng.uni() < r.chance) st.shift = st.shift == 0 ? (int) std::lround (r.value) : 0; ++fi; }
+                        auto msg = m.getMessage();
+                        if (msg.isNoteOn()) { const int nn = juce::jlimit (0, 127, msg.getNoteNumber() + st.shift); st.noteShift[(size_t) msg.getNoteNumber()] = nn - msg.getNoteNumber(); msg = juce::MidiMessage::noteOn (msg.getChannel(), nn, msg.getFloatVelocity()); }
+                        else if (msg.isNoteOff()) msg = juce::MidiMessage::noteOff (msg.getChannel(), juce::jlimit (0, 127, msg.getNoteNumber() + st.noteShift[(size_t) msg.getNoteNumber()]));
+                        out.addEvent (msg, m.samplePosition);
+                    }
+                    while (fi < nf) { if (st.rng.uni() < r.chance) st.shift = st.shift == 0 ? (int) std::lround (r.value) : 0; ++fi; }
+                    dst->seqMidi.swapWith (out);
+                }
+                else
+                    for (int k = 0; k < nf; ++k)
+                    {
+                        if (st.rng.uni() >= r.chance) continue;
+                        if (r.what == RULE_TRIGGER)
+                        {
+                            const int nn = juce::jlimit (0, 127, dst->rootNote.load() + (int) std::lround (r.value)), len = std::max (1, (int) (0.125 * spb));
+                            dst->seqMidi.addEvent (juce::MidiMessage::noteOn (1, nn, 0.85f), fire[(size_t) k]);
+                            if (fire[(size_t) k] + len < n) dst->seqMidi.addEvent (juce::MidiMessage::noteOff (1, nn), fire[(size_t) k] + len);
+                            else if (dst->nPending < (int) dst->pending.size()) dst->pending[(size_t) dst->nPending++] = { nn, fire[(size_t) k] + len - n };
+                        }
+                        else if (mode.load (std::memory_order_relaxed) == (int) PlayMode::Session)
+                        {
+                            // switch pattern: at the next bar line
+                            const int pidx = juce::jlimit (0, kPatterns - 1, (int) std::lround (r.value));
+                            dst->pendingPattern.store (pidx); dst->pendingAt.store (meter->nextBarLine (ppq0 + fire[(size_t) k] / spb));
+                        }
+                    }
+                break;
+            }
+            default: break;
+        }
+        st.count += nh;
+        if (nh > 0) st.lastSrcPpq = ppq0 + hits[(size_t) (nh - 1)] / spb;
+    }
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+bool Session::applySpectral (ClipRef r, std::vector<AudioClip::SpecEdit> edits, juce::String& error)
+{
+    auto* t = clipTrack (r); if (! t || ! r.audio) { error = "not an audio clip"; return false; }
+    juce::String path, orig; for (auto& c : *t->aclips) if (c.id == r.id) { path = c.path; orig = c.origPath.isNotEmpty() ? c.origPath : c.path; }
+    if (edits.empty())
+    {
+        auto smp = loadSample (juce::File (orig), &error); if (! smp) return false;
+        editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == r.id) { c.sample = smp; c.path = orig; c.spec.clear(); c.origPath = {}; } });
+        return true;
+    }
+    auto src = loadSample (juce::File (orig), &error); if (! src) return false;
+    const auto& d = src->data; const int ns = d.getNumSamples(), nch = d.getNumChannels(); const double rate = src->rate;
+    constexpr int order = 11, N = 1 << order, H = N / 4;
+    juce::dsp::FFT fft (order);
+    std::vector<float> win ((size_t) N); for (int i = 0; i < N; ++i) win[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * i / N);
+    juce::AudioBuffer<float> out (nch, ns); out.clear();
+    std::vector<float> norm ((size_t) ns + N, 0.0f);
+    std::vector<float> fr ((size_t) N * 2), gainBins ((size_t) N / 2 + 1);
+    for (int pos = -N + H; pos < ns; pos += H)
+    {
+        // this frame's gains: each bin, every box it falls in (soft edges: 1/8 octave, 20 ms)
+        const double tc = (pos + N / 2) / rate;
+        for (int k = 0; k <= N / 2; ++k)
+        {
+            const double f = k * rate / N; double g = 0;
+            for (auto& e : edits)
+            {
+                auto edge = [] (double x, double a, double b, double soft) { if (x < a - soft || x > b + soft) return 0.0; if (x < a) return 0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * (x - (a - soft)) / soft); if (x > b) return 0.5 + 0.5 * std::cos (juce::MathConstants<double>::pi * (x - b) / soft); return 1.0; };
+                const double inT = edge (tc, e.t0, e.t1, 0.02);
+                const double lf = std::log2 (std::max (1.0, f)), inF = edge (lf, std::log2 (std::max (1.0, e.f0)), std::log2 (std::max (1.0, e.f1)), 0.125);
+                g += inT * inF * e.db;
+            }
+            gainBins[(size_t) k] = (float) std::pow (10.0, std::max (-90.0, g) / 20.0);
+        }
+        for (int c = 0; c < nch; ++c)
+        {
+            std::fill (fr.begin(), fr.end(), 0.0f);
+            for (int i = 0; i < N; ++i) { const int si = pos + i; fr[(size_t) i] = si >= 0 && si < ns ? d.getSample (c, si) * win[(size_t) i] : 0.0f; }
+            fft.performRealOnlyForwardTransform (fr.data());
+            for (int k = 0; k <= N / 2; ++k) { fr[(size_t) 2 * k] *= gainBins[(size_t) k]; fr[(size_t) 2 * k + 1] *= gainBins[(size_t) k]; }
+            for (int k = N / 2 + 1; k < N; ++k) { fr[(size_t) 2 * k] = 0; fr[(size_t) 2 * k + 1] = 0; }
+            fft.performRealOnlyInverseTransform (fr.data());
+            for (int i = 0; i < N; ++i) { const int si = pos + i; if (si >= 0 && si < ns) { out.addSample (c, si, fr[(size_t) i] * win[(size_t) i]); if (c == 0) norm[(size_t) si] += win[(size_t) i] * win[(size_t) i]; } }
+        }
+    }
+    for (int c = 0; c < nch; ++c) for (int i = 0; i < ns; ++i) out.setSample (c, i, norm[(size_t) i] > 1.0e-6f ? out.getSample (c, i) / norm[(size_t) i] : 0.0f);
+    const auto of = juce::File (orig);
+    auto f = audioDir().getChildFile (of.getFileNameWithoutExtension() + " spectral " + juce::Time::getCurrentTime().formatted ("%H%M%S") + ".wav");
+    int k = 2; while (f.existsAsFile()) f = audioDir().getChildFile (of.getFileNameWithoutExtension() + " spectral " + juce::String (k++) + ".wav");
+    { juce::WavAudioFormat wav; std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (f), rate, (unsigned) nch, 32, {}, 0)); if (! w) { error = "cannot write " + f.getFullPathName(); return false; } w->writeFromAudioSampleBuffer (out, 0, ns); }
+    auto smp = loadSample (f, &error); if (! smp) return false;
+    const juce::String old = path;
+    editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) if (c.id == r.id) { c.sample = smp; c.path = f.getFullPathName(); c.spec = edits; c.origPath = orig; } });
+    // the previous rendering goes (never the original)
+    if (old != orig && juce::File (old).getFileName().contains (" spectral ")) juce::File (old).deleteFile();
+    return true;
+}
+} // namespace fal::daw
+
+namespace fal::daw
+{
+static std::vector<ClipRef> clipsOn (Session& s, Track& t, double a, double b) { std::vector<ClipRef> v; for (auto& r : s.clipsBetween (a, b, { t.uid })) v.push_back (r); return v; }
+std::vector<Track*> Session::renderInPlace (const std::vector<Track*>& ts, double a, double b, juce::String& error)
+{
+    std::vector<Track*> made;
+    for (auto* t : ts)
+    {
+        if (! t || t->isMaster() || t->isReturn()) continue;
+        const auto f = renderTrackFile (*t, a, b, error); if (f == juce::File()) continue;
+        auto* nt = addTrack (t->name + " rendered", indexOf (t) + 1, TrackKind::Audio); if (! nt) break;
+        if (t->width.load() != 2) setWidth (*nt, t->width.load());
+        if (auto* c = addAudioClip (*nt, f, a, &error)) { const int id = c->id; editAudioClips (*nt, [&] (std::vector<AudioClip>& v) { for (auto& x : v) if (x.id == id) x.bars = b - a; }); }
+        // the original goes quiet there: its clips cut at the edges and muted inside (devices and all stay, for going back)
+        splitClips (clipsBetween (a, a, { t->uid }), a); splitClips (clipsBetween (b, b, { t->uid }), b);
+        for (auto& r : clipsOn (*this, *t, a, b)) { double s0, l; if (clipSpan (r, s0, l) && s0 >= a - 1.0e-9 && s0 + l <= b + 1.0e-9) setClipsMuted ({ r }, true); }
+        made.push_back (nt);
+    }
+    return made;
+}
+void Session::silenceRange (const std::vector<Track*>& ts, double a, double b)
+{
+    for (auto* t : ts)
+    {
+        if (! t) continue;
+        splitClips (clipsBetween (a, a, { t->uid }), a); splitClips (clipsBetween (b, b, { t->uid }), b);
+        for (auto& r : clipsOn (*this, *t, a, b)) { double s0, l; if (clipSpan (r, s0, l) && s0 >= a - 1.0e-9 && s0 + l <= b + 1.0e-9) setClipsMuted ({ r }, true); }
+    }
+}
+void Session::reverseRange (const std::vector<Track*>& ts, double a, double b)
+{
+    for (auto* t : ts)
+    {
+        if (! t) continue;
+        splitClips (clipsBetween (a, a, { t->uid }), a); splitClips (clipsBetween (b, b, { t->uid }), b);
+        editAudioClips (*t, [&] (std::vector<AudioClip>& v)
+        {
+            for (auto& c : v)
+                if (c.startBar >= a - 1.0e-9 && c.startBar + c.bars <= b + 1.0e-9)
+                {
+                    // mirrored inside the range, and played backwards (a clip that read forwards from its offset now reads the same stretch backwards)
+                    c.startBar = a + (b - (c.startBar + c.bars));
+                    c.reverse = ! c.reverse;
+                    std::swap (c.fadeIn, c.fadeOut);
+                }
+        });
+    }
+}
+std::vector<ClipRef> Session::joinClips (const std::vector<ClipRef>& refs, juce::String& error)
+{
+    std::vector<ClipRef> out;
+    std::map<int, std::vector<ClipRef>> byTrack; for (auto& r : refs) byTrack[r.track].push_back (r);
+    for (auto& [uid, rs] : byTrack)
+    {
+        auto* t = trackByUid (uid); if (! t) continue;
+        double a = 1.0e12, b = 0; for (auto& r : rs) { double s0, l; if (clipSpan (r, s0, l)) { a = std::min (a, s0); b = std::max (b, s0 + l); } }
+        if (b <= a) continue;
+        const bool audio = rs.front().audio;
+        if (audio)
+        {
+            // their sound alone (before the devices), the others on the track muted for the render
+            std::set<int> keep; for (auto& r : rs) if (r.audio) keep.insert (r.id);
+            std::map<int, bool> was; for (auto& c : *t->aclips) was[c.id] = c.muted;
+            editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& c : v) c.muted = ! keep.count (c.id); });
+            const auto f = renderTrackFile (*t, a, b, error, true);
+            editAudioClips (*t, [&] (std::vector<AudioClip>& v)
+            {
+                for (auto& c : v) c.muted = was[c.id];
+                v.erase (std::remove_if (v.begin(), v.end(), [&] (const AudioClip& c) { return keep.count (c.id) > 0; }), v.end());
+            });
+            if (f == juce::File()) continue;
+            if (auto* c = addAudioClip (*t, f, a, &error)) { const int id = c->id; editAudioClips (*t, [&] (std::vector<AudioClip>& v) { for (auto& x : v) if (x.id == id) { x.bars = b - a; x.name = "joined"; } }); out.push_back ({ t->uid, id, true }); }
+        }
+        else
+        {
+            // pattern clips: one clip from the first one's start to the last one's end (the pattern runs on from the first)
+            std::set<int> keep; for (auto& r : rs) if (! r.audio) keep.insert (r.id);
+            Clip first; double firstStart = 1.0e12; for (auto& c : *t->clips) if (keep.count (c.id) && c.startBar < firstStart) { first = c; firstStart = c.startBar; }
+            first.id = 0; first.bars = b - first.startBar;
+            const int before = nextClipId;
+            editClips (*t, [&] (std::vector<Clip>& v) { v.erase (std::remove_if (v.begin(), v.end(), [&] (const Clip& c) { return keep.count (c.id) > 0; }), v.end()); v.push_back (first); });
+            out.push_back ({ t->uid, before, false });
+        }
+    }
+    return out;
 }
 } // namespace fal::daw

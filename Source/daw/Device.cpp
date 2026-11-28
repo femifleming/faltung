@@ -460,10 +460,28 @@ void Device::process (juce::AudioBuffer<float>& track, juce::MidiBuffer& midi)
 }
 
 // ---- state ----------------------------------------------------------------------------------------
+bool Device::randLocked (int p) const
+{
+    if (p >= 0 && p < (int) randLock.size() && randLock[(size_t) p] != 2) return randLock[(size_t) p] != 0;
+    // by default: what sets a level (randomising it could be loud or silent), and switches of no sound
+    const auto n = paramName (p).toLowerCase();
+    return n.contains ("gain") || n.contains ("level") || n.contains ("volume") || n.contains ("output") || n == "out" || n.contains ("bypass") || n.contains ("files go to") || n.contains ("root note");
+}
+void Device::randomise (float amount, juce::Random& r)
+{
+    for (int p = 0; p < numParams(); ++p)
+    {
+        if (randLocked (p)) continue;
+        const float now = baseValue (p);
+        const float v = amount >= 0.999f ? r.nextFloat() : juce::jlimit (0.0f, 1.0f, now + amount * (r.nextFloat() * 2.0f - 1.0f));
+        setBase (p, v);
+    }
+}
 void Device::save (juce::XmlElement& e) const
 {
     e.setAttribute ("uid", uid);
     e.setAttribute ("type", typeId);
+    { juce::StringArray lk; for (int p = 0; p < (int) randLock.size(); ++p) if (randLock[(size_t) p] != 2) lk.add (juce::String (p) + (randLock[(size_t) p] ? "+" : "-")); if (! lk.isEmpty()) e.setAttribute ("randlock", lk.joinIntoString (" ")); }
     e.setAttribute ("name", name);
     if (bypass.load()) e.setAttribute ("bypass", 1);
     if (kind == Kind::Hosted) e.addChildElement (desc.createXml().release());
@@ -490,6 +508,7 @@ void Device::save (juce::XmlElement& e) const
 void Device::load (const juce::XmlElement& e)
 {
     name = e.getStringAttribute ("name", name);
+    for (auto& tk : juce::StringArray::fromTokens (e.getStringAttribute ("randlock"), " ", "")) if (tk.length() > 1) setRandLocked (tk.dropLastCharacters (1).getIntValue(), tk.endsWith ("+"));
     bypass.store (e.getIntAttribute ("bypass", 0) != 0);
     if (proc)
         if (auto* s = e.getChildByName ("state"))

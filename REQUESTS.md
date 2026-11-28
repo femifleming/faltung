@@ -289,3 +289,11 @@ Partials' own earlier requests are in [partials/REQUESTS.md](partials/REQUESTS.m
 
 > anything else i should add? … also add different color themes for the daw.
 (Eleven colour themes, view → colour theme; kept between runs; tests and manual.)
+
+> timeline should be in seconds, do the rules, do different slicing modes and slice stuff, do the tape loops
+> seconds and bars, def add clip automation for any param, make the granular sampler instrument, add randomise a device, add spectral editing, add range edits, and undo history list, add autosave and backup files so if it crashes it can recover
+> add key combos like command d to duplicate etc … add exporting from seconds mode projects, make the seconds/bars thing make sense … add loop length scan
+> add locator, add track and clip search, add collect all and save
+> update the manual when youre done and then test everything … and then commit and push and publish
+
+(1.4.5: colour themes; main and second rulers (bars, min:sec, samples, timecode), timebases per project / track / clip, a time grid, export by marker regions; rules between tracks; slicing clips and more sampler cuts; tape loops and the loop scan; clip automation; granular; randomise; spectral editing; range edits; undo history; backups; locators; search; collect all; the shortcuts and their sheet. Fixed on the way: tape loops' parameter ids, a clip's first sample lost to rounding inside a block, gain lines and warp markers not following a split, hosted plug-ins told the wrong time with a tempo map.)

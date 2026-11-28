@@ -40,6 +40,125 @@ public:
     Session& s; ui::Theme theme;
 };
 
+/** every keyboard shortcut (the sheet on ?, and the manual) */
+inline const std::vector<std::pair<juce::String, juce::String>>& shortcutList()
+{
+    static const std::vector<std::pair<const char*, const char*>> raw {
+        { "space", "play / stop" }, { "shift+space", "play from the selection (or the loop's start)" }, { "/", "back to where playing last started" }, { "r or *", "record" },
+        { "l", "loop on / off" }, { "f (hold)", "fill" }, { "1 - 8", "launch a scene" }, { "shift+1 - 8", "a pattern of the selected track" }, { "m · s", "mute · solo the selected track" },
+        { "up · down", "the track above / below" }, { "tab", "the next page" }, { "enter", "stop the selected track" }, { "?", "this sheet" },
+        { "cmd+z · cmd+shift+z", "undo · redo" }, { "cmd+alt+z", "the undo history" }, { "cmd+s · cmd+shift+s", "save · save as" }, { "cmd+o · cmd+n", "open · new" }, { "cmd+e", "export" },
+        { "cmd+f", "find tracks, clips, markers, devices" }, { "cmd+b", "the browser" }, { "cmd+= · cmd+- · cmd+0", "everything bigger · smaller · actual size" },
+        { "cmd+x · cmd+c · cmd+v", "cut · copy · paste clips" }, { "cmd+d", "duplicate the clips" }, { "cmd+t", "split at the playhead" }, { "delete", "delete the clips" },
+        { "cmd+j", "join the clips" }, { "cmd+u", "quantise the clips to the grid" }, { "cmd+i", "rename the clip (or the track)" }, { "cmd+shift+m", "mute / unmute the clips" },
+        { "cmd+a", "select every clip" }, { "cmd+l", "loop the selection" }, { "cmd+r", "render the time selection in place" }, { "cmd+shift+r", "reverse the time selection" },
+        { "cmd+alt+backspace", "silence the time selection" }, { "cmd+shift+i", "insert time" }, { "cmd+shift+backspace", "delete the looped time" },
+        { "cmd+k", "a marker at the playhead" }, { "[ · ]", "the marker before / after" }, { "home · end", "the start · the end" }, { "cmd+g", "go to a position" },
+        { "alt+1 - 9", "go to a locator" }, { "alt+shift+1 - 9", "keep this place as a locator" },
+        { "cmd+shift+t · cmd+alt+t", "new instrument · audio track" }, { "cmd+shift+d", "duplicate the track" }, { "cmd+alt+f", "freeze / unfreeze the track" },
+        { "left · right", "the playhead or the clips by the grid" }, { "cmd+left · right", "the clips by a tick" }, { "alt+left · right", "the clips by a millisecond" },
+        { ", · .", "nudge the clips by 5 ms" }, { "alt+up · down", "the take before / after" },
+        { "= · -", "zoom in · out (where the mouse is)" }, { "z · shift+z", "zoom to the selection · the whole project" }, { "n", "snap on / off" },
+        { "cmd+1 · cmd+2", "the grid finer · coarser" }, { "cmd+3", "the grid triplet / straight" }, { "cmd+4", "snap on / off" },
+        { "esc", "deselect; close an editor" }, { "note editor: q", "quantise the notes" }, { "note editor: up · down", "transpose (shift: an octave)" }, { "note editor: cmd+a", "every note" },
+    };
+    // (the source is utf-8: the dots and arrows read as such)
+    static const std::vector<std::pair<juce::String, juce::String>> v = [] { std::vector<std::pair<juce::String, juce::String>> o; for (auto& [k, w] : raw) o.push_back ({ juce::String::fromUTF8 (k), juce::String::fromUTF8 (w) }); return o; }();
+    return v;
+}
+
+/** search: tracks, clips (their names, their files), markers, locators and devices, by part of a name */
+class SearchPanel : public juce::Component
+{
+public:
+    struct Hit { int kind; juce::String text; int trackUid = 0; ClipRef clip; double bar = -1; };   // kind 0 track 1 clip 2 marker 3 locator 4 device
+    SearchPanel (Session& s, std::function<void (const Hit&)> go) : session (s), onGo (std::move (go)), theme (studioTheme())
+    {
+        addAndMakeVisible (box); box.setTextToShowWhenEmpty ("a name, part of one, a file ...", theme.ink.withAlpha (0.5f));
+        box.setColour (juce::TextEditor::backgroundColourId, theme.ground); box.setColour (juce::TextEditor::textColourId, theme.ink); box.setColour (juce::TextEditor::outlineColourId, theme.ink.withAlpha (0.4f));
+        box.setFont (uiFont (12.0f));
+        box.onTextChange = [this] { find(); };
+        box.onReturnKey = [this] { if (! hits.empty() && onGo) onGo (hits[(size_t) std::max (0, chosen)]); };
+        box.onEscapeKey = [this] { if (auto* c = findParentComponentOfClass<juce::CallOutBox>()) c->dismiss(); };
+        setSize (460, 380); find();
+    }
+    void visibilityChanged() override { if (isVisible()) box.grabKeyboardFocus(); }
+    void find()
+    {
+        hits.clear(); chosen = 0;
+        const auto q = box.getText().trim().toLowerCase();
+        auto has = [&] (const juce::String& x) { return q.isEmpty() || x.toLowerCase().contains (q); };
+        for (auto& tp : session.tracks)
+        {
+            auto& t = *tp;
+            if (has (t.name)) hits.push_back ({ 0, "track  " + t.name, t.uid });
+            for (auto& c : *t.clips) { const auto nm = c.name.isNotEmpty() ? c.name : "p" + juce::String (c.pattern + 1); if (q.isNotEmpty() && has (nm)) hits.push_back ({ 1, "clip  " + nm + "  on " + t.name + "  at " + session.formatRuler (session.rulerMain.load(), c.startBar * 4.0), t.uid, { t.uid, c.id, false }, c.startBar }); }
+            for (auto& c : *t.aclips) { const auto nm = c.name.isNotEmpty() ? c.name : juce::File (c.path).getFileNameWithoutExtension(); if (q.isNotEmpty() && (has (nm) || has (juce::File (c.path).getFileName()))) hits.push_back ({ 1, "audio  " + nm + "  on " + t.name + "  at " + session.formatRuler (session.rulerMain.load(), c.startBar * 4.0), t.uid, { t.uid, c.id, true }, c.startBar }); }
+            t.forEachDevice ([&] (Device& d) { if (q.isNotEmpty() && d.uid != 0 && has (d.name)) hits.push_back ({ 4, "device  " + d.name + "  on " + t.name, t.uid }); });
+        }
+        for (auto& m : *session.markers) if (has (m.name)) hits.push_back ({ 2, "marker  " + m.name + "  at " + session.formatRuler (session.rulerMain.load(), m.bar * 4.0), 0, {}, m.bar });
+        for (auto& L : session.locators) if (L.set && has (L.name)) hits.push_back ({ 3, "locator  " + L.name + "  at " + session.formatRuler (session.rulerMain.load(), L.bar * 4.0), 0, {}, L.bar });
+        if (hits.size() > 200) hits.resize (200);
+        repaint();
+    }
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (theme.ground);
+        g.setFont (uiFont (10.5f));
+        for (int i = 0; i < (int) hits.size() && 40 + i * 20 < getHeight(); ++i)
+        {
+            if (i == chosen) { g.setColour (theme.fill); g.fillRect (4, 40 + i * 20, getWidth() - 8, 20); g.setColour (ui::inkFor (theme.fill)); } else g.setColour (theme.ink);
+            g.drawText (hits[(size_t) i].text, 10, 40 + i * 20, getWidth() - 20, 20, juce::Justification::centredLeft, true);
+        }
+        if (hits.empty()) { g.setColour (theme.ink.withAlpha (0.6f)); g.drawText ("nothing by that name", 10, 40, getWidth() - 20, 20, juce::Justification::centredLeft); }
+    }
+    void resized() override { box.setBounds (6, 6, getWidth() - 12, 26); }
+    void mouseDown (const juce::MouseEvent& e) override { const int i = (e.y - 40) / 20; if (e.y >= 40 && i < (int) hits.size()) { chosen = i; if (onGo) onGo (hits[(size_t) i]); } }
+    bool keyPressed (const juce::KeyPress& k) override
+    {
+        if (k.getKeyCode() == juce::KeyPress::downKey) { chosen = std::min ((int) hits.size() - 1, chosen + 1); repaint(); return true; }
+        if (k.getKeyCode() == juce::KeyPress::upKey) { chosen = std::max (0, chosen - 1); repaint(); return true; }
+        return false;
+    }
+    std::vector<Hit> hits; int chosen = 0; juce::TextEditor box;
+private:
+    Session& session; std::function<void (const Hit&)> onGo; ui::Theme theme;
+};
+
+/** every step of the history: click one to go to it (back or forward) */
+class HistoryPanel : public juce::Component, private juce::Timer
+{
+public:
+    HistoryPanel (UndoHistory& h, std::function<void (const juce::String&)> s) : history (h), say (std::move (s)), theme (studioTheme())
+    {
+        viewport.setViewedComponent (&list, false); viewport.setScrollBarsShown (true, false); addAndMakeVisible (viewport);
+        list.paintFn = [this] (juce::Graphics& g) { paintList (g); };
+        list.clickFn = [this] (int y) { const auto e = history.entries(); const int i = y / rowH; if (i >= 0 && i < (int) e.size() && ! e[(size_t) i].now) { history.jumpTo (e[(size_t) i].index); say ("history: " + e[(size_t) i].label); refresh(); } };
+        setSize (420, 420); refresh(); startTimerHz (4);
+    }
+    struct List : juce::Component { std::function<void (juce::Graphics&)> paintFn; std::function<void (int)> clickFn; void paint (juce::Graphics& g) override { if (paintFn) paintFn (g); } void mouseDown (const juce::MouseEvent& e) override { if (clickFn) clickFn (e.y); } };
+    static constexpr int rowH = 20;
+    void refresh() { const auto n = (int) history.entries().size(); list.setSize (viewport.getWidth() - 10, std::max (viewport.getHeight(), n * rowH)); list.repaint(); repaint(); }
+    void paintList (juce::Graphics& g)
+    {
+        const auto e = history.entries();
+        g.setFont (uiFont (10.0f));
+        for (int i = 0; i < (int) e.size(); ++i)
+        {
+            const bool past = ! e[(size_t) i].now && e[(size_t) i].index < (int) std::count_if (e.begin(), e.end(), [] (auto& x) { return ! x.now; }) && [&] { for (auto& x : e) if (x.now) return e[(size_t) i].index < x.index; return false; }();
+            if (e[(size_t) i].now) { g.setColour (theme.fill); g.fillRect (0, i * rowH, list.getWidth(), rowH); g.setColour (ui::inkFor (theme.fill)); }
+            else g.setColour (theme.ink.withAlpha (past ? 0.9f : 0.45f));
+            g.drawText (juce::String (i + 1) + ".  " + e[(size_t) i].label + (e[(size_t) i].now ? "   (now)" : juce::String()), 8, i * rowH, list.getWidth() - 16, rowH, juce::Justification::centredLeft, true);
+        }
+    }
+    void paint (juce::Graphics& g) override { g.fillAll (theme.ground); g.setColour (theme.ink); g.setFont (uiFont (11.0f, true)); g.drawText ("undo history: click a step to go to it (greyed: undone, can be redone)", 8, 4, getWidth() - 16, 18, juce::Justification::centredLeft); }
+    void resized() override { viewport.setBounds (4, 26, getWidth() - 8, getHeight() - 30); refresh(); }
+private:
+    void timerCallback() override { refresh(); }
+    UndoHistory& history; std::function<void (const juce::String&)> say; ui::Theme theme;
+    juce::Viewport viewport; List list;
+};
+
 class StudioView : public juce::Component
 {
 public:
@@ -119,6 +238,12 @@ public:
         m.addSubMenu ("new from template", t);
         const juce::String cmd = juce::SystemStats::getOperatingSystemType() & juce::SystemStats::MacOSX ? "cmd" : "ctrl";
         m.addItem (1, "open...  (" + cmd + "+o)"); m.addItem (2, "save  (" + cmd + "+s)"); m.addItem (3, "save as...  (" + cmd + "+shift+s)"); m.addItem (6, "open the autosave");
+        {
+            juce::PopupMenu bk; backupList = s.projectFile != juce::File() ? StudioProcessor::backups (s.projectFile) : juce::Array<juce::File>();
+            for (int k = 0; k < backupList.size(); ++k) bk.addItem (600 + k, backupList[k].getFileNameWithoutExtension().fromLastOccurrenceOf (s.projectFile.getFileNameWithoutExtension() + " ", false, false).replace (" ", "  ").replaceCharacter ('-', '-'));
+            m.addSubMenu ("restore a backup", bk, ! backupList.isEmpty());
+        }
+        m.addItem (9, "collect all and save (every file into the project's folder)");
         { const auto ms = s.missing(); m.addItem (8, "find missing files..." + (ms.empty() ? juce::String() : "  (" + juce::String (ms.audio.size()) + " audio, " + juce::String (ms.plugins.size()) + " plug-ins)")); }
         m.addSeparator();
         m.addItem (7, "export audio (mix, stems, selected tracks, a time selection, multichannel)...  (" + cmd + "+e)"); m.addItem (5, "export midi..."); m.addSeparator();
@@ -135,6 +260,7 @@ public:
         juce::PopupMenu m;
         m.addItem (40, "undo  (" + cmd + "+z)" + (proc.history.canUndo() ? "   " + juce::String (proc.history.undoSteps()) + " steps" : juce::String()), proc.history.canUndo());
         m.addItem (41, "redo  (" + cmd + "+shift+z)", proc.history.canRedo());
+        m.addItem (46, "undo history...  (" + cmd + "+alt+z)");
         m.addSeparator();
         auto* ap = arrange();
         const bool any = ap && ! ap->sel.empty();
@@ -143,6 +269,14 @@ public:
         m.addItem (53, "duplicate  (" + cmd + "+d)", any); m.addItem (56, "delete clips  (delete)", any);
         m.addItem (55, "split at the playhead  (" + cmd + "+t)"); m.addItem (57, "mute / unmute clips  (" + cmd + "+shift+m)", any);
         m.addItem (54, "select all clips  (" + cmd + "+a)");
+        m.addItem (81, "join the selected clips  (" + cmd + "+j)", any); m.addItem (85, "quantise the selected clips to the grid  (" + cmd + "+u)", any);
+        m.addItem (92, "rename the clip or track  (" + cmd + "+i)");
+        m.addSeparator();
+        m.addItem (82, "render the time selection in place  (" + cmd + "+r)"); m.addItem (83, "reverse the time selection  (" + cmd + "+shift+r)"); m.addItem (84, "silence the time selection  (" + cmd + "+alt+backspace)");
+        m.addSeparator();
+        m.addItem (86, "a marker at the playhead  (" + cmd + "+k)");
+        m.addItem (87, "new instrument track  (" + cmd + "+shift+t)"); m.addItem (88, "new audio track  (" + cmd + "+alt+t)"); m.addItem (89, "duplicate the track  (" + cmd + "+shift+d)");
+        m.addItem (90, "freeze / unfreeze the track  (" + cmd + "+alt+f)"); m.addItem (91, "find...  (" + cmd + "+f)"); m.addItem (98, "keyboard shortcuts...  (?)");
         m.addSeparator();
         m.addItem (60, "loop the selected clips  (" + cmd + "+l)", any);
         m.addItem (58, "insert time at the playhead...  (" + cmd + "+shift+i)");
@@ -171,6 +305,25 @@ public:
         juce::PopupMenu th; const auto& pal = studioPalettes();
         for (int i = 0; i < (int) pal.size(); ++i) th.addItem (400 + i, pal[(size_t) i].name, true, studioThemeIndex() == i);
         m.addSubMenu ("colour theme", th);
+        {
+            juce::PopupMenu lc;
+            for (int i = 0; i < 9; ++i) { const auto& L = s.locators[(size_t) i]; lc.addItem (700 + i, (L.set ? L.name + "  " + s.formatRuler (s.rulerMain.load(), L.bar * 4.0) : juce::String ("(empty)")) + "  (alt+" + juce::String (i + 1) + ")", L.set); }
+            lc.addSeparator(); juce::PopupMenu st; for (int i = 0; i < 9; ++i) st.addItem (720 + i, juce::String (i + 1) + "  (alt+shift+" + juce::String (i + 1) + ")"); lc.addSubMenu ("keep this place as", st);
+            juce::PopupMenu rn; for (int i = 0; i < 9; ++i) rn.addItem (740 + i, juce::String (i + 1), s.locators[(size_t) i].set); lc.addSubMenu ("rename", rn);
+            m.addSubMenu ("locators", lc);
+        }
+        m.addSeparator();
+        juce::PopupMenu r1, r2, fps, tb;
+        for (int f = 0; f < 4; ++f) r1.addItem (460 + f, timeline::rulerName (f), true, s.rulerMain.load() == f);
+        for (int f = 0; f < 5; ++f) r2.addItem (470 + f, timeline::rulerName (f), true, s.rulerSub.load() == f);
+        const float rates[] = { 24.0f, 25.0f, 29.97f, 30.0f, 50.0f, 60.0f };
+        for (int k = 0; k < 6; ++k) fps.addItem (480 + k, juce::String (rates[k], rates[k] == 29.97f ? 2 : 0) + " fps", true, std::abs (s.timecodeFps.load() - rates[k]) < 0.01f);
+        tb.addItem (490, "beats: clips and automation move with the tempo", true, s.timebase.load() == 0);
+        tb.addItem (491, "time: everything keeps its place in seconds (tracks and clips can still say otherwise)", true, s.timebase.load() == 1);
+        m.addSubMenu ("main ruler (" + juce::String (timeline::rulerName (s.rulerMain.load())) + ")", r1);
+        m.addSubMenu ("second ruler (" + juce::String (timeline::rulerName (s.rulerSub.load())) + ")", r2);
+        m.addSubMenu ("timecode rate", fps);
+        m.addSubMenu ("project timebase (" + juce::String (s.timebase.load() == 1 ? "time" : "beats") + ")", tb);
         return m;
     }
     ArrangePage* arrange() { return dynamic_cast<ArrangePage*> (pages[1]); }
@@ -197,6 +350,39 @@ public:
     void fileAction (int id)
     {
         juce::String err;
+        if (id >= 700 && id < 760)
+        {
+            const int i = (id - 700) % 20;
+            if (id < 720) locator (i, false); else if (id < 740) locator (i, true);
+            else { auto* w = new juce::AlertWindow ("rename the locator", "a name", juce::MessageBoxIconType::NoIcon); w->addTextEditor ("t", s.locators[(size_t) i].name); w->addButton ("ok", 1); w->addButton ("cancel", 0);
+                   w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, i] (int r) { if (r == 1) { s.locators[(size_t) i].name = w->getTextEditorContents ("t").trim(); s.dirty = true; } }), true); }
+            return;
+        }
+        if (id >= 600 && id < 700)
+        {
+            if (id - 600 >= backupList.size()) return;
+            const auto b = backupList[id - 600]; juce::String err;
+            windows.clear();
+            if (proc.restoreBackup (b, err)) { rebuildAll(); say ("restored the backup of " + b.getFileNameWithoutExtension().fromLastOccurrenceOf (s.projectName + " ", false, false) + " (save to keep it; the version now is kept as a backup then)"); }
+            else say (err);
+            return;
+        }
+        if (id >= 460 && id < 492)
+        {
+            const float rates[] = { 24.0f, 25.0f, 29.97f, 30.0f, 50.0f, 60.0f };
+            if (id < 464) { s.rulerMain.store (id - 460); if (s.rulerSub.load() == id - 460) s.rulerSub.store (id == 460 ? 1 : 0); }
+            else if (id >= 470 && id < 475) s.rulerSub.store (id - 470);
+            else if (id >= 480 && id < 486) s.timecodeFps.store (rates[id - 480]);
+            else if (id == 490 || id == 491)
+            {
+                s.timebase.store (id - 490);
+                // a project in time counts in time: the ruler too (bars below, for reference)
+                if (id == 491 && s.rulerMain.load() == timeline::RULER_BARS) { s.rulerMain.store (timeline::RULER_TIME); s.rulerSub.store (timeline::RULER_BARS); }
+                if (id == 490 && s.rulerMain.load() != timeline::RULER_BARS) { s.rulerMain.store (timeline::RULER_BARS); s.rulerSub.store (timeline::RULER_TIME); }
+                say (id == 491 ? "the project is in time: clips, markers, the loop and automation keep their seconds when the tempo changes" : "the project is in beats: everything moves with the tempo");
+            }
+            s.dirty = true; repaint(); for (auto* pg : pages) pg->repaint(); return;
+        }
         if (id >= 400 && id < 450) { if (setThemeFn) { const int th = id - 400; auto fn = setThemeFn; juce::MessageManager::callAsync ([fn, th] { fn (th); }); } return; }
         if (id >= 100 && id < 200) { windows.clear(); s.newFromTemplate (id - 100); select (nullptr); rebuildAll(); say ("new: " + Session::templateNames()[id - 100]); return; }
         auto choose = [this] (const juce::String& title, const juce::File& start, const juce::String& pattern, int flags, std::function<void (juce::File)> then)
@@ -210,7 +396,7 @@ public:
         {
             auto* ap = arrange();
             if (! ap) return;
-            if (id <= 62 && page != 1 && id != 61) setPage (1);
+            if (((id <= 62 && id != 61) || (id >= 81 && id <= 86) || id == 92 || id == 99) && page != 1) setPage (1);
             switch (id)
             {
                 case 50: ap->copySel(); break;              case 51: ap->cutSel(); break;
@@ -226,15 +412,61 @@ public:
                 case 77: ap->setTrackHeight (ap->laneH + 12); break; case 78: ap->setTrackHeight (ap->laneH - 12); break;
                 case 79: s.follow.store (! s.follow.load()); s.dirty = true; break;
                 case 80: ap->toggleSnap(); break;
+                case 81: { juce::String e; auto j = s.joinClips (ap->sel, e); if (! j.empty()) ap->sel = j; say (e.isNotEmpty() ? e : juce::String (j.size()) + " joined clip(s)"); break; }
+                case 82: case 83: case 84:
+                {
+                    double a = 0, b = 0; std::vector<Track*> ts;
+                    if (! range (a, b, ts)) { say ("no time selection: drag in the ruler, or select clips (" + juce::String (id == 82 ? "render" : id == 83 ? "reverse" : "silence") + " works on it)"); break; }
+                    if (id == 82) { juce::String e; auto made = s.renderInPlace (ts, a, b, e); say (e.isNotEmpty() ? e : juce::String (made.size()) + " track(s) rendered in place, the originals muted there"); }
+                    else if (id == 83) { s.reverseRange (ts, a, b); say ("reversed the audio from " + s.formatRuler (s.rulerMain.load(), a * 4.0) + " to " + s.formatRuler (s.rulerMain.load(), b * 4.0)); }
+                    else { s.silenceRange (ts, a, b); say ("silenced"); }
+                    break;
+                }
+                case 85: { for (auto& r : ap->sel) { double s0, l; if (s.clipSpan (r, s0, l)) s.moveClips ({ r }, ap->snapBar (s0) - s0); } say ("quantised to the grid"); break; }
+                case 86: { const double b = s.currentBar(); const int n = (int) s.markers->size() + 1; s.editMarkers ([b, n] (std::vector<Marker>& v) { v.push_back ({ "marker " + juce::String (n), b }); }); say ("a marker at " + s.formatRuler (s.rulerMain.load(), b * 4.0)); break; }
+                case 87: case 88: { if (auto* t = s.addTrack (id == 87 ? "instrument" : "audio", -1, id == 87 ? TrackKind::Instrument : TrackKind::Audio)) select (t); break; }
+                case 89: { if (auto* t = selected()) { juce::String e; if (auto* nt = s.duplicateTrack (*t, e)) { select (nt); say ("duplicated: " + nt->name); } else say (e); } break; }
+                case 90: { if (auto* t = selected()) { juce::String e; if (t->isFrozen()) { s.unfreezeTrack (*t); say (t->name + " live again"); } else if (s.freezeTrack (*t, e)) say (t->name + " frozen"); else say (e); } break; }
+                case 91: openSearch(); break;
+                case 92:
+                {
+                    if (! ap->sel.empty()) { const auto r = ap->sel.front(); ap->ask ("rename the clip", "a name", {}, [this, r] (juce::String n) { s.setClipName (r, n.trim()); }); }
+                    else if (auto* t = selected()) ap->ask ("rename the track", "a name", t->name, [this, t] (juce::String n) { if (n.trim().isNotEmpty()) { t->name = n.trim(); s.dirty = true; rebuildAll(); } });
+                    break;
+                }
+                case 93: case 94: case 95:
+                {
+                    if (ap->timeMode()) { const int nG = (int) timeline::timeGrids().size(); int g = s.timeGridIndex.load(); if (g == 0) g = 8; g = juce::jlimit (1, nG - 2, g + (id == 93 ? -1 : 1)); s.timeGridIndex.store (g); }
+                    else
+                    {
+                        int g = s.gridIndex.load(); if (g == 0) g = 5;
+                        if (id == 95) { static const int tri[] = { 0, 0, 9, 10, 11, 12, 13, 0, 0, 2, 3, 4, 5, 6 }; g = g < 14 && tri[g] ? tri[g] : g; }
+                        else if (g >= 1 && g <= 8) g = juce::jlimit (1, 8, g + (id == 93 ? 1 : -1));
+                        else if (g >= 9 && g <= 13) g = juce::jlimit (9, 13, g + (id == 93 ? 1 : -1));
+                        s.gridIndex.store (g);
+                    }
+                    s.snap.store (true); s.dirty = true; say ("grid " + (ap->timeMode() ? juce::String (timeline::timeGrids()[(size_t) s.timeGridIndex.load()].name) : juce::String (timeline::grids()[(size_t) s.gridIndex.load()].name)));
+                    break;
+                }
+                case 97: setPage (5); break;
+                case 98: openShortcuts(); break;
+                case 99:
+                {
+                    double from = s.loopOn.load() ? s.loopStart.load() : s.currentBar();
+                    if (! ap->sel.empty()) { from = 1.0e12; for (auto& r : ap->sel) { double s0, l; if (s.clipSpan (r, s0, l)) from = std::min (from, s0); } }
+                    s.locate (from); if (! s.running.load()) s.togglePlay();
+                    break;
+                }
                 default: break;
             }
             ap->repaint();
             return;
         }
         if (id >= 300 && id < 400) { s.gridIndex.store (id - 300); s.snap.store (true); s.dirty = true; if (auto* ap = arrange()) ap->repaint(); return; }
-        if (id == 40 || id == 41)
+        if (id == 40 || id == 41 || id == 46)
         {
             const int keep = selUid;
+            if (id == 46) { auto* hp = new HistoryPanel (proc.history, [this] (const juce::String& m) { say (m); }); juce::CallOutBox::launchAsynchronously (std::unique_ptr<juce::Component> (hp), getScreenBounds().withSizeKeepingCentre (10, 10).translated (0, -200), nullptr); return; }
             const bool ok = id == 40 ? proc.history.undo() : proc.history.redo();
             if (ok) { if (auto* t = s.trackByUid (keep)) select (t); say (id == 40 ? "undo" : "redo"); }
             else say (id == 40 ? "nothing to undo" : "nothing to redo");
@@ -249,6 +481,14 @@ public:
             case 6: if (proc.autosaveFile().existsAsFile()) { windows.clear(); proc.recoverAutosave (err); select (nullptr); say (err.isNotEmpty() ? err : "autosave opened (from " + proc.autosaveFile().getLastModificationTime().formatted ("%H:%M") + "; unsaved)"); } else say ("no autosave yet"); break;
             case 7: exportDialog(); break;
             case 30: case 31: renderProject (id == 31); break;
+            case 9:
+            {
+                if (s.projectFile == juce::File()) { say ("collect all: save the project first"); break; }
+                juce::String e; const int n = s.collectAll (e);
+                if (e.isEmpty()) proc.saveProject (s.projectFile, e);
+                say (e.isNotEmpty() ? e : juce::String (n) + " file(s) copied into " + s.audioDir().getFullPathName() + "; saved");
+                break;
+            }
             case 8:
             {
                 const auto ms = s.missing();
@@ -284,16 +524,16 @@ public:
     void exportDialog()
     {
         auto* w = new juce::AlertWindow ("export audio", "the master is " + juce::String (s.master->width.load()) + " channels wide: the mix is written with that many (stems: each track at its own width)", juce::MessageBoxIconType::NoIcon);
-        w->addComboBox ("what", { "the mix", "the mix before the master chain", "stems: every track, return and the master", "stems: the tracks numbered below" }, "export");
+        w->addComboBox ("what", { "the mix", "the mix before the master chain", "stems: every track, return and the master", "stems: the tracks numbered below", "every marker region as its own file (named by its marker)" }, "export");
         const int sel = s.selectedTrack.load();
         w->addTextEditor ("tracks", juce::String (juce::jmax (0, sel) + 1), "track numbers (for the stems of chosen tracks), e.g. 1 3 4");
         double a = 0, b = 0; s.renderRange (a, b);
         const double pb = s.projectBars();
         const auto& mm = s.meterMap();
-        auto P = [&mm] (double units) { return timeline::formatPosition (units * 4.0, mm); };
+        auto P = [this] (double units) { return s.formatRuler (s.rulerMain.load(), units * 4.0); }; (void) mm;
         w->addComboBox ("range", { "the whole project (" + P (0) + " - " + P (pb) + ")", "the loop / time selection (" + P (s.loopStart.load()) + " - " + P (s.loopEnd.load()) + ")", "the bars typed below" }, "range");
         w->getComboBoxComponent ("range")->setSelectedItemIndex (s.loopOn.load() ? 1 : 0);
-        w->addTextEditor ("bars", "1 9", "from bar, to bar (the end is not included)");
+        w->addTextEditor ("bars", s.timeRuler() ? "0:00 0:30" : "1 9", "from, to: bars (1 9) or times (0:30 1:45.500, 90s 120s); the end is not included");
         w->addComboBox ("format", { "wav", "aiff", "flac" }, "file");
         w->addComboBox ("bits", { "16 bit", "24 bit", "32 bit float (wav)" }, "word length"); w->getComboBoxComponent ("bits")->setSelectedItemIndex (1);
         w->addComboBox ("rate", { "the project's rate (" + juce::String (s.sampleRate(), 0) + " hz)", "44100 hz", "48000 hz", "88200 hz", "96000 hz" }, "sample rate");
@@ -319,12 +559,32 @@ public:
             double a = 0, b = s.projectBars();
             const int range = w->getComboBoxComponent ("range")->getSelectedItemIndex();
             if (range == 1) { a = s.loopStart.load(); b = s.loopEnd.load(); }
-            else if (range == 2) { auto t = juce::StringArray::fromTokens (w->getTextEditorContents ("bars"), " ,-", ""); t.removeEmptyStrings(); const auto& mm = s.meterMap(); a = mm.barStart (std::max (0LL, (long long) t[0].getIntValue() - 1)) / 4.0; b = std::max (a + 0.25, mm.barStart (std::max (0LL, (long long) t[1].getIntValue() - 1)) / 4.0); }   // (bars of the meter)
+            else if (range == 2)
+            {
+                // two positions: bars (of the meter) or times, as typed
+                auto t = juce::StringArray::fromTokens (w->getTextEditorContents ("bars"), " ,", ""); t.removeEmptyStrings();
+                const auto& mm = s.meterMap(); auto toBeats = [this] (double sec) { return s.beatAt (sec); };
+                auto one = [&] (const juce::String& x) { if (x.containsAnyOf (":sm")) return timeline::parse (x, false, toBeats, mm); return mm.barStart (std::max (0LL, (long long) x.getIntValue() - 1)); };
+                const double pa = t.size() > 0 ? one (t[0]) : 0.0, pb = t.size() > 1 ? one (t[1]) : -1.0;
+                a = std::max (0.0, pa) / 4.0; b = std::max (a + 1.0e-3, pb > 0 ? pb / 4.0 : a + 1.0);
+            }
             if (what == 3)
                 for (auto& n : juce::StringArray::fromTokens (w->getTextEditorContents ("tracks"), " ,", ""))
                     if (const int k = n.getIntValue() - 1; k >= 0 && k < (int) s.tracks.size()) o.only.push_back (s.tracks[(size_t) k]->uid);
             if (what == 3 && o.only.empty()) { say ("export: no such track numbers"); return; }
             const auto ext = juce::String (ExportOptions::extension (o.format));
+            if (what == 4)
+            {
+                // regions: from each marker to the next (the last to the end of the project), a file each, named by the marker
+                if (s.markers->empty()) { say ("export: no markers (put markers where the regions start)"); return; }
+                choose ("export the regions into a folder", StudioProcessor::projectsDir(), {}, juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this, o] (juce::File f)
+                {
+                    const auto dir = f.getChildFile (s.projectName + " regions"); juce::String e;
+                    const int n = s.renderRegions (dir, o, e);
+                    say (e.isNotEmpty() ? e : juce::String (n) + " regions in " + dir.getFullPathName());
+                });
+                return;
+            }
             if (what <= 1)
                 choose ("export the mix", StudioProcessor::projectsDir().getChildFile (s.projectName + ext), "*" + ext, juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
                         [this, o, a, b, what, ext] (juce::File f)
@@ -421,6 +681,84 @@ public:
         structure = structureKey();
     }
     /** a controller's command (a mapped button, or a mackie control surface) */
+    /** the time selection (the loop region, or the selected clips' span) and the tracks to work on (the selected clips',
+        or the selected one) */
+    bool range (double& a, double& b, std::vector<Track*>& ts)
+    {
+        auto* ap = arrange(); ts.clear();
+        if (ap) for (auto& r : ap->sel) if (auto* t = s.clipTrack (r)) if (std::find (ts.begin(), ts.end(), t) == ts.end()) ts.push_back (t);
+        if (ts.empty()) if (auto* t = selected()) if (! t->isMaster()) ts.push_back (t);
+        if (s.loopOn.load() && s.loopEnd.load() > s.loopStart.load()) { a = s.loopStart.load(); b = s.loopEnd.load(); }
+        else if (ap && ! ap->sel.empty()) { a = 1.0e12; b = 0; for (auto& r : ap->sel) { double s0, l; if (s.clipSpan (r, s0, l)) { a = std::min (a, s0); b = std::max (b, s0 + l); } } }
+        else return false;
+        return b > a && ! ts.empty();
+    }
+    /** every key, searchable */
+    void openShortcuts()
+    {
+        struct Sheet : juce::Component
+        {
+            Sheet() : theme (studioTheme())
+            {
+                addAndMakeVisible (box); box.setTextToShowWhenEmpty ("find a key or an action ...", theme.ink.withAlpha (0.5f));
+                box.setColour (juce::TextEditor::backgroundColourId, theme.ground); box.setColour (juce::TextEditor::textColourId, theme.ink); box.setFont (uiFont (12.0f));
+                box.onTextChange = [this] { repaint(); };
+                setSize (620, 560);
+            }
+            void resized() override { box.setBounds (6, 6, getWidth() - 12, 24); }
+            void paint (juce::Graphics& g) override
+            {
+                g.fillAll (theme.ground); const auto q = box.getText().trim().toLowerCase(); int y = 38; g.setFont (uiFont (10.0f));
+                for (auto& [k, w] : shortcutList())
+                {
+                    if (q.isNotEmpty() && ! k.toLowerCase().contains (q) && ! w.toLowerCase().contains (q)) continue;
+                    if (y > getHeight() - 16) break;
+                    g.setColour (theme.fill); g.drawText (k, 10, y, 190, 16, juce::Justification::centredLeft, true);
+                    g.setColour (theme.ink); g.drawText (w, 200, y, getWidth() - 210, 16, juce::Justification::centredLeft, true); y += 17;
+                }
+            }
+            ui::Theme theme; juce::TextEditor box;
+        };
+        auto* sh = new Sheet();
+        juce::CallOutBox::launchAsynchronously (std::unique_ptr<juce::Component> (sh), getScreenBounds().withSizeKeepingCentre (10, 10).translated (0, -250), nullptr);
+    }
+    /** search, and going to what was found */
+    void openSearch()
+    {
+        auto* sp = new SearchPanel (s, [this] (const SearchPanel::Hit& h) { goTo (h); });
+        juce::CallOutBox::launchAsynchronously (std::unique_ptr<juce::Component> (sp), getScreenBounds().withSizeKeepingCentre (10, 10).translated (0, -220), nullptr);
+    }
+    void goTo (const SearchPanel::Hit& h)
+    {
+        if (h.trackUid) if (auto* t = s.trackByUid (h.trackUid)) select (t);
+        if (h.kind == 4) { setPage (2); return; }
+        setPage (1);
+        if (auto* ap = arrange())
+        {
+            if (h.kind == 1) { double s0 = 0, len = 0; if (s.clipSpan (h.clip, s0, len)) { ap->sel = { h.clip }; ap->showBars (std::max (0.0, s0 - len * 0.25), s0 + len * 1.25); s.locate (s0); } }
+            else if (h.bar >= 0) { s.locate (h.bar); const double vb = ap->visibleBars(); ap->showBars (std::max (0.0, h.bar - vb * 0.1), std::max (0.0, h.bar - vb * 0.1) + vb); }
+            if (h.trackUid) if (auto* t = s.trackByUid (h.trackUid)) { const int row = ap->rowOf (t); if (row >= 0) ap->scrollY = std::max (0, row * ap->laneH - ap->laneH); }
+            ap->repaint();
+        }
+        say ("found: " + h.text);
+    }
+    /** a locator: keep the place (store), or go to it */
+    void locator (int i, bool store)
+    {
+        auto& L = s.locators[(size_t) juce::jlimit (0, 8, i)]; auto* ap = arrange();
+        if (store)
+        {
+            L.set = true; L.bar = s.currentBar(); if (L.name.isEmpty()) L.name = "locator " + juce::String (i + 1);
+            if (ap) { L.viewFrom = ap->scrollBar; L.viewTo = ap->scrollBar + ap->visibleBars(); }
+            L.loop = s.loopOn.load(); L.loopA = s.loopStart.load(); L.loopB = s.loopEnd.load(); s.dirty = true;
+            say (L.name + " kept: " + s.formatRuler (s.rulerMain.load(), L.bar * 4.0) + " (alt+" + juce::String (i + 1) + " comes back here)");
+            return;
+        }
+        if (! L.set) { say ("locator " + juce::String (i + 1) + " is empty: alt+shift+" + juce::String (i + 1) + " keeps the place there"); return; }
+        s.locate (L.bar); if (ap) ap->showBars (L.viewFrom, L.viewTo);
+        if (L.loop) { s.loopStart.store (L.loopA); s.loopEnd.store (L.loopB); s.loopOn.store (true); }
+        say (L.name + ": " + s.formatRuler (s.rulerMain.load(), L.bar * 4.0));
+    }
     void runCommand (int c)
     {
         auto* t = s.trackAt (s.selectedTrack.load());
@@ -469,6 +807,7 @@ public:
     void tick()
     {
         for (int c : s.takeCommands()) runCommand (c);
+        s.retime();   // (a tempo changed by its control: what is set to time keeps its seconds)
         // the master's loudness: its numbers, and a new measurement each time the transport starts
         s.loudness.update();
         if (const bool pl = s.playPpq.load() >= 0; pl != wasPlayingLoud) { if (pl) s.loudness.reset(); wasPlayingLoud = pl; }
@@ -530,7 +869,14 @@ public:
         // position
         const double bar = s.currentBar();
         g.setFont (uiFont (11.0f, true)); g.setColour (s.playPpq.load() >= 0 ? brightColour() : theme.ink);
-        g.drawText (timeline::formatPosition (bar * 4.0, s.meterMap()) + "   " + timeline::formatTime (s.secondsAt (bar * 4.0)) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm   " + s.meterMap().sigAt (bar * 4.0).text(), positionRect(), juce::Justification::centredLeft);
+        {
+            // the counters: the main ruler's format, then the second's (like a main and a sub counter)
+            const int m1 = s.rulerMain.load(), m2 = s.rulerSub.load();
+            juce::String txt = s.formatRuler (m1, bar * 4.0);
+            if (m2 != timeline::RULER_NONE && m2 != m1) txt << "   " << s.formatRuler (m2, bar * 4.0);
+            if (s.timebase.load() == 0 || m1 == timeline::RULER_BARS) txt << "   " << juce::String (s.bpmShown.load(), 1) << " bpm   " << s.meterMap().sigAt (bar * 4.0).text();
+            g.drawText (txt, positionRect(), juce::Justification::centredLeft);
+        }
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.7f));
         juce::String info = juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
         info << ui::U ("  ·  latency ") << juce::String (s.totalLatency() * 1000.0 / s.sampleRate(), 1) << " ms" ;
@@ -562,7 +908,23 @@ public:
         {
             const int kc = k.getKeyCode(); const bool sh = k.getModifiers().isShiftDown();
             const int low = (kc >= 'A' && kc <= 'Z') ? kc + 32 : kc;
+            const bool alt = k.getModifiers().isAltDown();
+            if (low == 'z' && alt) { fileAction (46); return true; }
             if (low == 'z') { fileAction (sh ? 41 : 40); return true; }
+            if (low == 'j') { fileAction (81); return true; }
+            if (low == 'r') { fileAction (sh ? 83 : 82); return true; }
+            if (low == 'u') { fileAction (85); return true; }
+            if (low == 'k') { fileAction (86); return true; }
+            if (low == 't' && sh) { fileAction (87); return true; }
+            if (low == 't' && alt) { fileAction (88); return true; }
+            if (low == 'd' && sh) { fileAction (89); return true; }
+            if (low == 'f' && alt) { fileAction (90); return true; }
+            if (low == 'f') { fileAction (91); return true; }
+            if (low == 'i' && ! sh) { fileAction (92); return true; }
+            if (low == 'b') { fileAction (97); return true; }
+            if (kc == '1' || kc == '2' || kc == '3') { fileAction (kc == '1' ? 93 : kc == '2' ? 94 : 95); return true; }
+            if (kc == '4') { fileAction (80); return true; }
+            if (alt && (kc == juce::KeyPress::backspaceKey || kc == juce::KeyPress::deleteKey)) { fileAction (84); return true; }
             if (low == 'y') { fileAction (41); return true; }
             if (low == 's') { fileAction (sh ? 3 : 2); return true; }
             if (low == 'o') { fileAction (1); return true; }
@@ -587,9 +949,15 @@ public:
             return false;
         }
         if (page == 1) if (auto* ap = arrange()) if (ap->key (k)) return true;
-        if (k.getKeyCode() == juce::KeyPress::spaceKey) { s.togglePlay(); return true; }
+        if (k.getKeyCode() == juce::KeyPress::spaceKey && k.getModifiers().isShiftDown()) { fileAction (99); return true; }
+        if (k.getKeyCode() == juce::KeyPress::spaceKey) { if (! s.running.load()) lastStart = s.currentBar(); s.togglePlay(); return true; }
+        if (c == '/') { s.locate (lastStart); say ("back to where playing last started: " + s.formatRuler (s.rulerMain.load(), lastStart * 4.0)); return true; }
+        if (c == '*') { rec.onClick(); return true; }
+        if (c == '?') { openShortcuts(); return true; }
         if (k.getKeyCode() == juce::KeyPress::tabKey) { setPage ((page + 1) % pages.size()); return true; }
         if ((c == ',' || c == '.') && page == 1) if (auto* ap = dynamic_cast<ArrangePage*> (pages[1])) { ap->nudge (c == ',' ? -5.0 : 5.0); return true; }
+        // locators: alt+1-9 goes to one, alt+shift+1-9 keeps the place there
+        if (k.getModifiers().isAltDown() && k.getKeyCode() >= '1' && k.getKeyCode() <= '9') { locator (k.getKeyCode() - '1', k.getModifiers().isShiftDown()); return true; }
         if (c >= '1' && c <= '8')
         {
             if (k.getModifiers().isShiftDown()) { if (t) s.launch (*t, c - '1'); }
@@ -618,7 +986,8 @@ public:
     StudioProcessor& proc; Session& s; ui::Theme theme; Ctx ctx;
     juce::OwnedArray<Page> pages; juce::OwnedArray<ui::TextLink> tabs; int page = 0;
     ui::TextLink play, stop, rec, loop, mode, outMode, save, panic, autoWrite, audio, file, punch, capture; HoldLink fill;
-    bool wasPlayingLoud = false;
+    bool wasPlayingLoud = false; double lastStart = 0;
+    juce::Array<juce::File> backupList;
     CpuMeter cpuMeter { s, theme };
     ui::TextLink click { "click", theme }, countIn { "count-in 1", theme };
     DevSlider bpm, swing, master;

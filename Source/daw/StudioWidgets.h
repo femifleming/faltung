@@ -478,6 +478,7 @@ struct ParamMenu
             case KeyHold:   s.keyLearnStart (tg, true); return 0;
             case KeyForget: s.editKeyMaps ([tg] (std::vector<KeyMap>& v) { v.erase (std::remove_if (v.begin(), v.end(), [tg] (const KeyMap& x) { return x.target == tg; }), v.end()); }); return 0;
             case Reset:    d.setBase (param, d.defaultValue (param)); return 0;
+            case Reset + 50: d.setRandLocked (param, ! d.randLocked (param)); s.dirty = true; return 0;
             default: break;
         }
         if (choice >= 200 && choice < 200 + kMacros) { d.macro[(size_t) param].index.store (choice - 200); d.macro[(size_t) param].lo.store (d.baseValue (param)); d.macro[(size_t) param].hi.store (1.0f); }
@@ -497,6 +498,7 @@ struct ParamMenu
         int k = 100;
         for (auto& x : *t.mods) if (x.targets (d.uid, param)) m.addItem (k++, "edit modulator " + juce::String (x.id) + " (" + modSrcName (x.src) + ")");
         m.addSeparator();
+        m.addItem (Reset + 50, "locked from randomise", true, d.randLocked (param));
         const Target tg = s.targetFor (t, d, param);
         m.addItem (Lane, s.lane (tg) ? "show its automation lane" : "automate it on the timeline");
         if (s.lane (tg)) m.addItem (RemoveLane, "remove the automation lane");
@@ -537,9 +539,25 @@ class DevicePanel : public juce::Component
 public:
     DevicePanel (Session& s, Track& t, Device& d, std::function<void (Device&)> openWindow, std::function<void (Device&)> remove, std::function<void (int)> showLane)
         : session (s), track (t), device (d), open (std::move (openWindow)), rem (std::move (remove)), lane (std::move (showLane)),
-          bypass ("bypass", studioTheme()), window ("window", studioTheme()), presets ("presets", studioTheme()), removeLink ("remove", studioTheme()), sample ("load sample", studioTheme())
+          bypass ("bypass", studioTheme()), window ("window", studioTheme()), presets ("presets", studioTheme()), removeLink ("remove", studioTheme()), sample ("load sample", studioTheme()), dice ("dice", studioTheme())
     {
-        for (auto* l : { &bypass, &window, &presets, &removeLink }) addAndMakeVisible (l);
+        for (auto* l : { &bypass, &window, &presets, &removeLink, &dice }) addAndMakeVisible (l);
+        dice.setTooltip ("randomise the device: every parameter not locked (right-click one: locked from randomise; levels start locked)");
+        dice.onClick = [this]
+        {
+            juce::PopupMenu m;
+            m.addItem (1, "anywhere (every unlocked parameter)"); m.addItem (2, "some (up to 30 % from where they are)"); m.addItem (3, "a little (up to 10 %)");
+            m.addSeparator(); m.addItem (4, "lock all"); m.addItem (5, "unlock all"); m.addItem (6, "back to the default locks (levels)");
+            juce::Component::SafePointer<DevicePanel> safe (this);
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&dice), [safe] (int r)
+            {
+                if (! safe || r <= 0) return;
+                auto& d = safe->device;
+                if (r <= 3) { juce::Random rr; d.randomise (r == 1 ? 1.0f : r == 2 ? 0.3f : 0.1f, rr); safe->session.dirty = true; }
+                else for (int p = 0; p < d.numParams(); ++p) { if (r == 6) { if ((int) d.randLock.size() > p) d.randLock[(size_t) p] = 2; } else d.setRandLocked (p, r == 4); }
+                safe->session.dirty = true; safe->repaint();
+            });
+        };
         bypass.onClick = [this] { device.bypass.store (! device.bypass.load()); bypass.setLit (device.bypass.load()); session.rebuildLatency(); };
         bypass.setLit (device.bypass.load());
         window.onClick = [this] { if (open) open (device); };
@@ -575,7 +593,7 @@ public:
     {
         const int w = getWidth();
         int x = w - 8;
-        for (auto* l : { &removeLink, &presets, &window, &bypass }) { const int lw = l == &removeLink ? 56 : l == &presets ? 60 : 56; l->setBounds (x - lw, 4, lw, 20); x -= lw + 4; }
+        for (auto* l : { &removeLink, &presets, &window, &bypass, &dice }) { const int lw = l == &removeLink ? 56 : l == &presets ? 60 : 48; l->setBounds (x - lw, 4, lw, 20); x -= lw + 4; }
         if (sample.isVisible()) { sample.setBounds (x - 90, 4, 90, 20); }
         const int cols = std::max (1, (w - 8) / 264), cw = (w - 8) / cols;
         for (int i = 0; i < sliders.size(); ++i) sliders[i]->setBounds (8 + (i % cols) * cw, 28 + (i / cols) * 20, cw - 28, 18);
@@ -595,7 +613,7 @@ public:
     Session& session; Track& track; Device& device;
 private:
     std::function<void (Device&)> open, rem; std::function<void (int)> lane;
-    ui::TextLink bypass, window, presets, removeLink, sample;
+    ui::TextLink bypass, window, presets, removeLink, sample, dice;
     juce::OwnedArray<DevSlider> sliders;
     std::unique_ptr<juce::FileChooser> chooser;
 };

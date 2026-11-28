@@ -105,6 +105,8 @@ Session::Session()
     markers = std::make_shared<const std::vector<Marker>>();
     meter = std::make_shared<const timeline::MeterMap>();
     groups = std::make_shared<const std::vector<Group>>();
+    for (auto& L : locators) L = {}; rules = std::make_shared<const std::vector<Rule>>();
+    lastTempo = {}; rulerMain.store (0); rulerSub.store (1); timebase.store (0); timeGridIndex.store (0); timecodeFps.store (25.0f);
     lanes = std::make_shared<const std::vector<LanePtr>>();
     midiMaps = std::make_shared<const std::vector<MidiMap>>();
     keyMaps = std::make_shared<const std::vector<KeyMap>>();
@@ -1003,13 +1005,25 @@ void Session::splitClip (Track& t, int clipId, double atBar)
             auto& c = v[i];
             if (c.id != clipId || atBar <= c.startBar + 1.0e-6 || atBar >= c.startBar + c.bars - 1.0e-6) continue;
             AudioClip b = c;
-            const double frac = (atBar - c.startBar) / c.bars;
-            const double secs = c.bars * 4.0 * 60.0 / tempo();
-            double srcSecs = secs;   // seconds of source consumed by the whole clip
-            if (c.mode == 0) srcSecs = secs * std::exp2 (c.pitch / 12.0);
-            else if (c.mode == 1) srcSecs = secs / std::max (0.05, c.stretch);
-            else srcSecs = c.sourceSeconds();
-            b.id = 0; b.startBar = atBar; b.bars = c.bars - (atBar - c.startBar); b.offset = c.offset + srcSecs * frac; b.fadeIn = 0;
+            // the source at the cut (through the tempo map, the stretch, the warp markers), and what moves with the right part
+            const double cut = (atBar - c.startBar) * 4.0;
+            double srcCut = 0;
+            if (c.sample) { const auto ct = clipTime (c, c.sample->rate); srcCut = ct.srcAt (ct.outOf (cut)); }
+            else srcCut = cut * 60.0 / tempo();
+            b.id = 0; b.startBar = atBar; b.bars = c.bars - (atBar - c.startBar); b.offset = c.offset + std::max (0.0, srcCut); b.fadeIn = 0;
+            if (c.mode == 3) { b.warp.clear(); for (auto& [wb, ws] : c.warp) if (wb > cut + 1.0e-9) b.warp.push_back ({ wb - cut, ws - srcCut }); }
+            auto shiftLine = [cut] (std::vector<std::pair<double, float>>& pts, bool db)
+            {
+                if (pts.empty()) return;
+                float v0 = pts.front().second;
+                for (size_t i = 1; i < pts.size(); ++i) if (cut <= pts[i].first) { const auto& a = pts[i - 1]; const auto& d = pts[i]; v0 = cut <= a.first ? a.second : (float) (a.second + (d.second - a.second) * (cut - a.first) / std::max (1.0e-9, d.first - a.first)); break; }
+                if (cut >= pts.back().first) v0 = pts.back().second;
+                std::vector<std::pair<double, float>> out { { 0.0, v0 } };
+                for (auto& [pb, pv] : pts) if (pb > cut + 1.0e-9) out.push_back ({ pb - cut, pv });
+                pts = out; (void) db;
+            };
+            shiftLine (b.gainLine, true);
+            for (auto& e : b.envs) shiftLine (e.pts, false);
             c.bars = atBar - c.startBar; c.fadeOut = 0;
             v.push_back (b);
             break;
@@ -1026,6 +1040,36 @@ juce::File Session::collectSample (const juce::File& f)
     return dst;
 }
 
+int Session::collectAll (juce::String& error)
+{
+    if (projectFile == juce::File()) { error = "save the project first (it needs a folder)"; return 0; }
+    const auto pdir = projectDir(); audioDir().createDirectory();
+    int n = 0;
+    auto outside = [&] (const juce::String& p) { const juce::File f (p); return p.isNotEmpty() && f.existsAsFile() && ! f.isAChildOf (pdir); };
+    auto copy = [&] (const juce::String& p) { ++n; return collectSample (juce::File (p)); };
+    for (auto& tp : tracks)
+    {
+        auto& t = *tp;
+        bool any = false; for (auto& c : *t.aclips) any |= outside (c.path) || outside (c.origPath);
+        if (any)
+            editAudioClips (t, [&] (std::vector<AudioClip>& v)
+            {
+                for (auto& c : v)
+                {
+                    if (outside (c.path)) { const auto f = copy (c.path); c.path = f.getFullPathName(); }
+                    if (outside (c.origPath)) { const auto f = copy (c.origPath); c.origPath = f.getFullPathName(); }
+                }
+            });
+        if (t.frozen && outside (t.frozenFile.getFullPathName())) { const auto f = copy (t.frozenFile.getFullPathName()); t.frozenFile = f; }
+        t.forEachDevice ([&] (Device& d)
+        {
+            if (auto* h = dynamic_cast<SampleHolder*> (d.processor()))
+                for (auto& p : h->files()) if (outside (p)) h->replaceFile (p, copy (p));
+        });
+    }
+    dirty = true;
+    return n;
+}
 // ---- recording ---------------------------------------------------------------------------------------
 void Session::startRecording()
 {

@@ -109,6 +109,41 @@ inline juce::String formatTime (double seconds, bool millis = true)
     return out;
 }
 
+// ---- rulers in time ------------------------------------------------------------------------------------------------
+/** what a ruler (and the position readout) counts in */
+enum RulerFormat { RULER_BARS = 0, RULER_TIME, RULER_SAMPLES, RULER_TIMECODE, RULER_NONE };
+inline const char* rulerName (int f) { static const char* n[5] = { "bars | beats", "min:sec", "samples", "timecode", "none" }; return n[juce::jlimit (0, 4, f)]; }
+/** timecode "00:01:05:12" at a frame rate (24, 25, 29.97 drop counted as 30, 30) */
+inline juce::String formatTimecode (double seconds, double fps)
+{
+    const int f = std::max (1, (int) std::lround (fps));
+    const long long frames = (long long) std::floor (std::max (0.0, seconds) * fps + 1.0e-6);
+    const long long s = frames / f, ff = frames % f;
+    return juce::String (s / 3600).paddedLeft ('0', 2) + ":" + juce::String ((s / 60) % 60).paddedLeft ('0', 2) + ":" + juce::String (s % 60).paddedLeft ('0', 2) + ":" + juce::String (ff).paddedLeft ('0', 2);
+}
+inline juce::String formatSamples (double seconds, double rate) { return juce::String (std::llround (std::max (0.0, seconds) * rate)); }
+/** the time grid: fixed steps (seconds) or adaptive; frames when the ruler is timecode */
+struct TimeGridDef { const char* name; double seconds; };
+inline const std::vector<TimeGridDef>& timeGrids()
+{
+    static const std::vector<TimeGridDef> g { { "adaptive", 0.0 }, { "1 ms", 0.001 }, { "5 ms", 0.005 }, { "10 ms", 0.01 }, { "50 ms", 0.05 }, { "100 ms", 0.1 }, { "250 ms", 0.25 },
+                                              { "500 ms", 0.5 }, { "1 s", 1.0 }, { "2 s", 2.0 }, { "5 s", 5.0 }, { "10 s", 10.0 }, { "30 s", 30.0 }, { "1 min", 60.0 }, { "1 frame", -1.0 } };
+    return g;
+}
+/** round steps for a ruler in seconds: the smallest whose lines are at least minPx apart */
+inline double adaptiveSeconds (double pxPerSecond, double minPx = 14.0)
+{
+    static const double st[] = { 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600 };
+    for (double v : st) if (v * pxPerSecond >= minPx) return v;
+    return 3600;
+}
+inline double timeGridSeconds (int index, double pxPerSecond, double fps)
+{
+    const auto& g = timeGrids();
+    if (index <= 0 || index >= (int) g.size()) return adaptiveSeconds (pxPerSecond);
+    return g[(size_t) index].seconds < 0 ? 1.0 / std::max (1.0, fps) : g[(size_t) index].seconds;
+}
+
 /** reads what someone typed, in beats; -1 when it cannot be read. Positions: "17", "17.2", "17.2.3", "17.2.3.120"
     (dots or spaces), or time: "1:05.250", "1:02:05", "90s", "250ms" (secondsToBeats converts). Lengths (isLength)
     count from 0: "2" is two bars, "0.0.1" a sixteenth */

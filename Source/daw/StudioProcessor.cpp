@@ -117,8 +117,36 @@ bool StudioProcessor::saveProject (const juce::File& f, juce::String& error)
     session.projectName = f.getFileNameWithoutExtension();
     session.projectFile = f;
     auto x = session.save();
-    if (! x->writeTo (f)) { error = "could not write " + f.getFullPathName(); return false; }
+    // the version being replaced goes into the backups first (the last kBackups of them are kept)
+    if (f.existsAsFile())
+    {
+        const auto dir = backupsDir (f); dir.createDirectory();
+        const auto b = dir.getChildFile (f.getFileNameWithoutExtension() + " " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M%S") + ".fstudio");
+        if (! b.existsAsFile()) f.copyFileTo (b);
+        auto all = backups (f);
+        for (int i = kBackups; i < all.size(); ++i) all[i].deleteFile();
+    }
+    // written beside, then moved over: a crash while saving never leaves half a project
+    const auto tmp = f.getSiblingFile (f.getFileName() + ".saving");
+    if (! x->writeTo (tmp) || ! tmp.moveFileTo (f)) { tmp.deleteFile(); error = "could not write " + f.getFullPathName(); return false; }
     session.dirty = false;
+    return true;
+}
+juce::File StudioProcessor::backupsDir (const juce::File& project) { return project.getParentDirectory().getChildFile ("backups"); }
+juce::Array<juce::File> StudioProcessor::backups (const juce::File& project)
+{
+    auto v = backupsDir (project).findChildFiles (juce::File::findFiles, false, project.getFileNameWithoutExtension() + " ????-??-?? ??????.fstudio");
+    std::sort (v.begin(), v.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() > b.getFileName(); });   // newest first
+    return v;
+}
+bool StudioProcessor::restoreBackup (const juce::File& backup, juce::String& error)
+{
+    // the backup's content, as the project it was a backup of (saving it again keeps today's version as a backup)
+    const auto project = session.projectFile;
+    auto x = juce::XmlDocument::parse (backup);
+    if (! x) { error = "cannot read " + backup.getFullPathName(); return false; }
+    if (! session.load (*x, &error)) return false;
+    session.projectFile = project; session.projectName = project.getFileNameWithoutExtension(); session.dirty = true;
     return true;
 }
 bool StudioProcessor::loadProject (const juce::File& f, juce::String& error)
