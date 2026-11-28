@@ -11,16 +11,46 @@ namespace fal::daw
 {
 /** the studio's theme comes from the suite's own palette code (fal::themeFor), fed with the studio's entry in the product
     table (studioInfo, Products.cpp): whatever a suite's look becomes there, the studio follows */
+/** colour themes: the field, the ink, the fill (lit things), the edges, and three accents (hot: cables, warnings, the
+    automation; cool: markers, frozen, warp; warm: gain lines, controllers). 0 is the suite's own look */
+struct StudioPalette { const char* name; juce::uint32 ground, ink, fill, edge, hot, cool, warm; };
+inline const std::vector<StudioPalette>& studioPalettes()
+{
+    static const std::vector<StudioPalette> p {
+        { "faltung (the suite's)", 0, 0, 0, 0, 0xffee8e6e, 0xff8ec3e6, 0xfff6c590 },
+        { "deep night",   0xff14191c, 0xffd8e2e6, 0xff6e9fb8, 0xff2a3338, 0xffe07a5f, 0xff7fb7d6, 0xffd9b26f },
+        { "paper",        0xfff2efe8, 0xff1d1d1b, 0xff2f5d8a, 0xffcfc9bd, 0xffc4452c, 0xff2f6f9f, 0xffb3862b },
+        { "terminal",     0xff050805, 0xff9cf09c, 0xff3fbf5f, 0xff163016, 0xffffb000, 0xff4fd1c5, 0xffd0f070 },
+        { "riso",         0xfff7e8df, 0xff2a2a72, 0xffff5fa2, 0xffe6cfc4, 0xffff4a3d, 0xff2a6ad8, 0xffe09a00 },
+        { "concrete",     0xff8a8d8f, 0xff111213, 0xff2b2d2f, 0xff6f7274, 0xffb8340f, 0xff1f4e79, 0xff8a6a10 },
+        { "amber cell",   0xff1a1208, 0xffffc46b, 0xffff8f1f, 0xff3a2810, 0xffff5a36, 0xffffd99a, 0xffffa733 },
+        { "moss",         0xff1f2a20, 0xffdbe5c9, 0xff8fb36a, 0xff334433, 0xffe2845a, 0xff86b7a5, 0xffd8c46a },
+        { "ultraviolet",  0xff120b24, 0xffe8dcff, 0xff9a6bff, 0xff2a1d4a, 0xffff5fa2, 0xff5fd1ff, 0xffffc857 },
+        { "sand",         0xffe4d6bd, 0xff3b2f22, 0xffa4572f, 0xffc9b998, 0xffb4361f, 0xff3d6a73, 0xff8f6a14 },
+        { "high contrast",0xff000000, 0xffffffff, 0xffffe600, 0xff444444, 0xffff3b30, 0xff00c8ff, 0xffffe600 },
+    };
+    return p;
+}
+inline int& studioThemeIndex() { static int i = 0; return i; }
+inline const StudioPalette& studioPalette() { const auto& p = studioPalettes(); return p[(size_t) juce::jlimit (0, (int) p.size() - 1, studioThemeIndex())]; }
 inline ui::Theme studioTheme()
 {
-    static const ui::Theme t = []
+    static const ui::Theme suite = []
     {
         const auto& si = studioInfo();
         const ProductInfo pi { Pid::kt1, si.code, si.name, si.blurb, fal::Kind::Machine, Style::Snd, si.ground, si.accent, VType::Kick, si.w, si.h };
         return themeFor (pi);
     }();
+    const auto& p = studioPalette();
+    if (p.ground == 0) return suite;
+    ui::Theme t = suite; t.ground = juce::Colour (p.ground); t.ink = juce::Colour (p.ink); t.fill = juce::Colour (p.fill); t.edge = juce::Colour (p.edge);
     return t;
 }
+inline juce::Colour hotColour() { return juce::Colour (studioPalette().hot); }
+inline juce::Colour coolColour() { return juce::Colour (studioPalette().cool); }
+inline juce::Colour warmColour() { return juce::Colour (studioPalette().warm); }
+/** the brightest mark (the playhead, what is selected): white on dark themes, the ink on light ones */
+inline juce::Colour brightColour() { const auto g = studioTheme().ground; return g.getPerceivedBrightness() > 0.55f ? studioTheme().ink : juce::Colours::white; }
 inline juce::Font uiFont (float size, bool medium = false) { return studioTheme().mirror ? ui::cond (size + 1.5f, medium) : ui::mono (size, medium); }
 inline juce::Colour trackColour (const Track& t) { return juce::Colour (t.colour); }
 
@@ -139,11 +169,11 @@ public:
         if (hi - lo > 0.002f || modulated)
         {
             const float a = b.getX() + b.getWidth() * juce::jlimit (0.0f, 1.0f, base + lo), e = b.getX() + b.getWidth() * juce::jlimit (0.0f, 1.0f, base + hi);
-            g.setColour (juce::Colour (0xffee8e6e).withAlpha (0.9f));
+            g.setColour (hotColour().withAlpha (0.9f));
             g.fillRect (a, b.getBottom() - 3.0f, std::max (2.0f, e - a), 2.0f);
         }
-        if (device.isLocked (index)) { g.setColour (juce::Colours::white); g.drawRect (juce::Rectangle<float> (b.getX() + b.getWidth() * device.finalValue (index) - 3.0f, b.getCentreY() - 7.0f, 6.0f, 14.0f), 1.0f); }
-        if (hasLane) { g.setColour (juce::Colour (0xffee8e6e)); g.fillEllipse (b.getX() - 7.0f, b.getCentreY() - 2.0f, 4.0f, 4.0f); }
+        if (device.isLocked (index)) { g.setColour (brightColour()); g.drawRect (juce::Rectangle<float> (b.getX() + b.getWidth() * device.finalValue (index) - 3.0f, b.getCentreY() - 7.0f, 6.0f, 14.0f), 1.0f); }
+        if (hasLane) { g.setColour (hotColour()); g.fillEllipse (b.getX() - 7.0f, b.getCentreY() - 2.0f, 4.0f, 4.0f); }
     }
     void refresh()
     {
@@ -186,7 +216,7 @@ public:
         if (hi - lo > 0.002f)
         {
             const float a = b.getX() + b.getWidth() * juce::jlimit (0.0f, 1.0f, value01 + lo), e = b.getX() + b.getWidth() * juce::jlimit (0.0f, 1.0f, value01 + hi);
-            g.setColour (juce::Colour (0xffee8e6e)); g.fillRect (a, y + 3.0f, std::max (2.0f, e - a), 1.5f);
+            g.setColour (hotColour()); g.fillRect (a, y + 3.0f, std::max (2.0f, e - a), 1.5f);
         }
         g.setColour (t.edge); g.fillRect (b.getX() + b.getWidth() * value01 - 1.0f, y - 2.0f, 2.0f, 7.0f);
     }
@@ -232,7 +262,7 @@ public:
             const float h = juce::jlimit (0.0f, 1.0f, (dbv + 60.0f) / 60.0f) * b.getHeight();
             auto r = juce::Rectangle<float> (b.getX() + c * cw, b.getBottom() - h, std::max (1.0f, cw - 1.0f), h);
             g.setColour (t.ink.withAlpha (0.18f)); g.fillRect (juce::Rectangle<float> (b.getX() + c * cw, b.getY(), std::max (1.0f, cw - 1.0f), b.getHeight()));
-            g.setColour (dbv > -1.0f ? juce::Colour (0xffee8e6e) : t.fill); g.fillRect (r);
+            g.setColour (dbv > -1.0f ? hotColour() : t.fill); g.fillRect (r);
         }
         g.setColour (t.ink.withAlpha (0.5f));
         const float y0 = b.getBottom() - (60.0f - 18.0f) / 60.0f * b.getHeight(), y6 = b.getBottom() - (60.0f - 6.0f) / 60.0f * b.getHeight();
@@ -369,7 +399,7 @@ public:
                 const float yy = (float) traceBox.getBottom() - 2.0f - v * (float) (traceBox.getHeight() - 4);
                 if (px == 0) pth.startNewSubPath ((float) traceBox.getX(), yy); else pth.lineTo ((float) (traceBox.getX() + px), yy);
             }
-            g.setColour (juce::Colour (0xffee8e6e)); g.strokePath (pth, juce::PathStrokeType (1.2f));
+            g.setColour (hotColour()); g.strokePath (pth, juce::PathStrokeType (1.2f));
         }
         else { g.setColour (t.ink.withAlpha (0.6f)); g.setFont (uiFont (9.5f)); g.drawText (modSrcName (s), traceBox.reduced (4, 0), juce::Justification::centredLeft); }
     }
@@ -388,7 +418,7 @@ class DeviceWindow : public juce::DocumentWindow
 {
 public:
     DeviceWindow (Device& d, std::function<void()> closed)
-        : DocumentWindow (d.name, juce::Colour (studioInfo().ground), DocumentWindow::closeButton), device (&d), onClosed (std::move (closed))
+        : DocumentWindow (d.name, studioTheme().ground, DocumentWindow::closeButton), device (&d), onClosed (std::move (closed))
     {
         setUsingNativeTitleBar (true);
         if (auto* p = d.processor())

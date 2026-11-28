@@ -53,6 +53,7 @@ public:
     std::function<void()> openAudioSettings;
     /** the size of everything in the window (the app keeps it in its settings) */
     float uiScale = 1.0f;
+    int theme = 0; std::function<void (int)> onTheme;   // the colour theme (studioPalettes), kept by the app
     std::function<void (float)> onUiScale;
     /** called on the message thread right after a project replaced the session (open, undo): the editor
         rebuilds its views before anything paints the tracks that are gone */

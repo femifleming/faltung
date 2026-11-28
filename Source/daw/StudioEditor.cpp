@@ -27,7 +27,7 @@ public:
         g.drawText ("cpu", r.removeFromLeft (24.0f), juce::Justification::centredLeft);
         auto bar = r.removeFromLeft (64.0f).reduced (0.0f, 4.0f);
         g.setColour (theme.ink.withAlpha (0.18f)); g.fillRect (bar);
-        const auto hot = juce::Colour (0xffee8e6e);
+        const auto hot = hotColour();
         g.setColour (load > 0.8f ? hot : theme.ink.withAlpha (0.85f)); g.fillRect (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, load)));
         g.setColour (peak > 0.8f ? hot : theme.ink); g.fillRect (bar.getX() + bar.getWidth() * juce::jlimit (0.0f, 1.0f, peak) - 1.0f, bar.getY() - 2.0f, 2.0f, bar.getHeight() + 4.0f);
         r.removeFromLeft (5.0f);
@@ -167,6 +167,10 @@ public:
         juce::PopupMenu gm; const auto& g = timeline::grids();
         for (int i = 0; i < (int) g.size(); ++i) gm.addItem (300 + i, i == 0 && ap ? timeline::gridName (0, ap->pxPerBeat()) : juce::String (g[(size_t) i].name), true, s.gridIndex.load() == i);
         m.addSubMenu ("grid", gm);
+        m.addSeparator();
+        juce::PopupMenu th; const auto& pal = studioPalettes();
+        for (int i = 0; i < (int) pal.size(); ++i) th.addItem (400 + i, pal[(size_t) i].name, true, studioThemeIndex() == i);
+        m.addSubMenu ("colour theme", th);
         return m;
     }
     ArrangePage* arrange() { return dynamic_cast<ArrangePage*> (pages[1]); }
@@ -188,10 +192,12 @@ public:
         }), true);
     }
     std::function<void (int)> uiZoom;   // +1 bigger, -1 smaller, 0 actual size
+    std::function<void (int)> setThemeFn;   // a colour theme: the editor builds the view again in it
     void say (const juce::String& m) { status = m; repaint (0, getHeight() - 20, getWidth(), 20); }
     void fileAction (int id)
     {
         juce::String err;
+        if (id >= 400 && id < 450) { if (setThemeFn) { const int th = id - 400; auto fn = setThemeFn; juce::MessageManager::callAsync ([fn, th] { fn (th); }); } return; }
         if (id >= 100 && id < 200) { windows.clear(); s.newFromTemplate (id - 100); select (nullptr); rebuildAll(); say ("new: " + Session::templateNames()[id - 100]); return; }
         auto choose = [this] (const juce::String& title, const juce::File& start, const juce::String& pattern, int flags, std::function<void (juce::File)> then)
         {
@@ -523,7 +529,7 @@ public:
         g.drawText (s.projectName + (s.dirty.load() ? " *" : ""), 12, 26, 136, 14, juce::Justification::centredLeft, true);
         // position
         const double bar = s.currentBar();
-        g.setFont (uiFont (11.0f, true)); g.setColour (s.playPpq.load() >= 0 ? juce::Colours::white : theme.ink);
+        g.setFont (uiFont (11.0f, true)); g.setColour (s.playPpq.load() >= 0 ? brightColour() : theme.ink);
         g.drawText (timeline::formatPosition (bar * 4.0, s.meterMap()) + "   " + timeline::formatTime (s.secondsAt (bar * 4.0)) + "   " + juce::String (s.bpmShown.load(), 1) + " bpm   " + s.meterMap().sigAt (bar * 4.0).text(), positionRect(), juce::Justification::centredLeft);
         g.setFont (uiFont (9.5f)); g.setColour (theme.ink.withAlpha (0.7f));
         juce::String info = juce::String (s.tracks.size()) + " tracks  " + juce::String (s.returns.size()) + " returns";
@@ -607,6 +613,7 @@ public:
     juce::Rectangle<int> positionRect() const { return { getWidth() - 360, 31, 300, 16 }; }
     void mouseDown (const juce::MouseEvent& e) override { if (positionRect().contains (e.getPosition())) goToDialog(); }
     void pageForTest (int pg) { setPage (pg); }
+    int currentPage() const { return page; }
 
     StudioProcessor& proc; Session& s; ui::Theme theme; Ctx ctx;
     juce::OwnedArray<Page> pages; juce::OwnedArray<ui::TextLink> tabs; int page = 0;
@@ -623,10 +630,33 @@ public:
 
 StudioEditor::StudioEditor (StudioProcessor& p) : AudioProcessorEditor (p), proc (p)
 {
-    root = std::make_unique<StudioView> (p);
+    studioThemeIndex() = juce::jlimit (0, (int) studioPalettes().size() - 1, p.theme);
     nominalW = studioInfo().w; nominalH = studioInfo().h;
+    makeView();
+    uiScale = juce::jlimit (0.5f, 2.0f, p.uiScale);
+    setResizable (true, true);
+    setResizeLimits (nominalW / 3, nominalH / 3, 10000, 8000);
+    setSize (juce::roundToInt (nominalW * uiScale), juce::roundToInt (nominalH * uiScale));
+    startTimerHz (30);
+}
+void StudioEditor::setTheme (int i)
+{
+    i = juce::jlimit (0, (int) studioPalettes().size() - 1, i);
+    studioThemeIndex() = i; proc.theme = i; if (proc.onTheme) proc.onTheme (i);
+    // the view again, in the new colours (the colours are in every control): the same page and track
+    const int pg = root ? root->currentPage() : 0; const int sel = proc.session.selectedTrack.load();
+    if (root) { removeChildComponent (root.get()); root.reset(); }
+    makeView();
+    root->pageForTest (pg); proc.session.selectedTrack.store (sel);
+    resized(); repaint();
+    root->say ("colour theme: " + juce::String (studioPalettes()[(size_t) i].name));
+}
+void StudioEditor::makeView()
+{
+    root = std::make_unique<StudioView> (proc);
     root->setBounds (0, 0, nominalW, nominalH);
     addAndMakeVisible (*root);
+    root->setThemeFn = [this] (int i) { setTheme (i); };
     root->uiZoom = [this] (int d)
     {
         static const float steps[] = { 0.5f, 0.6f, 0.67f, 0.75f, 0.8f, 0.9f, 1.0f, 1.1f, 1.25f, 1.33f, 1.5f, 1.75f, 2.0f };
@@ -636,14 +666,9 @@ StudioEditor::StudioEditor (StudioProcessor& p) : AudioProcessorEditor (p), proc
         setUiScale (next);
         root->say ("size " + juce::String (juce::roundToInt (uiScale * 100)) + "%" + (effectiveScale() < uiScale - 0.001f ? "  (" + juce::String (juce::roundToInt (effectiveScale() * 100)) + "% fits this window: make it bigger for more)" : juce::String()));
     };
-    uiScale = juce::jlimit (0.5f, 2.0f, p.uiScale);
-    setResizable (true, true);
-    setResizeLimits (nominalW / 3, nominalH / 3, 10000, 8000);
-    setSize (juce::roundToInt (nominalW * uiScale), juce::roundToInt (nominalH * uiScale));
-    startTimerHz (30);
 }
 StudioEditor::~StudioEditor() { stopTimer(); root.reset(); }
-void StudioEditor::paint (juce::Graphics& g) { g.fillAll (juce::Colour (studioInfo().ground)); }
+void StudioEditor::paint (juce::Graphics& g) { g.fillAll (studioTheme().ground); }
 float StudioEditor::effectiveScale() const
 {
     // the scale asked for, unless the window is too small to give the pages their least room at it

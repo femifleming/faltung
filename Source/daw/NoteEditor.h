@@ -140,7 +140,7 @@ public:
             if (! nr.intersects (r.toFloat())) continue;
             const bool s = std::find (sel.begin(), sel.end(), k) != sel.end();
             g.setColour (theme.fill.withAlpha (0.3f + 0.7f * n.vel)); g.fillRect (nr);
-            g.setColour (s ? juce::Colours::white : theme.ink.withAlpha (0.6f)); g.drawRect (nr, s ? 2.0f : 1.0f);
+            g.setColour (s ? brightColour() : theme.ink.withAlpha (0.6f)); g.drawRect (nr, s ? 2.0f : 1.0f);
         }
         }
         // the lane: velocity bars, or the controller as a stepped line
@@ -155,7 +155,7 @@ public:
                     const auto& n = v[(size_t) k]; const float x = xOf (n.beat);
                     if (x < (float) l.getX() || x > (float) l.getRight()) continue;
                     const bool s = std::find (sel.begin(), sel.end(), k) != sel.end();
-                    g.setColour (s ? juce::Colours::white : theme.fill); g.fillRect (x, laneY (n.vel), 3.0f, (float) l.getBottom() - laneY (n.vel));
+                    g.setColour (s ? brightColour() : theme.fill); g.fillRect (x, laneY (n.vel), 3.0f, (float) l.getBottom() - laneY (n.vel));
                 }
             else
             {
@@ -163,11 +163,11 @@ public:
                 p.startNewSubPath ((float) l.getX(), lastY); started = true;
                 for (auto& c : ctrls()) if (c.kind == laneKind) { const float x = juce::jlimit ((float) l.getX(), (float) l.getRight(), xOf (c.beat)); p.lineTo (x, lastY); lastY = laneY (c.value); p.lineTo (x, lastY); }
                 if (started) p.lineTo ((float) l.getRight(), lastY);
-                g.setColour (juce::Colour (0xfff6c590)); g.strokePath (p, juce::PathStrokeType (1.4f));
+                g.setColour (warmColour()); g.strokePath (p, juce::PathStrokeType (1.4f));
                 if (laneKind == kCtrlBend) { g.setColour (theme.ink.withAlpha (0.2f)); g.fillRect ((float) l.getX(), laneY (0.5f), (float) l.getWidth(), 1.0f); }
             }
         }
-        if (band) { g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRect (bandRect()); g.setColour (juce::Colours::white.withAlpha (0.7f)); g.drawRect (bandRect(), 1); }
+        if (band) { g.setColour (brightColour().withAlpha (0.12f)); g.fillRect (bandRect()); g.setColour (brightColour().withAlpha (0.7f)); g.drawRect (bandRect(), 1); }
     }
     juce::Rectangle<int> bandRect() const { return juce::Rectangle<int> (bandA, bandB); }
 

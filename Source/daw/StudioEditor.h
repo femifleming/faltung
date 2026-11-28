@@ -24,6 +24,8 @@ public:
     juce::PopupMenu viewMenu();
     /** the size of everything in the window: 0.5 … 2 (a smaller window shrinks it further, so everything fits) */
     void setUiScale (float);
+    /** a colour theme (studioPalettes): the view is built again in it, and the app keeps it */
+    void setTheme (int);
     float getUiScale() const { return uiScale; }
     /** the scale actually drawn at, and the room the pages get at it */
     float effectiveScale() const;
@@ -39,6 +41,7 @@ private:
     void timerCallback() override;
     StudioProcessor& proc;
     std::unique_ptr<StudioView> root;
+    void makeView();
     juce::TooltipWindow tips { this, 700 };
     int nominalW = 1440, nominalH = 900;
     static constexpr int kMinW = 1200, kMinH = 720;   // the least room the pages are laid out for

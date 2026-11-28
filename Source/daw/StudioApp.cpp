@@ -33,6 +33,8 @@ public:
         processor->openAudioSettings = [this] { menuItemSelected (10, 3); };
         processor->uiScale = (float) settings->getDoubleValue ("uiScale", 1.0);
         processor->onUiScale = [this] (float v) { settings->setValue ("uiScale", v); settings->saveIfNeeded(); };
+        processor->theme = settings->getIntValue ("theme", 0);
+        processor->onTheme = [this] (int v) { settings->setValue ("theme", v); settings->saveIfNeeded(); };
         std::unique_ptr<juce::XmlElement> saved (settings->getXmlValue ("audio"));
         const auto self = juce::SystemStats::getEnvironmentVariable ("SNDSTUDIO_SELFTEST", {});
         if (self.isNotEmpty())

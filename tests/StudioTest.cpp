@@ -2819,6 +2819,26 @@ int main (int argc, char** argv)
         }
     }
 
+    std::cout << "== colour themes\n";
+    {
+        StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor()); auto* se = dynamic_cast<StudioEditor*> (ed.get()); ed->setSize (1440, 900);
+        se->showPage (3); s.selectedTrack.store (0);
+        const auto& pal = studioPalettes();
+        check (pal.size() >= 10, "ten themes or more");
+        bool ok = true;
+        for (int i = 0; i < (int) pal.size(); ++i)
+        {
+            se->setTheme (i); se->tickForTest();
+            if (i > 0) ok = ok && studioTheme().ground == juce::Colour (pal[(size_t) i].ground) && hotColour() == juce::Colour (pal[(size_t) i].hot);
+            ok = ok && dynamic_cast<MixPage*> (se->pageComponent (3)) != nullptr && p.theme == i;
+            juce::Image img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 0.25f);
+            // the window is drawn in the theme's ground
+            if (i > 0) { const auto c = img.getPixelAt (img.getWidth() - 3, img.getHeight() / 2); ok = ok && std::abs (c.getBrightness() - juce::Colour (pal[(size_t) i].ground).getBrightness()) < 0.25f; }
+        }
+        check (ok, "every theme: the colours, the same page, the window in its ground");
+        se->setTheme (0);
+    }
     std::cout << "== timeline: through the editor (ui scale, zoom, select, drag, keys)\n";
     {
         StudioProcessor p; auto& s = p.session; s.newFromTemplate (0);
@@ -3043,6 +3063,17 @@ int main (int argc, char** argv)
                         se->showPage (1);
                     }
                     s.gridIndex.store (0);
+                }
+                // every colour theme, on the arrangement
+                {
+                    se->showPage (1); arr->showBars (0.0, 40.0); arr->scrollY = 0;
+                    for (int th = 0; th < (int) studioPalettes().size(); ++th)
+                    {
+                        se->setTheme (th); run (8);
+                        snap (*ed, "sndstudio-theme-" + juce::String (th));
+                    }
+                    se->setTheme (0); run (4);
+                    arr = dynamic_cast<ArrangePage*> (se->pageComponent (1));
                 }
                 // the whole window bigger and smaller
                 const auto w0 = ed->getWidth(), h0 = ed->getHeight();
